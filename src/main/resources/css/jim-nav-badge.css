@@ -1,0 +1,20 @@
+.jim-nav-unread-badge {
+    display: inline-block;
+    margin-left: 5px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: #de350b;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    vertical-align: middle;
+    box-sizing: border-box;
+}
+
+.jim-nav-unread-badge[hidden] {
+    display: none;
+}

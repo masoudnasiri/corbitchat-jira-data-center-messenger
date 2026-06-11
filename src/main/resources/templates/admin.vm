@@ -1,0 +1,165 @@
+<html>
+<head>
+    <title>CorbitChat Administration</title>
+    <meta name="decorator" content="atl.admin"/>
+    <meta name="admin.active.section" content="admin_plugins_menu/jim-admin-section"/>
+    <meta name="admin.active.tab" content="jim-admin-link"/>
+</head>
+<body>
+<div id="jim-admin-page">
+    <header class="jim-admin-header">
+        <h1>CorbitChat Administration</h1>
+        <p class="jim-admin-subtitle">Chat access, notifications, attachments and diagnostics for the CorbitChat messenger.</p>
+    </header>
+
+    <nav class="jim-admin-tabs" role="tablist" aria-label="Admin sections">
+        <button type="button" class="jim-admin-tab is-active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
+        <button type="button" class="jim-admin-tab" data-tab="access" role="tab" aria-selected="false">Access Control</button>
+        <button type="button" class="jim-admin-tab" data-tab="notifications" role="tab" aria-selected="false">Notifications</button>
+        <button type="button" class="jim-admin-tab" data-tab="attachments" role="tab" aria-selected="false">Attachments</button>
+        <button type="button" class="jim-admin-tab" data-tab="diagnostics" role="tab" aria-selected="false">Diagnostics</button>
+        <button type="button" class="jim-admin-tab" data-tab="help" role="tab" aria-selected="false">Help</button>
+    </nav>
+
+    <div id="jim-admin-message" class="jim-admin-message" role="alert" hidden></div>
+
+    <!-- ===== Overview ===== -->
+    <section class="jim-admin-panel is-active" data-panel="overview">
+        <div id="jim-admin-overview-cards" class="jim-admin-cards">
+            <div class="jim-admin-card"><div class="jim-admin-card-label">Chat mode</div><div class="jim-admin-card-value" data-overview="chatMode">...</div></div>
+            <div class="jim-admin-card"><div class="jim-admin-card-label">Web push</div><div class="jim-admin-card-value" data-overview="pushEnabled">...</div></div>
+            <div class="jim-admin-card"><div class="jim-admin-card-label">Attachments</div><div class="jim-admin-card-value" data-overview="attachmentsEnabled">...</div></div>
+            <div class="jim-admin-card"><div class="jim-admin-card-label">Access policies</div><div class="jim-admin-card-value" data-overview="policyCount">...</div></div>
+            <div class="jim-admin-card"><div class="jim-admin-card-label">Push subscriptions</div><div class="jim-admin-card-value" data-overview="pushSubscriptionCount">...</div></div>
+            <div class="jim-admin-card"><div class="jim-admin-card-label">Plugin version</div><div class="jim-admin-card-value" data-overview="pluginVersion">...</div></div>
+        </div>
+        <h3>Recent admin changes</h3>
+        <div id="jim-admin-audit-list" class="jim-admin-audit-list">Loading...</div>
+    </section>
+
+    <!-- ===== Access Control ===== -->
+    <section class="jim-admin-panel" data-panel="access">
+        <h3>Global chat mode</h3>
+        <div class="jim-admin-field">
+            <label class="jim-admin-radio"><input type="radio" name="jim-chat-mode" value="ALLOW_ALL"/> <strong>Allow everyone</strong> — every active Jira user can search and chat with anyone.</label>
+            <label class="jim-admin-radio"><input type="radio" name="jim-chat-mode" value="RESTRICTED"/> <strong>Restricted by policy</strong> — only the rules below decide who can search, start and receive chats. No matching rule means no access.</label>
+            <label class="jim-admin-radio"><input type="radio" name="jim-chat-mode" value="DISABLED"/> <strong>Disabled</strong> — chat is turned off for all users.</label>
+            <button id="jim-save-chat-mode" type="button" class="aui-button aui-button-primary">Save chat mode</button>
+        </div>
+
+        <h3>Access policies</h3>
+        <p class="jim-admin-hint">Highest priority wins; on a tie DENY overrides ALLOW. Policies only apply in <strong>Restricted by policy</strong> mode.</p>
+        <table class="aui jim-admin-policy-table" id="jim-policy-table">
+            <thead>
+            <tr>
+                <th>Source</th><th>Target</th><th>Action</th>
+                <th>Search</th><th>Start</th><th>Receive</th>
+                <th>Enabled</th><th>Priority</th><th></th>
+            </tr>
+            </thead>
+            <tbody id="jim-policy-rows">
+            <tr><td colspan="9">Loading...</td></tr>
+            </tbody>
+        </table>
+
+        <h4>Add policy</h4>
+        <div class="jim-admin-policy-form" id="jim-policy-form">
+            <select id="jim-pol-source-type"><option value="USER">USER</option><option value="GROUP">GROUP</option></select>
+            <input id="jim-pol-source-value" type="text" placeholder="username or group name"/>
+            <span class="jim-admin-arrow">&#8594;</span>
+            <select id="jim-pol-target-type"><option value="ANY">ANY</option><option value="USER">USER</option><option value="GROUP">GROUP</option></select>
+            <input id="jim-pol-target-value" type="text" placeholder="username or group name"/>
+            <select id="jim-pol-action"><option value="ALLOW">ALLOW</option><option value="DENY">DENY</option></select>
+            <label><input id="jim-pol-can-search" type="checkbox" checked/> search</label>
+            <label><input id="jim-pol-can-start" type="checkbox" checked/> start</label>
+            <label><input id="jim-pol-can-receive" type="checkbox" checked/> receive</label>
+            <input id="jim-pol-priority" type="number" value="0" title="Priority"/>
+            <button id="jim-pol-add" type="button" class="aui-button">Add policy</button>
+        </div>
+    </section>
+
+    <!-- ===== Notifications ===== -->
+    <section class="jim-admin-panel" data-panel="notifications">
+        <h3>Notification settings</h3>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check"><input type="checkbox" id="jim-set-enableWebPush"/> Enable web push notifications</label>
+            <label class="jim-admin-label" for="jim-set-notificationDetailLevel">Notification detail level</label>
+            <select id="jim-set-notificationDetailLevel">
+                <option value="FULL_MESSAGE">Full message — sender and message excerpt</option>
+                <option value="SENDER_ONLY">Sender only — sender name, generic body</option>
+                <option value="GENERIC_ONLY">Generic only — no sender, no content</option>
+            </select>
+            <label class="jim-admin-check"><input type="checkbox" id="jim-set-aggregateNotifications"/> Aggregate notifications (one notification replaces the previous instead of stacking)</label>
+            <label class="jim-admin-check"><input type="checkbox" id="jim-set-mentionNotifications"/> Push notifications for @mentions</label>
+            <label class="jim-admin-check"><input type="checkbox" id="jim-set-assignmentNotifications"/> Push notifications for issue assignments</label>
+            <div class="jim-admin-actions">
+                <button id="jim-save-notifications" type="button" class="aui-button aui-button-primary">Save notification settings</button>
+                <button id="jim-test-notification" type="button" class="aui-button">Send test notification to me</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== Attachments ===== -->
+    <section class="jim-admin-panel" data-panel="attachments">
+        <h3>Attachment settings</h3>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check"><input type="checkbox" id="jim-set-attachmentsEnabled"/> Allow file and voice attachments</label>
+            <label class="jim-admin-label" for="jim-set-maxAttachmentSizeMb">Maximum attachment size (MB, 1&#8211;100)</label>
+            <input type="number" id="jim-set-maxAttachmentSizeMb" min="1" max="100"/>
+            <label class="jim-admin-label" for="jim-set-allowedExtensions">Allowed extensions (comma separated, e.g. <code>png,jpg,pdf</code>; empty = built-in safe list)</label>
+            <input type="text" id="jim-set-allowedExtensions" placeholder="png,jpg,pdf"/>
+            <label class="jim-admin-check"><input type="checkbox" id="jim-set-imagePreviewEnabled"/> Show inline image previews in chat</label>
+            <div class="jim-admin-actions">
+                <button id="jim-save-attachments" type="button" class="aui-button aui-button-primary">Save attachment settings</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== Diagnostics ===== -->
+    <section class="jim-admin-panel" data-panel="diagnostics">
+        <h3>Diagnostics</h3>
+        <table class="aui jim-admin-diag-table">
+            <tbody id="jim-diag-rows">
+            <tr><td colspan="2">Loading...</td></tr>
+            </tbody>
+        </table>
+        <button id="jim-diag-refresh" type="button" class="aui-button">Refresh</button>
+    </section>
+
+    <!-- ===== Help ===== -->
+    <section class="jim-admin-panel" data-panel="help">
+        <h3>Admin guide</h3>
+        <div class="jim-admin-help">
+            <h4>Global chat mode</h4>
+            <p><strong>Allow everyone</strong> is the default: any active Jira user can find and message any other user.
+               <strong>Restricted by policy</strong> switches to a whitelist model — a user can only search/start/receive chat when an ALLOW policy matches and no higher-priority DENY matches.
+               <strong>Disabled</strong> turns chat off entirely: user search returns nothing and starting or sending direct messages is rejected by the server.</p>
+
+            <h4>How policies are evaluated</h4>
+            <ol>
+                <li>Only <em>enabled</em> policies whose capability checkbox (search / start / receive) matches the action being checked are considered.</li>
+                <li>The policy <em>source</em> must match the acting user (their username, user key, or a group they belong to).</li>
+                <li>The policy <em>target</em> must match the other user (username/key, group, or ANY).</li>
+                <li>Among matching policies the <strong>highest priority wins</strong>; on a priority tie <strong>DENY overrides ALLOW</strong>.</li>
+                <li>If no policy matches, access is <strong>denied</strong> (restricted mode is a whitelist).</li>
+            </ol>
+            <p>Starting a chat additionally requires the recipient to be allowed to <em>receive</em> chat from the initiator. Enforcement happens in the REST API (user search, conversation creation, message send), not just the UI.</p>
+            <p>Example: allow the <code>developers</code> group to chat with anyone — source <code>GROUP:developers</code>, target <code>ANY</code>, action <code>ALLOW</code>, all capabilities checked.
+               Then block one user: source <code>USER:contractor1</code>, target <code>ANY</code>, action <code>DENY</code>, higher priority.</p>
+
+            <h4>Notifications</h4>
+            <p>Web push requires HTTPS and each user enabling notifications from the chat page (bell icon). The detail level controls how much content leaves the Jira server inside push payloads — use <em>Sender only</em> or <em>Generic only</em> in privacy-sensitive environments. The test button sends a push to your own browser subscriptions.</p>
+
+            <h4>Attachments</h4>
+            <p>Disabling attachments also disables voice messages (they are stored as audio attachments). The extension allowlist further restricts the built-in safe type list — it cannot enable types that are blocked for security (executables, scripts, HTML).</p>
+
+            <h4>Diagnostics</h4>
+            <p>HTTPS must be detected for web push and voice recording to work in browsers. "VAPID configured" confirms the push signing keys exist. If pushes fail after a base URL / domain change, users need to re-enable notifications once from the chat page (subscriptions are bound to the browser origin).</p>
+
+            <h4>Audit log</h4>
+            <p>Every settings change, policy change and test notification is recorded with the acting administrator, timestamp and details — see the Overview tab.</p>
+        </div>
+    </section>
+</div>
+</body>
+</html>

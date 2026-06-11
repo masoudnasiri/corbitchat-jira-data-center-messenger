@@ -1,0 +1,3192 @@
+/* CorbitChat — scoped layout foundation (.jim-chat-shell two-panel messenger). */
+
+#jim-messenger-app.jim-chat-shell,
+#jim-messenger-app.jim-messenger,
+.jim-chat-shell#jim-messenger-app {
+    --jim-bg: #ffffff;
+    --jim-surface: #f7f8fa;
+    --jim-panel-bg: #f4f5f7;
+    --jim-sidebar-bg: #ffffff;
+    --jim-border: #dfe1e6;
+    --jim-border-subtle: #ebecf0;
+    --jim-text: #172b4d;
+    --jim-text-secondary: #5e6c84;
+    --jim-muted: #6b778c;
+    --jim-brand: #0052cc;
+    --jim-brand-hover: #0747a6;
+    --jim-brand-subtle: #e9f2ff;
+    --jim-bubble-own: #0c66e4;
+    --jim-bubble-own-border: #0c66e4;
+    --jim-bubble-own-text: #ffffff;
+    --jim-bubble-own-muted: rgba(255, 255, 255, 0.78);
+    --jim-bubble-other: #ffffff;
+    --jim-bubble-other-border: #dfe1e6;
+    --jim-selected: #e9f2ff;
+    --jim-hover: #ebecf0;
+    --jim-error: #bf2600;
+    --jim-error-bg: #ffebe6;
+    --jim-error-border: #ff8f73;
+    --jim-success: #006644;
+    --jim-warning: #974f0c;
+    --jim-info: #0052cc;
+
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    width: 100%;
+    height: calc(100vh - 110px);
+    min-height: 480px;
+    max-height: calc(100vh - 110px);
+    margin: 0 auto;
+    background: var(--jim-bg);
+    border: 1px solid var(--jim-border);
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 1px 3px rgba(9, 30, 66, 0.06);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+    color: var(--jim-text);
+}
+
+#jim-messenger-app *,
+#jim-messenger-app *::before,
+#jim-messenger-app *::after {
+    box-sizing: border-box;
+}
+
+#jim-messenger-app .jim-sidebar {
+    flex: 0 0 320px;
+    width: 320px;
+    min-width: 300px;
+    max-width: 340px;
+    height: 100%;
+    border-inline-end: 1px solid var(--jim-border);
+    background: var(--jim-sidebar-bg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+
+#jim-messenger-app .jim-sidebar-header {
+    flex-shrink: 0;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--jim-border-subtle);
+    background: var(--jim-bg);
+}
+
+#jim-messenger-app .jim-sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+#jim-messenger-app .jim-sidebar-brand-logo {
+    width: 34px;
+    height: 34px;
+    object-fit: contain;
+    flex-shrink: 0;
+    border-radius: 8px;
+}
+
+#jim-messenger-app .jim-sidebar-brand-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+#jim-messenger-app .jim-sidebar-brand-title {
+    margin: 0;
+    color: var(--jim-text);
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+}
+
+#jim-messenger-app .jim-sidebar-brand-subtitle {
+    margin: 0;
+    color: var(--jim-muted);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.35;
+}
+
+#jim-messenger-app .jim-sidebar-search,
+#jim-messenger-app .jim-search {
+    position: relative;
+    flex-shrink: 0;
+    padding: 10px 12px;
+    background: var(--jim-bg);
+    border-bottom: 1px solid var(--jim-border-subtle);
+}
+
+#jim-messenger-app .jim-sidebar-search .jim-search-input,
+#jim-messenger-app .jim-search-input {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 8px;
+    background: var(--jim-surface);
+    color: var(--jim-text);
+    font-size: 13px;
+    line-height: 20px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+#jim-messenger-app .jim-sidebar-search .jim-search-input:focus,
+#jim-messenger-app .jim-search-input:focus {
+    outline: none;
+    border-color: #4c9aff;
+    background: var(--jim-bg);
+    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.18);
+}
+
+#jim-messenger-app .jim-sidebar-search .jim-search-input::placeholder,
+#jim-messenger-app .jim-search-input::placeholder {
+    color: #97a0af;
+}
+
+#jim-messenger-app .jim-search-results {
+    position: absolute;
+    top: calc(100% - 6px);
+    left: 12px;
+    right: 12px;
+    z-index: 20;
+    background: var(--jim-bg);
+    border: 1px solid var(--jim-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 20px rgba(9, 30, 66, 0.15);
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+#jim-messenger-app .jim-assistant-slot {
+    flex-shrink: 0;
+    padding: 6px 8px 4px;
+    background: var(--jim-bg);
+    border-bottom: 1px solid var(--jim-border-subtle);
+}
+
+#jim-messenger-app .jim-conversation-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 8px 10px;
+    min-height: 0;
+}
+
+#jim-messenger-app .jim-sidebar-section-label {
+    padding: 10px 8px 6px;
+    color: var(--jim-muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+#jim-messenger-app .jim-sidebar-empty {
+    padding: 12px 10px 16px;
+    color: var(--jim-muted);
+    font-size: 13px;
+    line-height: 1.45;
+    text-align: center;
+}
+
+/* Sidebar conversation rows */
+#jim-messenger-app .jim-conversation-item,
+#jim-messenger-app .jim-assistant-item,
+#jim-messenger-app .jim-search-result-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 60px;
+    margin-bottom: 2px;
+    padding: 8px 10px 8px 8px;
+    border: 0;
+    border-radius: 10px;
+    border-inline-start: 3px solid transparent;
+    background: transparent;
+    text-align: start;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+#jim-messenger-app .jim-conversation-item:hover,
+#jim-messenger-app .jim-assistant-item:hover,
+#jim-messenger-app .jim-search-result-item:hover {
+    background: var(--jim-hover);
+}
+
+#jim-messenger-app .jim-conversation-item:focus,
+#jim-messenger-app .jim-assistant-item:focus,
+#jim-messenger-app .jim-search-result-item:focus {
+    background: var(--jim-hover);
+    outline: none;
+    box-shadow: inset 0 0 0 1px rgba(76, 154, 255, 0.35);
+}
+
+#jim-messenger-app .jim-conversation-item-selected {
+    background: var(--jim-selected) !important;
+    border-inline-start-color: var(--jim-brand);
+}
+
+#jim-messenger-app .jim-assistant-item {
+    background: rgba(222, 235, 255, 0.35);
+}
+
+#jim-messenger-app .jim-assistant-item:hover,
+#jim-messenger-app .jim-assistant-item.jim-conversation-item-selected {
+    background: var(--jim-selected);
+}
+
+#jim-messenger-app .jim-conversation-avatar,
+#jim-messenger-app .jim-chat-avatar {
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-assistant-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: linear-gradient(145deg, #0747a6, #2684ff);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(0, 82, 204, 0.22);
+}
+
+#jim-messenger-app .jim-conversation-main {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+#jim-messenger-app .jim-conversation-item-top,
+#jim-messenger-app .jim-conversation-item-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+#jim-messenger-app .jim-conversation-item-bottom {
+    margin-top: 1px;
+}
+
+#jim-messenger-app .jim-conversation-title,
+#jim-messenger-app .jim-conversation-name {
+    color: var(--jim-text);
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+}
+
+#jim-messenger-app .jim-conversation-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-conversation-time {
+    color: var(--jim-muted);
+    font-size: 11px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-conversation-preview {
+    color: var(--jim-muted);
+    font-size: 12px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+}
+
+#jim-messenger-app .jim-assistant-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: #deebff;
+    color: #0747a6;
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-unread-badge {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #de350b;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-search-empty {
+    padding: 10px 12px;
+    color: var(--jim-muted);
+    font-size: 13px;
+}
+
+#jim-messenger-app .jim-main,
+#jim-messenger-app .jim-chat-panel {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    width: 0;
+    min-width: 0;
+    height: 100%;
+    background: var(--jim-bg);
+    min-height: 0;
+    overflow: hidden;
+}
+
+#jim-messenger-app .jim-chat-panel-empty .jim-chat-empty {
+    display: flex;
+}
+
+#jim-messenger-app .jim-chat-empty {
+    flex: 1;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    color: var(--jim-muted);
+    font-size: 15px;
+    padding: 24px;
+    text-align: center;
+}
+
+#jim-messenger-app .jim-chat-empty-text {
+    margin: 0;
+    max-width: 320px;
+    line-height: 1.5;
+}
+
+#jim-messenger-app .jim-chat-active,
+#jim-messenger-app .jim-chat-panel-body {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    align-self: stretch;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#jim-messenger-app .jim-chat-active:not([hidden]) {
+    display: flex;
+}
+
+#jim-messenger-app .jim-chat-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+    min-height: 72px;
+    max-height: 84px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--jim-border-subtle);
+    background: var(--jim-bg);
+}
+
+#jim-messenger-app .jim-chat-header-avatar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#jim-messenger-app .jim-chat-header-avatar .jim-avatar,
+#jim-messenger-app .jim-chat-header-avatar .jim-avatar-fallback {
+    width: 44px;
+    height: 44px;
+    font-size: 16px;
+}
+
+#jim-messenger-app .jim-chat-header-assistant-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: linear-gradient(145deg, #0747a6, #2684ff);
+    box-shadow: 0 2px 6px rgba(0, 82, 204, 0.22);
+}
+
+#jim-messenger-app .jim-chat-header-assistant-icon {
+    color: #ffffff;
+    font-size: 20px;
+    line-height: 1;
+}
+
+#jim-messenger-app .jim-chat-header-main {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    justify-content: center;
+}
+
+#jim-messenger-app .jim-chat-header-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+#jim-messenger-app .jim-chat-header-title {
+    margin: 0;
+    color: var(--jim-text);
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1;
+}
+
+#jim-messenger-app .jim-chat-header-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: #deebff;
+    color: #0747a6;
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-chat-header-subtitle {
+    margin: 0;
+    color: var(--jim-muted);
+    font-size: 12px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#jim-messenger-app .jim-chat-header-subtitle-active {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #00875a;
+    font-weight: 600;
+}
+
+#jim-messenger-app .jim-pinned-banner {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    background: var(--jim-brand-subtle);
+    border-bottom: 1px solid var(--jim-border-subtle);
+}
+
+#jim-messenger-app .jim-pinned-banner[hidden] {
+    display: none;
+}
+
+#jim-messenger-app .jim-pinned-banner-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 4px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--jim-text);
+    font: inherit;
+    font-size: 12px;
+    text-align: start;
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-pinned-banner-body:hover {
+    background: rgba(255, 255, 255, 0.55);
+}
+
+#jim-messenger-app .jim-pinned-banner-icon {
+    flex-shrink: 0;
+    font-size: 13px;
+}
+
+#jim-messenger-app .jim-pinned-banner-text {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #0747a6;
+}
+
+#jim-messenger-app .jim-pinned-banner-unpin {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #0747a6;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#jim-messenger-app .jim-pinned-banner-unpin:hover {
+    background: rgba(255, 255, 255, 0.55);
+}
+
+#jim-messenger-app .jim-message-list {
+    flex: 1 1 auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 22px 28px 24px;
+    background: var(--jim-panel-bg);
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
+}
+
+#jim-messenger-app .jim-date-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin: 10px 0 16px;
+    text-align: center;
+}
+
+#jim-messenger-app .jim-date-divider::before,
+#jim-messenger-app .jim-date-divider::after {
+    content: "";
+    flex: 1 1 auto;
+    height: 1px;
+    background: var(--jim-border);
+}
+
+#jim-messenger-app .jim-date-divider-text {
+    display: inline-block;
+    flex-shrink: 0;
+    color: var(--jim-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+#jim-messenger-app .jim-message-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+#jim-messenger-app .jim-message-avatar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
+}
+
+#jim-messenger-app .jim-message-group-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    margin-bottom: 1px;
+}
+
+#jim-messenger-app .jim-message-group-header-own {
+    justify-content: flex-end;
+}
+
+#jim-messenger-app .jim-message-group-sender {
+    color: var(--jim-text);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#jim-messenger-app .jim-message-group-time {
+    color: var(--jim-muted);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+#jim-messenger-app .jim-message-receipt {
+    color: var(--jim-muted);
+    font-size: 11px;
+    line-height: 1.3;
+    margin-top: 2px;
+}
+
+#jim-messenger-app .jim-message-receipt-seen {
+    color: var(--jim-brand);
+}
+
+#jim-messenger-app .jim-message-row-own {
+    justify-content: flex-end;
+}
+
+#jim-messenger-app .jim-message-row-other {
+    justify-content: flex-start;
+}
+
+#jim-messenger-app .jim-message-row-system {
+    justify-content: center;
+    margin-bottom: 14px;
+}
+
+#jim-messenger-app .jim-message-group {
+    max-width: min(560px, 78%);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-group {
+    align-items: flex-end;
+}
+
+#jim-messenger-app .jim-message-row-other .jim-message-group {
+    align-items: flex-start;
+}
+
+#jim-messenger-app .jim-message-bubble {
+    max-width: 100%;
+    width: fit-content;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: var(--jim-bubble-other);
+    border: 1px solid var(--jim-bubble-other-border);
+    box-shadow: 0 1px 2px rgba(9, 30, 66, 0.05);
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-bubble {
+    background: var(--jim-bubble-own);
+    border-color: var(--jim-bubble-own-border);
+    color: var(--jim-bubble-own-text);
+}
+
+/* Content colors inside own (blue) bubbles */
+#jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-message-text {
+    color: var(--jim-bubble-own-text);
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-message-time,
+#jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-message-edited,
+#jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-message-deleted,
+#jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-message-status {
+    color: var(--jim-bubble-own-muted);
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-message-status-seen {
+    color: var(--jim-bubble-own-text);
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-reply-preview {
+    background: rgba(255, 255, 255, 0.18);
+    border-inline-start-color: rgba(255, 255, 255, 0.75);
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-reply-preview-author {
+    color: var(--jim-bubble-own-text);
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-reply-preview-text {
+    color: var(--jim-bubble-own-muted);
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-image-download,
+#jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-attachment-caption-size,
+#jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-attachment-caption {
+    color: var(--jim-bubble-own-text);
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-image-download:hover {
+    color: var(--jim-bubble-own-text);
+    text-decoration: underline;
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-message-edit-error {
+    color: #ffd2cc;
+}
+
+#jim-messenger-app .jim-message-bubble-grouped {
+    margin-top: 0;
+}
+
+/* Corner continuity within a group (bubbles are wrapped, so target the wrappers).
+   The "tail" corner sits on the last bubble of each group. */
+#jim-messenger-app .jim-message-row-own .jim-message-bubble-wrapper .jim-message-bubble {
+    border-end-end-radius: 5px;
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-bubble-wrapper:not(:first-child) .jim-message-bubble {
+    border-start-end-radius: 5px;
+}
+
+#jim-messenger-app .jim-message-row-other .jim-message-bubble-wrapper .jim-message-bubble {
+    border-end-start-radius: 5px;
+}
+
+#jim-messenger-app .jim-message-row-other .jim-message-bubble-wrapper:not(:first-child) .jim-message-bubble {
+    border-start-start-radius: 5px;
+}
+
+#jim-messenger-app .jim-message-sender {
+    color: #42526e;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+#jim-messenger-app .jim-message-text {
+    color: var(--jim-text);
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+#jim-messenger-app .jim-message-meta {
+    margin-top: 5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+#jim-messenger-app .jim-message-time {
+    color: var(--jim-muted);
+    font-size: 11px;
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-meta {
+    justify-content: flex-end;
+}
+
+/* System notification cards */
+#jim-messenger-app .jim-system-card {
+    width: 100%;
+    max-width: 600px;
+    background: var(--jim-bg);
+    border: 1px solid var(--jim-border-subtle);
+    border-inline-start: 4px solid var(--jim-brand);
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(9, 30, 66, 0.07);
+    overflow: hidden;
+}
+
+#jim-messenger-app .jim-system-card-tone-assignment,
+#jim-messenger-app .jim-system-card-tone-info {
+    border-inline-start-color: var(--jim-info);
+}
+
+#jim-messenger-app .jim-system-card-tone-mention {
+    border-inline-start-color: #6554c0;
+}
+
+#jim-messenger-app .jim-system-card-tone-neutral {
+    border-inline-start-color: #6b778c;
+}
+
+#jim-messenger-app .jim-system-card-tone-success {
+    border-inline-start-color: #00875a;
+}
+
+#jim-messenger-app .jim-system-card-tone-warning {
+    border-inline-start-color: var(--jim-warning);
+}
+
+#jim-messenger-app .jim-system-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 16px;
+    background: #f7f8f9;
+    border-bottom: 1px solid var(--jim-border-subtle);
+}
+
+#jim-messenger-app .jim-system-card-lozenge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-system-card-lozenge-assignment,
+#jim-messenger-app .jim-system-card-lozenge-info {
+    background: var(--jim-brand-subtle);
+    color: var(--jim-info);
+}
+
+#jim-messenger-app .jim-system-card-lozenge-mention {
+    background: #eae6ff;
+    color: #6554c0;
+}
+
+#jim-messenger-app .jim-system-card-lozenge-neutral {
+    background: #ebecf0;
+    color: #42526e;
+}
+
+#jim-messenger-app .jim-system-card-lozenge-success {
+    background: #e3fcef;
+    color: #00875a;
+}
+
+#jim-messenger-app .jim-system-card-lozenge-warning {
+    background: #fff0b3;
+    color: var(--jim-warning);
+}
+
+#jim-messenger-app .jim-system-card-time {
+    color: var(--jim-muted);
+    font-size: 11px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-system-card-title {
+    color: var(--jim-text);
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.4;
+    margin-bottom: 8px;
+}
+
+#jim-messenger-app .jim-system-card-body {
+    padding: 14px 16px 12px;
+}
+
+#jim-messenger-app .jim-system-card-issue-key {
+    display: inline-block;
+    color: var(--jim-brand);
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--jim-brand-subtle);
+}
+
+#jim-messenger-app .jim-system-card-event-mention .jim-system-card-issue-key {
+    color: #6554c0;
+    background: #eae6ff;
+}
+
+#jim-messenger-app .jim-system-card-summary {
+    color: var(--jim-text);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    margin-bottom: 8px;
+}
+
+#jim-messenger-app .jim-system-card-text {
+    color: #42526e;
+    font-size: 13px;
+    line-height: 1.5;
+    margin-bottom: 4px;
+    white-space: pre-wrap;
+}
+
+#jim-messenger-app .jim-system-card-actions {
+    padding: 0 16px 14px;
+}
+
+#jim-messenger-app .jim-system-card-link,
+#jim-messenger-app .jim-issue-link-button {
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+#jim-messenger-app.jim-chat-shell #jim-composer.jim-composer {
+    flex: 0 0 auto;
+    flex-shrink: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 16px 24px 18px;
+    border-top: 1px solid var(--jim-border-subtle);
+    background: var(--jim-bg);
+}
+
+#jim-messenger-app.jim-chat-shell #jim-composer.jim-composer #jim-composer-inner.jim-composer-inner {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    display: block;
+    box-sizing: border-box;
+}
+
+#jim-messenger-app.jim-chat-shell #jim-composer.jim-composer .jim-composer-readonly {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 10px;
+    background: var(--jim-surface);
+    color: var(--jim-muted);
+    font-size: 13px;
+    line-height: 1.45;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+#jim-messenger-app.jim-chat-shell #jim-composer.jim-composer #jim-composer-controls.jim-composer-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* Scoped control styling — never global html/body/button/input/textarea */
+#jim-messenger-app.jim-chat-shell button:not(.jim-send-button):not(.jim-message-action):not(.jim-retry-button),
+#jim-messenger-app.jim-chat-shell input:not(.jim-composer-input):not(.jim-search-input),
+#jim-messenger-app.jim-chat-shell textarea:not(.jim-composer-input):not(.jim-message-edit-textarea) {
+    font-family: inherit;
+}
+
+#jim-messenger-app .jim-inline-error,
+#jim-messenger-app .jim-composer-error {
+    margin: 0 0 8px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    background: var(--jim-error-bg);
+    border: 1px solid var(--jim-error-border);
+    color: var(--jim-error);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+#jim-messenger-app .jim-loading-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+#jim-messenger-app.jim-chat-shell #jim-composer.jim-composer textarea#jim-message-input.jim-composer-input {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    min-height: 52px;
+    max-height: 132px;
+    margin: 0;
+    padding: 14px;
+    resize: none;
+    border: 1px solid #dfe1e6;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: none;
+    outline: none;
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--jim-text);
+    box-sizing: border-box;
+    vertical-align: baseline;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+#jim-messenger-app.jim-chat-shell #jim-composer.jim-composer textarea#jim-message-input.jim-composer-input::placeholder {
+    color: #97a0af;
+}
+
+#jim-messenger-app.jim-chat-shell #jim-composer.jim-composer textarea#jim-message-input.jim-composer-input:focus {
+    outline: none;
+    border-color: #4c9aff;
+    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.18);
+}
+
+#jim-messenger-app.jim-chat-shell #jim-composer.jim-composer button#jim-send-button.jim-send-button {
+    flex: 0 0 84px;
+    width: 84px;
+    height: 52px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: #0c66e4;
+    color: #ffffff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    white-space: nowrap;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+#jim-messenger-app.jim-chat-shell #jim-composer.jim-composer button#jim-send-button.jim-send-button:hover:not(:disabled) {
+    background: #0055cc;
+}
+
+#jim-messenger-app.jim-chat-shell #jim-composer.jim-composer button#jim-send-button.jim-send-button:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+}
+
+#jim-messenger-app.jim-chat-shell #jim-composer.jim-composer button#jim-send-button.jim-send-button:disabled {
+    background: #ebecf0;
+    color: #97a0af;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+#jim-messenger-app .jim-avatar {
+    border-radius: 10px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-avatar-sm {
+    width: 36px;
+    height: 36px;
+}
+
+#jim-messenger-app .jim-avatar-md {
+    width: 40px;
+    height: 40px;
+}
+
+#jim-messenger-app .jim-avatar-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #6554c0;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+#jim-messenger-app .jim-avatar-sm.jim-avatar-fallback {
+    font-size: 12px;
+}
+
+#jim-messenger-app .jim-loading,
+#jim-messenger-app .jim-empty-state {
+    padding: 16px;
+    color: var(--jim-muted);
+    font-size: 14px;
+    text-align: center;
+}
+
+#jim-messenger-app .jim-loading-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-inline-end: 8px;
+    border: 2px solid var(--jim-border);
+    border-top-color: var(--jim-brand);
+    border-radius: 50%;
+    vertical-align: -2px;
+    animation: jim-spin 0.8s linear infinite;
+}
+
+@keyframes jim-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+#jim-messenger-app .jim-error-state {
+    color: var(--jim-error);
+}
+
+#jim-messenger-app .jim-retry-button {
+    margin-inline-start: 8px;
+    padding: 4px 10px;
+    border: 1px solid var(--jim-border);
+    border-radius: 4px;
+    background: var(--jim-bg);
+    color: var(--jim-brand);
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+#jim-messenger-app .jim-retry-button:hover {
+    background: #f4f5f7;
+}
+
+#jim-messenger-app .jim-retry-button:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+}
+
+#jim-messenger-app .jim-error-banner {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    z-index: 30;
+    padding: 10px 14px;
+    border-radius: 6px;
+    background: var(--jim-error-bg);
+    border: 1px solid var(--jim-error-border);
+    color: var(--jim-error);
+    font-size: 13px;
+}
+
+/* Slim scrollbars, scoped to the messenger's own scroll panes only */
+#jim-messenger-app .jim-message-list,
+#jim-messenger-app .jim-conversation-list,
+#jim-messenger-app .jim-search-results {
+    scrollbar-width: thin;
+    scrollbar-color: #c1c7d0 transparent;
+}
+
+#jim-messenger-app .jim-message-list::-webkit-scrollbar,
+#jim-messenger-app .jim-conversation-list::-webkit-scrollbar,
+#jim-messenger-app .jim-search-results::-webkit-scrollbar {
+    width: 8px;
+}
+
+#jim-messenger-app .jim-message-list::-webkit-scrollbar-thumb,
+#jim-messenger-app .jim-conversation-list::-webkit-scrollbar-thumb,
+#jim-messenger-app .jim-search-results::-webkit-scrollbar-thumb {
+    background: #c1c7d0;
+    border-radius: 4px;
+}
+
+#jim-messenger-app .jim-message-list::-webkit-scrollbar-track,
+#jim-messenger-app .jim-conversation-list::-webkit-scrollbar-track,
+#jim-messenger-app .jim-search-results::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#jim-messenger-app .jim-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+[dir="rtl"] #jim-messenger-app .jim-sidebar {
+    border-inline-end: 0;
+    border-inline-start: 1px solid var(--jim-border);
+}
+
+[dir="rtl"] #jim-messenger-app .jim-system-card {
+    border-inline-start: 0;
+    border-inline-end: 4px solid var(--jim-brand);
+}
+
+#jim-messenger-app .jim-composer-icon-button {
+    flex: 0 0 36px;
+    width: 36px;
+    height: 44px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--jim-muted);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+#jim-messenger-app .jim-composer-icon-button:hover:not(:disabled) {
+    background: var(--jim-hover);
+}
+
+#jim-messenger-app .jim-composer-icon-button:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+}
+
+#jim-messenger-app .jim-composer-icon-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+#jim-messenger-app .jim-emoji-palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 6px;
+    margin-bottom: 6px;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 10px;
+    background: var(--jim-surface);
+}
+
+#jim-messenger-app .jim-mention-palette {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 6px;
+    margin-bottom: 6px;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 10px;
+    background: var(--jim-surface);
+}
+
+#jim-messenger-app .jim-mention-palette[hidden] {
+    display: none;
+}
+
+#jim-messenger-app .jim-mention-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    text-align: start;
+    font-size: 13px;
+    color: var(--jim-text);
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-mention-option:hover {
+    background: var(--jim-panel-bg);
+}
+
+#jim-messenger-app .jim-mention-option-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#jim-messenger-app .jim-mention {
+    color: var(--jim-brand);
+    font-weight: 600;
+    background: rgba(12, 102, 228, 0.1);
+    border-radius: 4px;
+    padding: 0 3px;
+}
+
+#jim-messenger-app .jim-mention-self {
+    color: #974f0c;
+    background: rgba(255, 171, 0, 0.25);
+}
+
+/* Mentions inside own bubbles sit on the brand-blue background, so invert the chip */
+#jim-messenger-app .jim-message-row-own .jim-mention {
+    color: #ffffff;
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.26);
+}
+
+#jim-messenger-app .jim-message-row-own .jim-mention-self {
+    color: #172b4d;
+    background: #ffd66e;
+}
+
+#jim-messenger-app .jim-issue-palette {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    margin-bottom: 6px;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 10px;
+    background: var(--jim-surface);
+}
+
+#jim-messenger-app .jim-issue-palette[hidden] {
+    display: none;
+}
+
+#jim-messenger-app .jim-issue-search-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    border: 1px solid var(--jim-border);
+    border-radius: 8px;
+    font-size: 13px;
+    background: var(--jim-panel-bg);
+    color: var(--jim-text);
+}
+
+#jim-messenger-app .jim-issue-search-input:focus {
+    outline: none;
+    border-color: var(--jim-brand);
+}
+
+#jim-messenger-app .jim-issue-search-results {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+#jim-messenger-app .jim-issue-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    text-align: start;
+    font-size: 13px;
+    color: var(--jim-text);
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-issue-option:hover {
+    background: var(--jim-panel-bg);
+}
+
+#jim-messenger-app .jim-issue-option-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-issue-option-key {
+    font-weight: 600;
+    color: var(--jim-brand);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-issue-option-summary {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--jim-muted);
+}
+
+#jim-messenger-app .jim-selected-issue {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--jim-border);
+    border-inline-start: 3px solid var(--jim-brand);
+    border-radius: 8px;
+    background: var(--jim-brand-subtle);
+}
+
+#jim-messenger-app .jim-selected-issue[hidden] {
+    display: none;
+}
+
+#jim-messenger-app .jim-selected-issue-icon {
+    flex-shrink: 0;
+    font-size: 13px;
+}
+
+#jim-messenger-app .jim-selected-issue-key {
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--jim-brand);
+}
+
+#jim-messenger-app .jim-selected-issue-summary {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    color: var(--jim-text-secondary);
+}
+
+#jim-messenger-app .jim-issue-chat-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 10px 12px;
+    min-width: 230px;
+    max-width: 100%;
+    border: 1px solid var(--jim-border);
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(9, 30, 66, 0.08);
+    color: var(--jim-text);
+}
+
+#jim-messenger-app .jim-issue-chat-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+#jim-messenger-app .jim-issue-chat-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--jim-muted);
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+#jim-messenger-app .jim-issue-chat-card-dot {
+    color: var(--jim-border);
+}
+
+#jim-messenger-app .jim-issue-chat-card-status {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+}
+
+#jim-messenger-app .jim-issue-status-new {
+    background: #dfe1e6;
+    color: #42526e;
+}
+
+#jim-messenger-app .jim-issue-status-indeterminate {
+    background: #deebff;
+    color: #0747a6;
+}
+
+#jim-messenger-app .jim-issue-status-done {
+    background: #e3fcef;
+    color: #006644;
+}
+
+#jim-messenger-app .jim-issue-chat-card-main {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+}
+
+#jim-messenger-app .jim-issue-chat-card-key,
+#jim-messenger-app a.jim-issue-chat-card-key {
+    flex-shrink: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--jim-brand);
+    text-decoration: none;
+}
+
+#jim-messenger-app a.jim-issue-chat-card-key:hover {
+    text-decoration: underline;
+}
+
+#jim-messenger-app .jim-issue-chat-card-summary {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--jim-text);
+    overflow-wrap: anywhere;
+}
+
+#jim-messenger-app .jim-issue-chat-card-open,
+#jim-messenger-app a.jim-issue-chat-card-open {
+    align-self: flex-start;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--jim-brand);
+    text-decoration: none;
+}
+
+#jim-messenger-app a.jim-issue-chat-card-open:hover {
+    text-decoration: underline;
+}
+
+#jim-messenger-app .jim-emoji-option {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#jim-messenger-app .jim-emoji-option:hover {
+    background: var(--jim-hover);
+}
+
+#jim-messenger-app .jim-composer-chip-remove {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--jim-muted);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#jim-messenger-app .jim-composer-chip-remove:hover {
+    background: var(--jim-hover);
+    color: var(--jim-text);
+}
+
+#jim-messenger-app .jim-sidebar-tabs {
+    flex-shrink: 0;
+    display: flex;
+    gap: 4px;
+    padding: 0 12px 8px;
+}
+
+#jim-messenger-app .jim-sidebar-tab {
+    flex: 1;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--jim-muted);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+#jim-messenger-app .jim-sidebar-tab:hover {
+    background: var(--jim-hover);
+    color: var(--jim-text);
+}
+
+#jim-messenger-app .jim-sidebar-tab.is-active {
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand);
+}
+
+#jim-messenger-app .jim-conversation-group-mark {
+    margin-right: 4px;
+    font-size: 12px;
+}
+
+#jim-messenger-app .jim-sidebar-actions {
+    flex-shrink: 0;
+    display: flex;
+    gap: 6px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--jim-border-subtle);
+    background: var(--jim-bg);
+}
+
+#jim-messenger-app .jim-new-conversation {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 8px 10px;
+    border: 1px dashed var(--jim-border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--jim-brand);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+#jim-messenger-app .jim-new-conversation:hover {
+    background: var(--jim-brand-subtle);
+    border-color: var(--jim-brand);
+}
+
+#jim-messenger-app .jim-new-conversation:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+}
+
+#jim-messenger-app .jim-sidebar-footer {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--jim-border-subtle);
+    background: var(--jim-bg);
+}
+
+#jim-messenger-app .jim-sidebar-footer-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+#jim-messenger-app .jim-sidebar-footer-name {
+    color: var(--jim-text);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#jim-messenger-app .jim-sidebar-footer-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--jim-muted);
+    font-size: 11px;
+}
+
+#jim-messenger-app .jim-presence-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #36b37e;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-push-toggle {
+    margin-inline-start: auto;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: 50%;
+    background: transparent;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+#jim-messenger-app .jim-push-toggle:hover {
+    background: var(--jim-hover);
+    border-color: var(--jim-border-subtle);
+}
+
+#jim-messenger-app .jim-push-toggle:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+}
+
+#jim-messenger-app .jim-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(9, 30, 66, 0.54);
+}
+
+#jim-messenger-app .jim-modal-overlay[hidden] {
+    display: none;
+}
+
+#jim-messenger-app .jim-modal {
+    width: min(440px, calc(100vw - 32px));
+    max-height: min(560px, calc(100vh - 64px));
+    overflow-y: auto;
+    padding: 20px;
+    border-radius: 12px;
+    background: var(--jim-bg);
+    box-shadow: 0 8px 28px rgba(9, 30, 66, 0.28);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#jim-messenger-app .jim-modal-title {
+    margin: 0 0 4px;
+    color: var(--jim-text);
+    font-size: 18px;
+    font-weight: 600;
+}
+
+#jim-messenger-app .jim-modal-label {
+    margin-top: 6px;
+    color: var(--jim-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* ===== Message info (group read receipts) ===== */
+#jim-messenger-app .jim-message-info-body {
+    min-height: 80px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+#jim-messenger-app .jim-receipt-section-label {
+    margin: 8px 0 4px;
+    color: var(--jim-muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+#jim-messenger-app .jim-receipt-section-label:first-child {
+    margin-top: 0;
+}
+
+#jim-messenger-app .jim-receipt-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 4px;
+    border-radius: 6px;
+}
+
+#jim-messenger-app .jim-receipt-row:hover {
+    background: var(--jim-bg-subtle, rgba(9, 30, 66, 0.04));
+}
+
+#jim-messenger-app .jim-receipt-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--jim-text);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+#jim-messenger-app .jim-receipt-status {
+    flex-shrink: 0;
+    color: var(--jim-muted);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+#jim-messenger-app .jim-receipt-status-read {
+    color: var(--jim-brand);
+    font-weight: 600;
+}
+
+#jim-messenger-app .jim-receipt-empty {
+    padding: 6px 4px;
+    color: var(--jim-muted);
+    font-size: 13px;
+}
+
+#jim-messenger-app .jim-modal-search {
+    position: relative;
+}
+
+#jim-messenger-app .jim-modal-search-results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 10;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+#jim-messenger-app .jim-group-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 8px;
+}
+
+#jim-messenger-app .jim-group-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px 3px 10px;
+    border-radius: 14px;
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+#jim-messenger-app .jim-group-chip-remove {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--jim-brand);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#jim-messenger-app .jim-group-chip-remove:hover {
+    background: rgba(12, 102, 228, 0.18);
+}
+
+#jim-messenger-app .jim-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+#jim-messenger-app .jim-modal-button {
+    padding: 8px 14px;
+    border: 1px solid var(--jim-border);
+    border-radius: 8px;
+    background: var(--jim-bg);
+    color: var(--jim-text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-modal-button:hover {
+    background: var(--jim-hover);
+}
+
+#jim-messenger-app .jim-modal-button-primary {
+    border-color: #0c66e4;
+    background: #0c66e4;
+    color: #ffffff;
+}
+
+#jim-messenger-app .jim-modal-button-primary:hover:not(:disabled) {
+    background: #0055cc;
+}
+
+#jim-messenger-app .jim-modal-button-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#jim-messenger-app .jim-chat-header-actions {
+    margin-left: auto;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#jim-messenger-app .jim-header-button {
+    padding: 6px 12px;
+    border: 1px solid var(--jim-border);
+    border-radius: 8px;
+    background: var(--jim-bg);
+    color: var(--jim-text);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-header-button:hover,
+#jim-messenger-app .jim-header-button.is-active {
+    background: var(--jim-brand-subtle);
+    border-color: var(--jim-brand);
+    color: var(--jim-brand);
+}
+
+#jim-messenger-app .jim-members-panel {
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--jim-border-subtle);
+    background: var(--jim-bg);
+    padding: 10px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+#jim-messenger-app .jim-members-panel[hidden] {
+    display: none;
+}
+
+#jim-messenger-app .jim-members-panel-header {
+    color: var(--jim-muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+#jim-messenger-app .jim-members-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#jim-messenger-app .jim-member-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 8px;
+}
+
+#jim-messenger-app .jim-member-row:hover {
+    background: var(--jim-hover);
+}
+
+#jim-messenger-app .jim-member-name {
+    flex: 1;
+    min-width: 0;
+    color: var(--jim-text);
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#jim-messenger-app .jim-member-role {
+    flex-shrink: 0;
+    padding: 1px 7px;
+    border-radius: 9px;
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+#jim-messenger-app .jim-member-remove {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--jim-muted);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#jim-messenger-app .jim-member-remove:hover {
+    background: #ffebe6;
+    color: #de350b;
+}
+
+#jim-messenger-app .jim-member-add {
+    position: relative;
+}
+
+#jim-messenger-app .jim-member-add-results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+#jim-messenger-app .jim-members-panel-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 4px;
+    border-top: 1px solid var(--jim-border-subtle);
+}
+
+#jim-messenger-app .jim-member-danger {
+    padding: 6px 12px;
+    border: 1px solid #ffbdad;
+    border-radius: 8px;
+    background: var(--jim-bg);
+    color: #de350b;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-member-danger:hover,
+#jim-messenger-app .jim-member-danger.is-confirming {
+    background: #ffebe6;
+    border-color: #de350b;
+}
+
+#jim-messenger-app .jim-group-event {
+    padding: 4px 12px;
+    border-radius: 12px;
+    background: var(--jim-hover);
+    color: var(--jim-muted);
+    font-size: 12px;
+    text-align: center;
+}
+
+#jim-messenger-app .jim-avatar-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-presence-badge {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #36b37e;
+    border: 2px solid #ffffff;
+    box-sizing: content-box;
+    pointer-events: none;
+}
+
+#jim-messenger-app .jim-selected-attachment {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 6px;
+    background: var(--jim-panel-bg);
+}
+
+#jim-messenger-app .jim-selected-attachment-preview {
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-selected-attachment-thumb {
+    width: 40px;
+    height: 40px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid var(--jim-border-subtle);
+}
+
+#jim-messenger-app .jim-selected-attachment-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+#jim-messenger-app .jim-selected-attachment-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--jim-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#jim-messenger-app .jim-selected-attachment-size {
+    font-size: 12px;
+    color: var(--jim-muted);
+}
+
+#jim-messenger-app .jim-selected-attachment-remove {
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-upload-progress {
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--jim-muted);
+}
+
+#jim-messenger-app .jim-voice-recording {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--jim-border);
+    border-radius: 8px;
+    background: var(--jim-panel-bg);
+}
+
+#jim-messenger-app .jim-voice-recording[hidden] {
+    display: none;
+}
+
+#jim-messenger-app .jim-voice-rec-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #de350b;
+    flex-shrink: 0;
+    animation: jim-voice-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes jim-voice-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+
+#jim-messenger-app .jim-voice-timer {
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--jim-text);
+    min-width: 36px;
+}
+
+#jim-messenger-app .jim-voice-hint {
+    flex: 1;
+    font-size: 12px;
+    color: var(--jim-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#jim-messenger-app .jim-audio-attachment {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 240px;
+    max-width: 100%;
+}
+
+#jim-messenger-app .jim-audio-player {
+    display: block;
+    width: 280px;
+    max-width: 100%;
+    height: 40px;
+}
+
+#jim-messenger-app .jim-audio-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+#jim-messenger-app .jim-audio-label {
+    font-size: 12px;
+    color: var(--jim-muted);
+}
+
+#jim-messenger-app .jim-message-attachments {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#jim-messenger-app .jim-image-attachment {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#jim-messenger-app .jim-image-preview-link {
+    display: inline-block;
+    max-width: 100%;
+}
+
+#jim-messenger-app .jim-image-preview {
+    display: block;
+    max-width: min(220px, 100%);
+    max-height: 170px;
+    width: auto;
+    height: auto;
+    border-radius: 10px;
+    border: 1px solid var(--jim-border-subtle);
+    background: var(--jim-bg);
+    cursor: zoom-in;
+    transition: opacity 0.12s ease;
+}
+
+#jim-messenger-app .jim-image-preview-link:hover .jim-image-preview {
+    opacity: 0.92;
+}
+
+/* ===== Image lightbox ===== */
+#jim-messenger-app .jim-image-lightbox {
+    background: rgba(9, 30, 66, 0.78);
+}
+
+#jim-messenger-app .jim-image-lightbox-figure {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+    max-width: calc(100vw - 48px);
+}
+
+#jim-messenger-app .jim-image-lightbox-img {
+    display: block;
+    max-width: min(960px, calc(100vw - 48px));
+    max-height: calc(100vh - 140px);
+    width: auto;
+    height: auto;
+    border-radius: 10px;
+    background: var(--jim-bg);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+#jim-messenger-app .jim-image-lightbox-caption {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 100%;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: rgba(9, 30, 66, 0.65);
+}
+
+#jim-messenger-app .jim-image-lightbox-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #ffffff;
+    font-size: 13px;
+}
+
+#jim-messenger-app .jim-image-lightbox-caption .jim-modal-button {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+}
+
+#jim-messenger-app .jim-image-lightbox-caption a.jim-modal-button:hover {
+    text-decoration: none;
+}
+
+#jim-messenger-app .jim-attachment-caption {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--jim-muted);
+}
+
+#jim-messenger-app .jim-attachment-caption-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 180px;
+}
+
+#jim-messenger-app .jim-file-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 10px;
+    background: var(--jim-bg);
+    max-width: min(320px, 100%);
+    min-width: 220px;
+    box-shadow: 0 1px 2px rgba(9, 30, 66, 0.04);
+}
+
+#jim-messenger-app .jim-file-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-file-meta {
+    flex: 1;
+    min-width: 0;
+}
+
+#jim-messenger-app .jim-file-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--jim-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#jim-messenger-app .jim-file-size {
+    font-size: 12px;
+    color: var(--jim-muted);
+}
+
+#jim-messenger-app .jim-file-download {
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-image-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+#jim-messenger-app .jim-image-download {
+    font-size: 12px;
+}
+
+#jim-messenger-app .jim-message-bubble-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    max-width: 100%;
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-bubble-wrapper {
+    align-items: flex-end;
+}
+
+#jim-messenger-app .jim-message-row-other .jim-message-bubble-wrapper {
+    align-items: flex-start;
+}
+
+#jim-messenger-app .jim-message-bubble-wrapper[data-message-id] {
+    scroll-margin-top: 12px;
+    scroll-margin-bottom: 12px;
+}
+
+#jim-messenger-app .jim-message-highlight {
+    animation: jim-message-highlight 1.5s ease-out;
+}
+
+@keyframes jim-message-highlight {
+    0% {
+        background: rgba(76, 154, 255, 0.22);
+    }
+    100% {
+        background: transparent;
+    }
+}
+
+#jim-messenger-app .jim-message-reactions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-reactions {
+    justify-content: flex-end;
+}
+
+#jim-messenger-app .jim-reaction-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border: 1px solid var(--jim-border);
+    border-radius: 12px;
+    background: var(--jim-bg);
+    color: var(--jim-text);
+    font-size: 12px;
+    font-family: inherit;
+    line-height: 1.5;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+#jim-messenger-app .jim-reaction-chip:hover {
+    background: var(--jim-hover);
+}
+
+#jim-messenger-app .jim-reaction-chip-mine {
+    background: var(--jim-brand-subtle);
+    border-color: #85b8ff;
+}
+
+#jim-messenger-app .jim-reaction-count {
+    color: var(--jim-text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+#jim-messenger-app .jim-reaction-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 4px;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 14px;
+    background: var(--jim-bg);
+    box-shadow: 0 2px 8px rgba(9, 30, 66, 0.12);
+}
+
+#jim-messenger-app .jim-reaction-option {
+    width: 28px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#jim-messenger-app .jim-reaction-option:hover {
+    background: var(--jim-hover);
+}
+
+#jim-messenger-app .jim-message-actions {
+    display: flex;
+    gap: 4px;
+    margin-top: 2px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+#jim-messenger-app .jim-message-bubble-wrapper:hover .jim-message-actions,
+#jim-messenger-app .jim-message-bubble-wrapper:focus-within .jim-message-actions {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-actions {
+    justify-content: flex-end;
+}
+
+#jim-messenger-app .jim-message-action,
+#jim-messenger-app .jim-reply-action,
+#jim-messenger-app .jim-edit-action,
+#jim-messenger-app .jim-delete-action {
+    padding: 2px 8px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--jim-muted);
+    font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-message-action:hover,
+#jim-messenger-app .jim-reply-action:hover,
+#jim-messenger-app .jim-edit-action:hover,
+#jim-messenger-app .jim-delete-action:hover {
+    background: #ebecf0;
+    color: var(--jim-text);
+}
+
+#jim-messenger-app .jim-delete-action {
+    color: var(--jim-error);
+}
+
+#jim-messenger-app .jim-delete-confirm {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 11px;
+    color: var(--jim-muted);
+}
+
+#jim-messenger-app .jim-message-status {
+    margin-inline-start: 6px;
+    font-size: 11px;
+    letter-spacing: -1px;
+    color: var(--jim-muted);
+}
+
+#jim-messenger-app .jim-message-status-seen {
+    color: var(--jim-brand);
+}
+
+#jim-messenger-app .jim-message-edited {
+    margin-inline-start: 4px;
+    font-style: italic;
+    color: var(--jim-muted);
+}
+
+#jim-messenger-app .jim-message-deleted {
+    color: var(--jim-muted);
+    font-style: italic;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+#jim-messenger-app .jim-reply-preview {
+    display: block;
+    margin-bottom: 6px;
+    padding: 6px 8px;
+    border-inline-start: 3px solid var(--jim-brand);
+    border-radius: 4px;
+    background: rgba(9, 30, 66, 0.04);
+    cursor: pointer;
+    text-align: start;
+    width: 100%;
+    border-top: 0;
+    border-right: 0;
+    border-bottom: 0;
+    font-family: inherit;
+}
+
+#jim-messenger-app .jim-reply-preview-author {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--jim-brand);
+    margin-bottom: 2px;
+}
+
+#jim-messenger-app .jim-reply-preview-text {
+    display: block;
+    font-size: 12px;
+    color: var(--jim-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+#jim-messenger-app .jim-composer-reply {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 8px 10px;
+    border-inline-start: 3px solid var(--jim-brand);
+    border-radius: 4px;
+    background: var(--jim-panel-bg);
+}
+
+#jim-messenger-app .jim-composer-reply-content {
+    min-width: 0;
+    flex: 1;
+}
+
+#jim-messenger-app .jim-composer-reply-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--jim-muted);
+    margin-bottom: 2px;
+}
+
+#jim-messenger-app .jim-message-edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#jim-messenger-app .jim-message-edit-textarea {
+    width: 100%;
+    min-height: 56px;
+    padding: 8px;
+    border: 1px solid var(--jim-border);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+}
+
+#jim-messenger-app .jim-message-edit-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+#jim-messenger-app .jim-message-edit-error {
+    font-size: 12px;
+    color: var(--jim-error);
+}
+
+/* Modern messenger refresh — scoped under #jim-messenger-app only */
+
+#jim-messenger-app.jim-chat-page .jim-sidebar-header {
+    padding: 14px 16px 12px;
+}
+
+#jim-messenger-app.jim-chat-page .jim-sidebar-brand-title {
+    font-size: 15px;
+}
+
+#jim-messenger-app.jim-chat-page .jim-sidebar-brand-subtitle {
+    color: var(--jim-text-secondary);
+}
+
+#jim-messenger-app.jim-chat-page .jim-conversation-row.is-selected,
+#jim-messenger-app.jim-chat-page .jim-conversation-item-selected {
+    background: var(--jim-selected);
+    border-inline-start-color: var(--jim-brand);
+    box-shadow: inset 0 0 0 1px rgba(0, 82, 204, 0.08);
+}
+
+#jim-messenger-app.jim-chat-page .jim-conversation-preview {
+    color: var(--jim-text-secondary);
+}
+
+#jim-messenger-app.jim-chat-page .jim-chat-header {
+    background: var(--jim-bg);
+    box-shadow: 0 1px 0 var(--jim-border-subtle);
+}
+
+#jim-messenger-app.jim-chat-page .jim-chat-header-title {
+    font-size: 18px;
+}
+
+#jim-messenger-app.jim-chat-page .jim-chat-header-subtitle {
+    color: var(--jim-text-secondary);
+}
+
+#jim-messenger-app.jim-chat-page .jim-message-list {
+    padding: 0;
+    background: var(--jim-panel-bg);
+}
+
+#jim-messenger-app.jim-chat-page .jim-message-list-inner {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 24px 28px;
+    box-sizing: border-box;
+}
+
+/* Loading/error states render directly into the list (no inner wrapper) */
+#jim-messenger-app.jim-chat-page .jim-message-list > .jim-loading,
+#jim-messenger-app.jim-chat-page .jim-message-list > .jim-empty-state {
+    margin: 24px 28px;
+}
+
+#jim-messenger-app.jim-chat-page .jim-message-row {
+    margin-bottom: 16px;
+}
+
+#jim-messenger-app.jim-chat-page .jim-message-group {
+    gap: 5px;
+}
+
+#jim-messenger-app.jim-chat-page .jim-message-row-own .jim-message-group {
+    max-width: min(560px, 78%);
+}
+
+#jim-messenger-app.jim-chat-page .jim-message-row-other .jim-message-group {
+    max-width: min(620px, 82%);
+}
+
+#jim-messenger-app.jim-chat-page .jim-message-bubble {
+    padding: 10px 12px;
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(9, 30, 66, 0.06);
+}
+
+#jim-messenger-app.jim-chat-page .jim-message-row-own .jim-message-bubble {
+    background: var(--jim-bubble-own);
+}
+
+#jim-messenger-app.jim-chat-page .jim-message-sender {
+    color: var(--jim-text-secondary);
+    font-size: 12px;
+}
+
+#jim-messenger-app.jim-chat-page .jim-message-row-system {
+    margin-bottom: 16px;
+}
+
+#jim-messenger-app.jim-chat-page .jim-system-card,
+#jim-messenger-app.jim-chat-page .jim-issue-card {
+    max-width: 680px;
+    border-radius: 8px;
+    border: 1px solid var(--jim-border);
+    border-inline-start-width: 3px;
+    box-shadow: 0 1px 3px rgba(9, 30, 66, 0.06);
+}
+
+#jim-messenger-app.jim-chat-page .jim-system-card-header {
+    padding: 8px 12px;
+    background: var(--jim-bg);
+}
+
+#jim-messenger-app.jim-chat-page .jim-system-card-body {
+    padding: 12px;
+}
+
+#jim-messenger-app.jim-chat-page .jim-system-card-summary {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+#jim-messenger-app.jim-chat-page .jim-system-card-actions {
+    padding: 0 12px 12px;
+}
+
+#jim-messenger-app.jim-chat-page .jim-file-card,
+#jim-messenger-app.jim-chat-page .jim-attachment-card {
+    border-radius: 8px;
+    background: var(--jim-bg);
+    border-color: var(--jim-border);
+}
+
+#jim-messenger-app.jim-chat-page .jim-image-preview {
+    border-radius: 10px;
+    max-width: min(220px, 100%);
+}
+
+#jim-messenger-app.jim-chat-page .jim-image-actions {
+    padding: 2px 2px 0;
+    font-size: 12px;
+}
+
+#jim-messenger-app.jim-chat-page .jim-message-action,
+#jim-messenger-app.jim-chat-page .jim-reply-action,
+#jim-messenger-app.jim-chat-page .jim-edit-action,
+#jim-messenger-app.jim-chat-page .jim-delete-action {
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--jim-border-subtle);
+    background: var(--jim-bg);
+    font-size: 11px;
+}
+
+#jim-messenger-app.jim-chat-page #jim-composer.jim-composer {
+    padding: 12px 20px 16px;
+    background: var(--jim-panel-bg);
+    border-top: 1px solid var(--jim-border-subtle);
+}
+
+#jim-messenger-app.jim-chat-page .jim-composer-surface {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--jim-border);
+    border-radius: 12px;
+    background: var(--jim-bg);
+    box-sizing: border-box;
+    box-shadow: 0 1px 2px rgba(9, 30, 66, 0.05);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+#jim-messenger-app.jim-chat-page .jim-composer-surface:focus-within {
+    border-color: #4c9aff;
+    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.18);
+}
+
+#jim-messenger-app.jim-chat-page #jim-composer.jim-composer .jim-composer-surface .jim-composer-row {
+    gap: 10px;
+}
+
+#jim-messenger-app.jim-chat-page #jim-composer.jim-composer textarea#jim-message-input.jim-composer-input {
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+}
+
+/* The composer surface carries the focus ring; avoid a doubled ring on the textarea. */
+#jim-messenger-app.jim-chat-page #jim-composer.jim-composer textarea#jim-message-input.jim-composer-input:focus {
+    border-color: transparent;
+    box-shadow: none;
+}
+
+#jim-messenger-app.jim-chat-page #jim-composer.jim-composer button#jim-send-button.jim-send-button {
+    height: 44px;
+    border-radius: 8px;
+}
+
+#jim-messenger-app.jim-chat-page .jim-chat-empty {
+    background: var(--jim-panel-bg);
+    color: var(--jim-text-secondary);
+}
+
+/* Mobile back button: hidden on desktop, shown in the chat header on small screens */
+#jim-messenger-app .jim-back-button {
+    display: none;
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
+    margin-inline-end: 4px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--jim-text);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+}
+
+#jim-messenger-app .jim-back-button:hover {
+    background: var(--jim-hover);
+}
+
+/*
+ * Mobile: single-panel flow.
+ * Default shows the conversation list full-width; selecting a conversation adds
+ * .jim-mobile-chat-open on the app root and swaps to the full-width chat panel
+ * with a back button in the header.
+ */
+@media (max-width: 768px) {
+    #jim-messenger-app.jim-chat-shell,
+    #jim-messenger-app.jim-messenger {
+        flex-direction: row;
+        width: 100%;
+        height: calc(100vh - 90px);
+        height: calc(100dvh - 90px);
+        min-height: 320px;
+        max-height: none;
+        border-radius: 0;
+        border-inline-start: 0;
+        border-inline-end: 0;
+    }
+
+    #jim-messenger-app .jim-sidebar {
+        flex: 1 1 100%;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        height: 100%;
+        max-height: none;
+        border-inline-end: 0;
+    }
+
+    #jim-messenger-app .jim-main,
+    #jim-messenger-app .jim-chat-panel {
+        display: none;
+    }
+
+    #jim-messenger-app.jim-mobile-chat-open .jim-sidebar {
+        display: none;
+    }
+
+    #jim-messenger-app.jim-mobile-chat-open .jim-main,
+    #jim-messenger-app.jim-mobile-chat-open .jim-chat-panel {
+        display: flex;
+        flex: 1 1 100%;
+        width: 100%;
+        min-width: 0;
+    }
+
+    #jim-messenger-app.jim-mobile-chat-open .jim-back-button {
+        display: inline-flex;
+    }
+
+    #jim-messenger-app .jim-chat-header {
+        padding: 10px 12px;
+        gap: 8px;
+    }
+
+    #jim-messenger-app .jim-chat-header-title {
+        font-size: 15px;
+    }
+
+    #jim-messenger-app .jim-message-group,
+    #jim-messenger-app.jim-chat-page .jim-message-row-own .jim-message-group,
+    #jim-messenger-app.jim-chat-page .jim-message-row-other .jim-message-group {
+        max-width: 88%;
+    }
+
+    #jim-messenger-app.jim-chat-page .jim-message-list-inner {
+        padding: 14px 10px;
+    }
+
+    #jim-messenger-app.jim-chat-shell #jim-composer.jim-composer {
+        padding: 10px 10px 12px;
+    }
+
+    #jim-messenger-app.jim-chat-shell #jim-composer.jim-composer #jim-composer-controls.jim-composer-row {
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    #jim-messenger-app .jim-composer-icon-button {
+        flex: 0 0 32px;
+        width: 32px;
+        height: 40px;
+        font-size: 16px;
+    }
+
+    #jim-messenger-app.jim-chat-shell #jim-composer.jim-composer textarea#jim-message-input.jim-composer-input {
+        min-height: 44px;
+        padding: 11px 12px;
+        font-size: 16px; /* prevents iOS auto-zoom on focus */
+    }
+
+    #jim-messenger-app.jim-chat-shell #jim-composer.jim-composer button#jim-send-button.jim-send-button {
+        flex: 0 0 64px;
+        width: 64px;
+        height: 44px;
+        font-size: 13px;
+    }
+
+    #jim-messenger-app .jim-members-panel {
+        width: 100%;
+        max-width: none;
+    }
+
+    #jim-messenger-app .jim-modal {
+        width: calc(100vw - 32px);
+        max-width: 420px;
+    }
+
+    #jim-messenger-app .jim-issue-chat-card {
+        min-width: 0;
+    }
+
+    #jim-messenger-app .jim-audio-player {
+        width: 220px;
+    }
+
+    #jim-messenger-app .jim-chat-empty {
+        display: none;
+    }
+
+    /* Project mode on mobile: chat panel is always the visible panel */
+    #jim-messenger-app.jim-project-mode .jim-sidebar {
+        display: none;
+    }
+
+    #jim-messenger-app.jim-project-mode .jim-main,
+    #jim-messenger-app.jim-project-mode .jim-chat-panel {
+        display: flex;
+        flex: 1 1 100%;
+        width: 100%;
+        min-width: 0;
+    }
+}
+
+/* ===== Project chat mode (embedded in the project page) ===== */
+
+#jim-messenger-app.jim-project-mode {
+    height: calc(100vh - 160px);
+    max-height: calc(100vh - 160px);
+    min-height: 420px;
+    border: 1px solid var(--jim-border, #dfe1e6);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#jim-messenger-app.jim-project-mode .jim-sidebar {
+    display: none;
+}
+
+#jim-messenger-app.jim-project-mode .jim-main,
+#jim-messenger-app.jim-project-mode .jim-chat-panel {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+}
+
+#jim-messenger-app.jim-project-mode .jim-back-button {
+    display: none !important;
+}
+
+#jim-messenger-app .jim-project-access-notice {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 48px auto;
+    max-width: 420px;
+    padding: 28px 24px;
+    text-align: center;
+    background: var(--jim-surface, #ffffff);
+    border: 1px solid var(--jim-border, #dfe1e6);
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(9, 30, 66, 0.12);
+}
+
+#jim-messenger-app .jim-project-access-icon {
+    font-size: 28px;
+    line-height: 1;
+}
+
+#jim-messenger-app .jim-project-access-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--jim-text, #172b4d);
+}
+
+#jim-messenger-app .jim-project-access-text {
+    font-size: 13px;
+    color: var(--jim-text-subtle, #6b778c);
+}
+
+#jim-messenger-app .jim-members-panel-note {
+    font-size: 12px;
+    color: var(--jim-text-subtle, #6b778c);
+    padding: 6px 0;
+}
+
+/* ===== Assistant unread (NEW) cards ===== */
+
+#jim-messenger-app .jim-system-card.jim-system-card-new {
+    border-color: #0c66e4;
+    box-shadow: 0 0 0 1px rgba(12, 102, 228, 0.35), 0 1px 3px rgba(9, 30, 66, 0.12);
+}
+
+#jim-messenger-app .jim-system-card-new-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    margin-inline-start: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: #ffffff;
+    background: #0c66e4;
+    border-radius: 8px;
+}
+
+/* ===== Compact sidebar density for laptop-height screens =====
+   On shorter viewports the fixed sidebar sections (header, search, tabs,
+   actions, footer) are slimmed down so the conversation list keeps as much
+   room as possible. */
+
+@media (max-height: 860px) {
+    #jim-messenger-app .jim-sidebar-header {
+        padding: 8px 14px 6px;
+    }
+
+    #jim-messenger-app .jim-sidebar-brand-logo {
+        width: 28px;
+        height: 28px;
+    }
+
+    #jim-messenger-app .jim-search {
+        padding: 6px 12px;
+    }
+
+    #jim-messenger-app .jim-sidebar-search .jim-search-input,
+    #jim-messenger-app .jim-search-input {
+        padding: 6px 10px;
+    }
+
+    #jim-messenger-app .jim-sidebar-tabs {
+        padding: 0 12px 6px;
+    }
+
+    #jim-messenger-app .jim-sidebar-tab {
+        padding: 4px 8px;
+    }
+
+    #jim-messenger-app .jim-assistant-slot {
+        padding: 4px 8px 2px;
+    }
+
+    #jim-messenger-app .jim-conversation-item,
+    #jim-messenger-app .jim-assistant-item,
+    #jim-messenger-app .jim-search-result-item {
+        min-height: 50px;
+        gap: 8px;
+    }
+
+    #jim-messenger-app .jim-sidebar-section-label {
+        padding: 6px 8px 4px;
+    }
+
+    #jim-messenger-app .jim-sidebar-actions {
+        padding: 6px 12px;
+    }
+
+    #jim-messenger-app .jim-new-conversation {
+        padding: 6px 8px;
+        font-size: 12px;
+    }
+
+    #jim-messenger-app .jim-sidebar-footer {
+        padding: 6px 14px;
+    }
+}

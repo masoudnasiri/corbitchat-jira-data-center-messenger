@@ -1,0 +1,218 @@
+    <div id="jim-messenger-app"
+         class="jim-messenger jim-chat-shell jim-chat-page#if($projectChatMode) jim-project-mode#end"
+         data-user-key="$!currentUserKey"
+         #if($projectChatMode)
+         data-project-key="$!projectKey"
+         data-project-name="$!projectName"
+         data-project-conversation-id="$!projectConversationId"
+         data-project-member="$!projectIsMember"
+         data-project-lead-name="$!projectLeadDisplayName"
+         #end>
+
+        <aside class="jim-sidebar" aria-label="Conversations">
+            <header class="jim-sidebar-header">
+                <div class="jim-sidebar-brand">
+                    #if($logoAvailable && $logoUrl)
+                    <img class="jim-sidebar-brand-logo" src="$logoUrl" alt="CorbitChat logo" width="36" height="36" />
+                    #end
+                    <div class="jim-sidebar-brand-text">
+                        <div class="jim-sidebar-brand-title">CorbitChat</div>
+                        <div id="jim-sidebar-unread-summary" class="jim-sidebar-brand-subtitle">0 unread messages</div>
+                    </div>
+                </div>
+            </header>
+
+            <div class="jim-sidebar-search jim-search">
+                <label class="jim-visually-hidden" for="jim-user-search">$i18n.getText("jim.search.label")</label>
+                <input id="jim-user-search"
+                       class="jim-search-input"
+                       type="search"
+                       autocomplete="off"
+                       placeholder="$i18n.getText('jim.search.placeholder')" />
+                <div id="jim-user-search-results" class="jim-search-results" hidden role="listbox" aria-label="User search results"></div>
+            </div>
+
+            <div class="jim-sidebar-tabs" role="tablist" aria-label="Conversation filters">
+                <button id="jim-tab-all" type="button" class="jim-sidebar-tab is-active" role="tab" aria-selected="true" data-tab="all">All</button>
+                <button id="jim-tab-personal" type="button" class="jim-sidebar-tab" role="tab" aria-selected="false" data-tab="personal">Personal</button>
+                <button id="jim-tab-groups" type="button" class="jim-sidebar-tab" role="tab" aria-selected="false" data-tab="groups">Groups</button>
+            </div>
+
+            <div id="jim-assistant-slot" class="jim-assistant-slot jim-assistant-conversation" aria-label="Jira Assistant"></div>
+
+        <div id="jim-conversation-list" class="jim-conversation-list" role="list" aria-label="Direct conversations">
+            <div class="jim-loading">$i18n.getText("jim.loading.conversations")</div>
+        </div>
+
+        <div class="jim-sidebar-actions">
+            <button id="jim-new-conversation" type="button" class="jim-new-conversation">+ New chat</button>
+            <button id="jim-new-group" type="button" class="jim-new-conversation jim-new-group">+ New group</button>
+        </div>
+
+        <footer class="jim-sidebar-footer">
+            #if($currentUserAvatarUrl)
+            <img class="jim-avatar jim-avatar-sm" src="$currentUserAvatarUrl" alt="" />
+            #end
+            <div class="jim-sidebar-footer-text">
+                <div class="jim-sidebar-footer-name">$!currentUserDisplayName</div>
+                <div class="jim-sidebar-footer-status"><span class="jim-presence-dot" aria-hidden="true"></span>Active</div>
+            </div>
+            <button id="jim-push-enable" type="button" class="jim-push-toggle" hidden title="Enable notifications">&#128276;</button>
+        </footer>
+        </aside>
+
+        <main id="jim-chat-panel-shell" class="jim-main jim-chat-panel jim-chat-panel-empty" aria-label="Chat">
+            <div id="jim-chat-empty" class="jim-chat-empty">
+                <p class="jim-chat-empty-text">$i18n.getText("jim.empty.selectConversation")</p>
+            </div>
+
+            <div id="jim-chat-active" class="jim-chat-active jim-chat-panel-body" hidden>
+                <header id="jim-chat-header" class="jim-chat-header"></header>
+
+                <div id="jim-members-panel" class="jim-members-panel" hidden></div>
+
+                <div id="jim-pinned-banner" class="jim-pinned-banner" hidden></div>
+
+                <div id="jim-message-list" class="jim-message-list" role="log" aria-live="polite" aria-relevant="additions"></div>
+
+                <div id="jim-composer" class="jim-composer" role="region" aria-label="Message composer">
+                    <div id="jim-composer-error" class="jim-composer-error jim-inline-error" role="alert" hidden></div>
+                    <div id="jim-composer-readonly" class="jim-composer-readonly" hidden>
+                        $i18n.getText("jim.composer.readOnly")
+                    </div>
+                    <div id="jim-composer-inner" class="jim-composer-inner">
+                        <div id="jim-composer-reply" class="jim-composer-reply" hidden>
+                            <div class="jim-composer-reply-content">
+                                <span id="jim-composer-reply-author" class="jim-composer-reply-label"></span>
+                                <span id="jim-composer-reply-text" class="jim-reply-preview-text"></span>
+                            </div>
+                            <button id="jim-composer-reply-cancel" type="button" class="jim-composer-chip-remove" aria-label="Cancel reply">&times;</button>
+                        </div>
+                        <div id="jim-selected-attachment" class="jim-selected-attachment" hidden>
+                            <div id="jim-selected-attachment-preview" class="jim-selected-attachment-preview" hidden></div>
+                            <div class="jim-selected-attachment-meta">
+                                <span id="jim-selected-attachment-name" class="jim-selected-attachment-name"></span>
+                                <span id="jim-selected-attachment-size" class="jim-selected-attachment-size"></span>
+                            </div>
+                            <button id="jim-selected-attachment-remove" type="button" class="jim-composer-chip-remove" aria-label="Remove attachment">&times;</button>
+                        </div>
+                        <div id="jim-selected-issue" class="jim-selected-issue" hidden>
+                            <span class="jim-selected-issue-icon" aria-hidden="true">&#128279;</span>
+                            <span id="jim-selected-issue-key" class="jim-selected-issue-key"></span>
+                            <span id="jim-selected-issue-summary" class="jim-selected-issue-summary"></span>
+                            <button id="jim-selected-issue-remove" type="button" class="jim-composer-chip-remove" aria-label="Remove linked issue">&times;</button>
+                        </div>
+                        <div id="jim-upload-progress" class="jim-upload-progress" hidden>Uploading...</div>
+                        <div id="jim-voice-recording" class="jim-voice-recording" hidden>
+                            <span class="jim-voice-rec-dot" aria-hidden="true"></span>
+                            <span id="jim-voice-timer" class="jim-voice-timer">0:00</span>
+                            <span class="jim-voice-hint">Recording voice message...</span>
+                            <button id="jim-voice-cancel" type="button" class="jim-modal-button">Cancel</button>
+                            <button id="jim-voice-send" type="button" class="jim-modal-button jim-modal-button-primary">Send</button>
+                        </div>
+                        <div class="jim-composer-surface">
+                            <div id="jim-emoji-palette" class="jim-emoji-palette" hidden role="menu" aria-label="Emoji"></div>
+                            <div id="jim-mention-palette" class="jim-mention-palette" hidden role="menu" aria-label="Mention a member"></div>
+                            <div id="jim-issue-palette" class="jim-issue-palette" hidden role="dialog" aria-label="Link a Jira issue">
+                                <input id="jim-issue-search-input"
+                                       type="text"
+                                       class="jim-issue-search-input"
+                                       placeholder="Search issues (key or text)..."
+                                       autocomplete="off" />
+                                <div id="jim-issue-search-results" class="jim-issue-search-results"></div>
+                            </div>
+                            <div id="jim-composer-controls" class="jim-composer-row">
+                                <input id="jim-file-input" type="file" class="jim-visually-hidden" tabindex="-1" aria-hidden="true" />
+                                <button id="jim-attach-button"
+                                        type="button"
+                                        class="jim-composer-icon-button jim-attach-button"
+                                        aria-label="Attach a file"
+                                        title="Attach a file">&#128206;</button>
+                                <button id="jim-mention-button"
+                                        type="button"
+                                        class="jim-composer-icon-button jim-mention-button"
+                                        aria-label="Mention a member"
+                                        title="Mention a member"
+                                        hidden>@</button>
+                                <button id="jim-issue-button"
+                                        type="button"
+                                        class="jim-composer-icon-button jim-issue-button"
+                                        aria-label="Link a Jira issue"
+                                        title="Link a Jira issue">&#128279;</button>
+                                <button id="jim-emoji-button"
+                                        type="button"
+                                        class="jim-composer-icon-button jim-emoji-button"
+                                        aria-label="Insert emoji"
+                                        title="Insert emoji">&#128578;</button>
+                                <button id="jim-voice-button"
+                                        type="button"
+                                        class="jim-composer-icon-button jim-voice-button"
+                                        aria-label="Record a voice message"
+                                        title="Record a voice message">&#127908;</button>
+                                <textarea id="jim-message-input"
+                                          class="jim-composer-input"
+                                          rows="1"
+                                          maxlength="4000"
+                                          aria-label="$i18n.getText('jim.composer.label')"
+                                          placeholder="$i18n.getText('jim.composer.placeholder')"></textarea>
+                                <button id="jim-send-button"
+                                        type="button"
+                                        class="jim-send-button"
+                                        aria-label="$i18n.getText('jim.composer.send')"
+                                        disabled>
+                                    $i18n.getText("jim.composer.send")
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <div id="jim-error-banner" class="jim-error-banner jim-inline-error" role="alert" hidden></div>
+
+        <div id="jim-group-modal" class="jim-modal-overlay" hidden>
+            <div class="jim-modal" role="dialog" aria-modal="true" aria-labelledby="jim-group-modal-title">
+                <h3 id="jim-group-modal-title" class="jim-modal-title">Create group</h3>
+                <label class="jim-modal-label" for="jim-group-name">Group name</label>
+                <input id="jim-group-name" class="jim-search-input" type="text" maxlength="120"
+                       autocomplete="off" placeholder="e.g. Dev Team" />
+                <label class="jim-modal-label" for="jim-group-member-search">Add people</label>
+                <div class="jim-modal-search">
+                    <input id="jim-group-member-search" class="jim-search-input" type="search"
+                           autocomplete="off" placeholder="Search teammates..." />
+                    <div id="jim-group-member-results" class="jim-search-results jim-modal-search-results" hidden role="listbox"></div>
+                </div>
+                <div id="jim-group-selected-members" class="jim-group-chips"></div>
+                <div id="jim-group-modal-error" class="jim-inline-error" role="alert" hidden></div>
+                <div class="jim-modal-actions">
+                    <button id="jim-group-cancel" type="button" class="jim-modal-button">Cancel</button>
+                    <button id="jim-group-create" type="button" class="jim-modal-button jim-modal-button-primary" disabled>Create group</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="jim-message-info-modal" class="jim-modal-overlay" hidden>
+            <div class="jim-modal" role="dialog" aria-modal="true" aria-labelledby="jim-message-info-title">
+                <h3 id="jim-message-info-title" class="jim-modal-title">Message info</h3>
+                <div id="jim-message-info-body" class="jim-message-info-body">
+                    <div class="jim-loading">Loading...</div>
+                </div>
+                <div class="jim-modal-actions">
+                    <button id="jim-message-info-close" type="button" class="jim-modal-button">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="jim-image-lightbox" class="jim-modal-overlay jim-image-lightbox" hidden>
+            <figure class="jim-image-lightbox-figure" role="dialog" aria-modal="true" aria-label="Image preview">
+                <img id="jim-image-lightbox-img" class="jim-image-lightbox-img" src="" alt="" />
+                <figcaption class="jim-image-lightbox-caption">
+                    <span id="jim-image-lightbox-name" class="jim-image-lightbox-name"></span>
+                    <a id="jim-image-lightbox-download" class="jim-modal-button" href="#"
+                       target="_blank" rel="noopener noreferrer" download>Download</a>
+                    <button id="jim-image-lightbox-close" type="button" class="jim-modal-button">Close</button>
+                </figcaption>
+            </figure>
+        </div>
+    </div>

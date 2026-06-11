@@ -1,0 +1,12 @@
+$webResourceManager.requireResource("com.corbitlogic.jira.internalmessenger.jira-internal-messenger:jim-messenger-resources")
+
+<html>
+<head>
+    <title>$i18n.getText("jim.page.title")</title>
+    <meta name="admin.active.section" content="none"/>
+    <meta name="decorator" content="atl.general"/>
+</head>
+<body>
+#parse("templates/messenger-app.vm")
+</body>
+</html>

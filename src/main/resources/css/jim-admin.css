@@ -1,0 +1,384 @@
+/* CorbitChat admin console — all rules scoped under #jim-admin-page. */
+
+#jim-admin-page {
+    max-width: 1040px;
+    padding: 8px 4px 40px;
+    color: #172b4d;
+}
+
+#jim-admin-page .jim-admin-header h1 {
+    margin: 0 0 4px;
+    font-size: 22px;
+}
+
+#jim-admin-page .jim-admin-subtitle {
+    margin: 0 0 16px;
+    color: #6b778c;
+    font-size: 13px;
+}
+
+/* ===== Tabs ===== */
+#jim-admin-page .jim-admin-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 2px solid #dfe1e6;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+#jim-admin-page .jim-admin-tab {
+    border: none;
+    background: transparent;
+    padding: 8px 14px;
+    margin-bottom: -2px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    color: #42526e;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+}
+
+#jim-admin-page .jim-admin-tab:hover {
+    color: #0052cc;
+}
+
+#jim-admin-page .jim-admin-tab.is-active {
+    color: #0052cc;
+    border-bottom-color: #0052cc;
+    font-weight: 600;
+}
+
+#jim-admin-page .jim-admin-panel {
+    display: none;
+}
+
+#jim-admin-page .jim-admin-panel.is-active {
+    display: block;
+}
+
+/* ===== Message banner ===== */
+#jim-admin-page .jim-admin-message {
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+#jim-admin-page .jim-admin-message.is-success {
+    background: #e3fcef;
+    color: #006644;
+    border: 1px solid #abf5d1;
+}
+
+#jim-admin-page .jim-admin-message.is-error {
+    background: #ffebe6;
+    color: #bf2600;
+    border: 1px solid #ffbdad;
+}
+
+/* ===== Overview cards ===== */
+#jim-admin-page .jim-admin-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+#jim-admin-page .jim-admin-card {
+    border: 1px solid #dfe1e6;
+    border-radius: 6px;
+    padding: 12px 14px;
+    background: #fafbfc;
+}
+
+#jim-admin-page .jim-admin-card-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b778c;
+    margin-bottom: 4px;
+}
+
+#jim-admin-page .jim-admin-card-value {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* ===== Forms ===== */
+#jim-admin-page .jim-admin-field {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 640px;
+    margin-bottom: 20px;
+}
+
+#jim-admin-page .jim-admin-radio,
+#jim-admin-page .jim-admin-check {
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+#jim-admin-page .jim-admin-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b778c;
+    margin-top: 4px;
+}
+
+#jim-admin-page .jim-admin-field select,
+#jim-admin-page .jim-admin-field input[type="text"],
+#jim-admin-page .jim-admin-field input[type="number"] {
+    max-width: 420px;
+    padding: 6px 8px;
+    border: 1px solid #dfe1e6;
+    border-radius: 4px;
+    font: inherit;
+    font-size: 13px;
+}
+
+#jim-admin-page .jim-admin-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+#jim-admin-page .jim-admin-hint {
+    color: #6b778c;
+    font-size: 12px;
+    margin: 4px 0 10px;
+}
+
+/* ===== Policy table/form ===== */
+#jim-admin-page .jim-admin-policy-table {
+    margin-bottom: 16px;
+}
+
+#jim-admin-page .jim-policy-disabled td {
+    opacity: 0.5;
+}
+
+#jim-admin-page .jim-policy-action {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+#jim-admin-page .jim-policy-allow {
+    background: #e3fcef;
+    color: #006644;
+}
+
+#jim-admin-page .jim-policy-deny {
+    background: #ffebe6;
+    color: #bf2600;
+}
+
+#jim-admin-page .jim-policy-delete {
+    color: #bf2600;
+}
+
+#jim-admin-page .jim-admin-policy-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    font-size: 13px;
+}
+
+#jim-admin-page .jim-admin-policy-form select,
+#jim-admin-page .jim-admin-policy-form input[type="text"] {
+    padding: 5px 8px;
+    border: 1px solid #dfe1e6;
+    border-radius: 4px;
+    font: inherit;
+    font-size: 13px;
+}
+
+#jim-admin-page .jim-admin-policy-form input[type="number"] {
+    width: 64px;
+    padding: 5px 8px;
+    border: 1px solid #dfe1e6;
+    border-radius: 4px;
+    font: inherit;
+    font-size: 13px;
+}
+
+#jim-admin-page .jim-admin-arrow {
+    color: #6b778c;
+}
+
+/* ===== User/group typeahead picker ===== */
+#jim-admin-page .jim-admin-picker {
+    position: relative;
+    display: inline-block;
+}
+
+#jim-admin-page .jim-admin-picker input[disabled] {
+    background: #f4f5f7;
+    color: #97a0af;
+    cursor: not-allowed;
+}
+
+#jim-admin-page .jim-admin-picker-dropdown {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    z-index: 100;
+    min-width: 240px;
+    max-width: 320px;
+    max-height: 260px;
+    overflow-y: auto;
+    background: #ffffff;
+    border: 1px solid #dfe1e6;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(9, 30, 66, 0.18);
+}
+
+#jim-admin-page .jim-admin-picker-dropdown[hidden] {
+    display: none;
+}
+
+#jim-admin-page .jim-admin-picker-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 10px;
+    border: none;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+}
+
+#jim-admin-page .jim-admin-picker-item:hover {
+    background: #ebecf0;
+}
+
+#jim-admin-page .jim-admin-picker-avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+}
+
+#jim-admin-page .jim-admin-picker-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+    color: #172b4d;
+}
+
+#jim-admin-page .jim-admin-picker-detail {
+    margin-inline-start: auto;
+    flex-shrink: 0;
+    color: #6b778c;
+    font-size: 12px;
+}
+
+#jim-admin-page .jim-admin-picker-empty {
+    padding: 8px 10px;
+    color: #6b778c;
+    font-size: 12px;
+    font-style: italic;
+}
+
+#jim-admin-page .jim-admin-empty {
+    color: #6b778c;
+    font-style: italic;
+}
+
+/* ===== Diagnostics ===== */
+#jim-admin-page .jim-admin-diag-table {
+    max-width: 720px;
+    margin-bottom: 12px;
+}
+
+#jim-admin-page .jim-diag-label {
+    font-weight: 600;
+    width: 280px;
+}
+
+#jim-admin-page .jim-diag-ok {
+    color: #006644;
+    font-weight: 700;
+}
+
+#jim-admin-page .jim-diag-bad {
+    color: #bf2600;
+    font-weight: 700;
+}
+
+/* ===== Audit list ===== */
+#jim-admin-page .jim-admin-audit-list {
+    border: 1px solid #dfe1e6;
+    border-radius: 6px;
+    max-height: 320px;
+    overflow-y: auto;
+    font-size: 12px;
+}
+
+#jim-admin-page .jim-admin-audit-entry {
+    display: flex;
+    gap: 10px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #f4f5f7;
+    align-items: baseline;
+    flex-wrap: wrap;
+}
+
+#jim-admin-page .jim-admin-audit-entry:last-child {
+    border-bottom: none;
+}
+
+#jim-admin-page .jim-admin-audit-time {
+    color: #6b778c;
+    white-space: nowrap;
+}
+
+#jim-admin-page .jim-admin-audit-user {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+#jim-admin-page .jim-admin-audit-action {
+    color: #0052cc;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+#jim-admin-page .jim-admin-audit-details {
+    color: #42526e;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* ===== Help ===== */
+#jim-admin-page .jim-admin-help {
+    max-width: 760px;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+#jim-admin-page .jim-admin-help h4 {
+    margin: 18px 0 6px;
+}
+
+#jim-admin-page .jim-admin-help code {
+    background: #f4f5f7;
+    padding: 1px 4px;
+    border-radius: 3px;
+}
