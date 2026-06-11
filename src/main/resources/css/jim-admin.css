@@ -160,6 +160,11 @@
     opacity: 0.5;
 }
 
+#jim-admin-page .jim-policy-editing td {
+    background: #deebff;
+    opacity: 1;
+}
+
 #jim-admin-page .jim-policy-action {
     display: inline-block;
     padding: 1px 8px;

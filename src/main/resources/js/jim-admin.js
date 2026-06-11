@@ -210,7 +210,9 @@
         var html = [];
         for (var i = 0; i < policies.length; i++) {
             var p = policies[i];
-            html.push('<tr class="' + (p.enabled ? '' : 'jim-policy-disabled') + '">' +
+            var rowClasses = (p.enabled ? '' : 'jim-policy-disabled') +
+                (editingPolicyId === p.id ? ' jim-policy-editing' : '');
+            html.push('<tr class="' + rowClasses + '">' +
                 '<td>' + escapeHtml(p.sourceType) + ': <strong>' + escapeHtml(p.sourceValue) + '</strong></td>' +
                 '<td>' + escapeHtml(p.targetType) + (p.targetValue ? ': <strong>' + escapeHtml(p.targetValue) + '</strong>' : '') + '</td>' +
                 '<td><span class="jim-policy-action jim-policy-' + (p.action === 'DENY' ? 'deny' : 'allow') + '">' + escapeHtml(p.action) + '</span></td>' +
@@ -220,6 +222,7 @@
                 '<td>' + (p.enabled ? 'Yes' : 'No') + '</td>' +
                 '<td>' + escapeHtml(p.priority) + '</td>' +
                 '<td>' +
+                '<button type="button" class="aui-button aui-button-link" data-policy-edit="' + p.id + '">Edit</button> ' +
                 '<button type="button" class="aui-button aui-button-link" data-policy-toggle="' + p.id + '" data-policy-enabled="' + p.enabled + '">' + (p.enabled ? 'Disable' : 'Enable') + '</button> ' +
                 '<button type="button" class="aui-button aui-button-link jim-policy-delete" data-policy-delete="' + p.id + '">Delete</button>' +
                 '</td>' +
@@ -246,6 +249,54 @@
             }
         }
         return null;
+    }
+
+    // ===== Policy edit mode (reuses the add-policy form) =====
+
+    var editingPolicyId = null;
+
+    /**
+     * Sets a type select + picker input pair. Dispatching 'change' lets the
+     * attached typeahead picker update its enabled/placeholder state (which
+     * clears the input), so the value is applied afterwards.
+     */
+    function setTypeAndValue(selectId, inputId, type, value) {
+        var select = el(selectId);
+        select.value = type;
+        select.dispatchEvent(new Event('change'));
+        el(inputId).value = value || '';
+    }
+
+    function enterPolicyEditMode(policy) {
+        editingPolicyId = policy.id;
+        setTypeAndValue('jim-pol-source-type', 'jim-pol-source-value', policy.sourceType, policy.sourceValue);
+        setTypeAndValue('jim-pol-target-type', 'jim-pol-target-value', policy.targetType, policy.targetValue);
+        el('jim-pol-action').value = policy.action;
+        el('jim-pol-can-search').checked = !!policy.canSearch;
+        el('jim-pol-can-start').checked = !!policy.canStartChat;
+        el('jim-pol-can-receive').checked = !!policy.canReceiveChat;
+        el('jim-pol-priority').value = policy.priority;
+        el('jim-policy-form-title').textContent = 'Edit policy';
+        el('jim-pol-add').textContent = 'Save changes';
+        el('jim-pol-cancel-edit').hidden = false;
+        renderPolicyRows(cachedPolicies);
+        el('jim-policy-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el('jim-pol-source-value').focus();
+    }
+
+    function exitPolicyEditMode() {
+        editingPolicyId = null;
+        setTypeAndValue('jim-pol-source-type', 'jim-pol-source-value', 'USER', '');
+        setTypeAndValue('jim-pol-target-type', 'jim-pol-target-value', 'ANY', '');
+        el('jim-pol-action').value = 'ALLOW';
+        el('jim-pol-can-search').checked = true;
+        el('jim-pol-can-start').checked = true;
+        el('jim-pol-can-receive').checked = true;
+        el('jim-pol-priority').value = 0;
+        el('jim-policy-form-title').textContent = 'Add policy';
+        el('jim-pol-add').textContent = 'Add policy';
+        el('jim-pol-cancel-edit').hidden = true;
+        renderPolicyRows(cachedPolicies);
     }
 
     // ===== User/group typeahead pickers (Jira native picker REST) =====
@@ -394,6 +445,7 @@
         attachPicker(el('jim-pol-target-value'), el('jim-pol-target-type'));
 
         el('jim-pol-add').addEventListener('click', function () {
+            var editing = editingPolicyId !== null ? findPolicy(editingPolicyId) : null;
             var payload = {
                 sourceType: el('jim-pol-source-type').value,
                 sourceValue: el('jim-pol-source-value').value,
@@ -403,29 +455,47 @@
                 canSearch: el('jim-pol-can-search').checked,
                 canStartChat: el('jim-pol-can-start').checked,
                 canReceiveChat: el('jim-pol-can-receive').checked,
-                enabled: true,
+                enabled: editing ? editing.enabled : true,
                 priority: parseInt(el('jim-pol-priority').value, 10) || 0
             };
-            request('POST', '/policies', payload).then(function () {
-                el('jim-pol-source-value').value = '';
-                el('jim-pol-target-value').value = '';
-                showMessage('Policy added.');
-                loadPolicies();
+            var call = editing
+                ? request('PUT', '/policies/' + editing.id, payload)
+                : request('POST', '/policies', payload);
+            call.then(function () {
+                showMessage(editing ? 'Policy updated.' : 'Policy added.');
+                return loadPolicies();
+            }).then(function () {
+                exitPolicyEditMode();
                 loadOverview();
             }).catch(function (error) {
                 showMessage(error.message, true);
             });
         });
 
+        el('jim-pol-cancel-edit').addEventListener('click', function () {
+            exitPolicyEditMode();
+        });
+
         el('jim-policy-rows').addEventListener('click', function (event) {
             var target = event.target;
+            var editId = target.getAttribute && target.getAttribute('data-policy-edit');
             var deleteId = target.getAttribute && target.getAttribute('data-policy-delete');
             var toggleId = target.getAttribute && target.getAttribute('data-policy-toggle');
+            if (editId) {
+                var editPolicy = findPolicy(parseInt(editId, 10));
+                if (editPolicy) {
+                    enterPolicyEditMode(editPolicy);
+                }
+                return;
+            }
             if (deleteId) {
                 if (!window.confirm('Delete this policy?')) {
                     return;
                 }
                 request('DELETE', '/policies/' + deleteId).then(function () {
+                    if (editingPolicyId === parseInt(deleteId, 10)) {
+                        exitPolicyEditMode();
+                    }
                     showMessage('Policy deleted.');
                     loadPolicies();
                     loadOverview();

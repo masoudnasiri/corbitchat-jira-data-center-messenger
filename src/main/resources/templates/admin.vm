@@ -62,7 +62,7 @@
             </tbody>
         </table>
 
-        <h4>Add policy</h4>
+        <h4 id="jim-policy-form-title">Add policy</h4>
         <div class="jim-admin-policy-form" id="jim-policy-form">
             <select id="jim-pol-source-type"><option value="USER">USER</option><option value="GROUP">GROUP</option></select>
             <input id="jim-pol-source-value" type="text" placeholder="username or group name"/>
@@ -75,6 +75,7 @@
             <label><input id="jim-pol-can-receive" type="checkbox" checked/> receive</label>
             <input id="jim-pol-priority" type="number" value="0" title="Priority"/>
             <button id="jim-pol-add" type="button" class="aui-button">Add policy</button>
+            <button id="jim-pol-cancel-edit" type="button" class="aui-button aui-button-link" hidden>Cancel</button>
         </div>
     </section>
 
