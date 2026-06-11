@@ -1,4 +1,4 @@
-$webResourceManager.requireResource("com.corbitlogic.jira.internalmessenger.jira-internal-messenger:jim-messenger-resources")
+$webResourceManager.requireResource("com.corbitlogic.corbitchat.jira.dc:jim-messenger-resources")
 
 <html>
 <head>

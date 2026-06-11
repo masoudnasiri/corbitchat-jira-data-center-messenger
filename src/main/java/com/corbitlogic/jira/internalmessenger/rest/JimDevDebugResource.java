@@ -77,8 +77,8 @@ public class JimDevDebugResource {
         try {
             LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
             body.put("ok", true);
-            body.put("plugin", "Jira Internal Messenger");
-            body.put("pluginKey", "com.corbitlogic.jira.internalmessenger.jira-internal-messenger");
+            body.put("plugin", "CorbitChat");
+            body.put("pluginKey", "com.corbitlogic.corbitchat.jira.dc");
             body.put("currentUserKey", user.getKey());
             body.put("assignmentListenerRegistered", this.pluginBootstrap.isAssignmentListenerRegistered());
             body.put("mentionListenerRegistered", this.pluginBootstrap.isMentionListenerRegistered());

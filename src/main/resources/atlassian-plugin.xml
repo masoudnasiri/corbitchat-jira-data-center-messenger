@@ -5,10 +5,12 @@
         <version>${project.version}</version>
         <vendor name="CorbitLogic" url="https://corbitlogic.com"/>
         <param name="atlassian-licensing-enabled">true</param>
+        <param name="atlassian-data-center-status">compatible</param>
+        <param name="atlassian-data-center-compatible">true</param>
     </plugin-info>
 
     <ao key="jim-active-objects" namespace="com.corbitlogic.jira.internalmessenger.ao">
-        <description>Active Objects persistence for Jira Internal Messenger</description>
+        <description>Active Objects persistence for CorbitChat</description>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimConversation</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimMessage</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimReadState</entity>
@@ -46,19 +48,19 @@
 
     <component key="jimPermissionService"
                class="com.corbitlogic.jira.internalmessenger.service.JimPermissionServiceImpl">
-        <description>Permission checks for Jira Internal Messenger</description>
+        <description>Permission checks for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimPermissionService</interface>
     </component>
 
     <component key="jimConversationService"
                class="com.corbitlogic.jira.internalmessenger.service.JimConversationServiceImpl">
-        <description>Conversation persistence for Jira Internal Messenger</description>
+        <description>Conversation persistence for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimConversationService</interface>
     </component>
 
     <component key="jimMessageService"
                class="com.corbitlogic.jira.internalmessenger.service.JimMessageServiceImpl">
-        <description>Message persistence for Jira Internal Messenger</description>
+        <description>Message persistence for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimMessageService</interface>
     </component>
 
@@ -74,25 +76,25 @@
 
     <component key="jimGroupService"
                class="com.corbitlogic.jira.internalmessenger.service.JimGroupServiceImpl">
-        <description>Group conversation management for Jira Internal Messenger</description>
+        <description>Group conversation management for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimGroupService</interface>
     </component>
 
     <component key="jimProjectChatService"
                class="com.corbitlogic.jira.internalmessenger.service.JimProjectChatServiceImpl">
-        <description>Project chat group provisioning for Jira Internal Messenger</description>
+        <description>Project chat group provisioning for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimProjectChatService</interface>
     </component>
 
     <component key="jimPresenceService"
                class="com.corbitlogic.jira.internalmessenger.service.JimPresenceServiceImpl">
-        <description>In-memory presence tracking for Jira Internal Messenger</description>
+        <description>In-memory presence tracking for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimPresenceService</interface>
     </component>
 
     <component key="jimPushService"
                class="com.corbitlogic.jira.internalmessenger.service.JimPushServiceImpl">
-        <description>Web Push (VAPID) notifications for Jira Internal Messenger</description>
+        <description>Web Push (VAPID) notifications for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimPushService</interface>
     </component>
 
@@ -127,35 +129,35 @@
 
     <component key="jimReactionService"
                class="com.corbitlogic.jira.internalmessenger.service.JimReactionServiceImpl">
-        <description>Emoji reactions for Jira Internal Messenger messages</description>
+        <description>Emoji reactions for CorbitChat messages</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimReactionService</interface>
     </component>
 
     <component key="jimReadStateService"
                class="com.corbitlogic.jira.internalmessenger.service.JimReadStateServiceImpl">
-        <description>Read state tracking for Jira Internal Messenger</description>
+        <description>Read state tracking for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimReadStateService</interface>
     </component>
 
     <component key="jimUserSearchService"
                class="com.corbitlogic.jira.internalmessenger.service.JimUserSearchServiceImpl">
-        <description>Active user search for Jira Internal Messenger</description>
+        <description>Active user search for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimUserSearchService</interface>
     </component>
 
     <component key="jimDtoMapper"
                class="com.corbitlogic.jira.internalmessenger.service.JimDtoMapper">
-        <description>DTO mapping for Jira Internal Messenger</description>
+        <description>DTO mapping for CorbitChat</description>
     </component>
 
     <component key="jimRestJsonMapper"
                class="com.corbitlogic.jira.internalmessenger.rest.JimRestJsonMapper">
-        <description>Builds Map-based JSON REST responses for Jira Internal Messenger</description>
+        <description>Builds Map-based JSON REST responses for CorbitChat</description>
     </component>
 
     <component key="jimApiService"
                class="com.corbitlogic.jira.internalmessenger.service.JimApiServiceImpl">
-        <description>REST API orchestration for Jira Internal Messenger</description>
+        <description>REST API orchestration for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimApiService</interface>
     </component>
 
@@ -184,18 +186,18 @@
 
     <component key="messengerService"
                class="com.corbitlogic.jira.internalmessenger.service.MessengerServiceImpl">
-        <description>Core service facade for Jira Internal Messenger</description>
+        <description>Core service facade for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.MessengerService</interface>
     </component>
 
     <component key="jimChatServlet"
                class="com.corbitlogic.jira.internalmessenger.web.JimChatServlet">
-        <description>Chat page servlet for Jira Internal Messenger</description>
+        <description>Chat page servlet for CorbitChat</description>
     </component>
 
     <component key="jimProjectChatServlet"
                class="com.corbitlogic.jira.internalmessenger.web.JimProjectChatServlet">
-        <description>Project chat page servlet for Jira Internal Messenger</description>
+        <description>Project chat page servlet for CorbitChat</description>
     </component>
 
     <web-resource key="jim-messenger-resources" name="JIM Messenger Resources">
@@ -245,19 +247,19 @@
     </servlet-filter>
 
     <servlet key="jim-chat-servlet"
-             name="Jira Internal Messenger Chat Page"
+             name="CorbitChat Chat Page"
              class="com.corbitlogic.jira.internalmessenger.web.JimChatServlet">
         <url-pattern>/jim/chat</url-pattern>
     </servlet>
 
     <servlet key="jim-project-chat-servlet"
-             name="Jira Internal Messenger Project Chat Page"
+             name="CorbitChat Project Chat Page"
              class="com.corbitlogic.jira.internalmessenger.web.JimProjectChatServlet">
         <url-pattern>/jim/project-chat</url-pattern>
     </servlet>
 
     <servlet key="jim-service-worker-servlet"
-             name="Jira Internal Messenger Push Service Worker"
+             name="CorbitChat Push Service Worker"
              class="com.corbitlogic.jira.internalmessenger.web.JimServiceWorkerServlet">
         <url-pattern>/jim/sw.js</url-pattern>
     </servlet>
@@ -296,14 +298,14 @@
               section="jira.project.sidebar.plugins.navigation"
               weight="200">
         <label key="jim.project.chat.label"/>
-        <link linkId="jim-project-chat">/projects/$pathEncodedProjectKey?selectedItem=com.corbitlogic.jira.internalmessenger.jira-internal-messenger:jim-project-chat-link</link>
+        <link linkId="jim-project-chat">/projects/$pathEncodedProjectKey?selectedItem=${atlassian.plugin.key}:jim-project-chat-link</link>
         <param name="iconClass" value="aui-icon-large aui-iconfont-comment"/>
         <condition class="com.atlassian.jira.plugin.webfragment.conditions.UserLoggedInCondition"/>
     </web-item>
 
     <web-panel key="jim-project-chat-panel"
                name="Project Chat Panel"
-               location="com.corbitlogic.jira.internalmessenger.jira-internal-messenger:jim-project-chat-link"
+               location="${atlassian.plugin.key}:jim-project-chat-link"
                weight="10">
         <description>Renders the project chat inside the project-centric page content area</description>
         <context-provider class="com.corbitlogic.jira.internalmessenger.web.JimProjectChatPanelContextProvider"/>
@@ -311,7 +313,7 @@
     </web-panel>
 
     <rest key="jim-rest" path="/jim" version="1.0">
-        <description>REST API for Jira Internal Messenger</description>
+        <description>REST API for CorbitChat</description>
     </rest>
 
     <resource type="i18n" name="jim-i18n" location="jim/i18n"/>

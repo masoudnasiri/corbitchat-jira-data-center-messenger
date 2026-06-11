@@ -68,7 +68,7 @@ import org.slf4j.LoggerFactory;
 @Produces(value={"application/json"})
 public class JimAdminResource {
     private static final Logger log = LoggerFactory.getLogger(JimAdminResource.class);
-    private static final String PLUGIN_KEY = "com.corbitlogic.jira.internalmessenger.jira-internal-messenger";
+    private static final String PLUGIN_KEY = "com.corbitlogic.corbitchat.jira.dc";
     private final JiraAuthenticationContext authenticationContext;
     private final GlobalPermissionManager globalPermissionManager;
     private final JimAdminSettingsService adminSettingsService;

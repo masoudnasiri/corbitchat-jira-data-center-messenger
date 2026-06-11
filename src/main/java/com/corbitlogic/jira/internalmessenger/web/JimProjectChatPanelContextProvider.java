@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
 public class JimProjectChatPanelContextProvider
 implements ContextProvider {
     private static final Logger log = LoggerFactory.getLogger(JimProjectChatPanelContextProvider.class);
-    private static final String WEB_RESOURCE_KEY = "com.corbitlogic.jira.internalmessenger.jira-internal-messenger:jim-messenger-resources";
+    private static final String WEB_RESOURCE_KEY = "com.corbitlogic.corbitchat.jira.dc:jim-messenger-resources";
     private final JiraAuthenticationContext authenticationContext;
     private final AvatarService avatarService;
     private final WebResourceManager webResourceManager;

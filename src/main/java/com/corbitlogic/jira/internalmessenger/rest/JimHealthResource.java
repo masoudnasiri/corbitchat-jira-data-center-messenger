@@ -30,7 +30,7 @@ public class JimHealthResource {
     public Response health() {
         LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
         body.put("ok", true);
-        body.put("plugin", "Jira Internal Messenger");
+        body.put("plugin", "CorbitChat");
         body.put("status", "running");
         return JimRestResponses.okJson(body);
     }

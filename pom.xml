@@ -6,13 +6,13 @@
 
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.corbitlogic.jira.internalmessenger</groupId>
-    <artifactId>jira-internal-messenger</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <groupId>com.corbitlogic</groupId>
+    <artifactId>corbitchat-jira-dc</artifactId>
+    <version>1.0.0</version>
     <packaging>atlassian-plugin</packaging>
 
-    <name>Jira Internal Messenger</name>
-    <description>Internal messenger for Jira Data Center with direct chat and Jira Assistant notifications.</description>
+    <name>CorbitChat — Team Messenger for Jira</name>
+    <description>CorbitChat brings Slack-style team messaging into Jira Data Center, including direct messages, project/team conversations, mentions, attachments, push notifications, and Jira-native collaboration controls.</description>
 
     <properties>
         <jira.version>9.17.5</jira.version>
@@ -22,7 +22,7 @@
         <maven.compiler.target>11</maven.compiler.target>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <atlassian.plugin.key>${project.groupId}.${project.artifactId}</atlassian.plugin.key>
+        <atlassian.plugin.key>com.corbitlogic.corbitchat.jira.dc</atlassian.plugin.key>
     </properties>
 
     <repositories>

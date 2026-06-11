@@ -1,9 +1,9 @@
-# CorbitChat / Jira Internal Messenger — Agent Guide
+# CorbitChat — Team Messenger for Jira — Agent Guide
 
 P2 plugin for **Jira Data Center 9.17.x** running in the `jira-srv` Docker container.
 
 - **Workspace:** `/root/jira-dev/jira-issue-chat-panel`
-- **Plugin key (never change):** `com.corbitlogic.jira.internalmessenger.jira-internal-messenger`
+- **Plugin key (never change):** `com.corbitlogic.corbitchat.jira.dc` (marketplace branch; internal branch uses `com.corbitlogic.jira.internalmessenger.jira-internal-messenger`)
 - **Jira URL:** `http://185.83.181.194:8080`
 - **Test user:** `m.nasiri` / `Man@782761`
 - **Chat page:** `http://185.83.181.194:8080/plugins/servlet/jim/chat`
@@ -16,13 +16,14 @@ mvn -s /root/.m2/settings.xml -Dmaven.repo.local=/root/maven-repos/atlassian-jir
 ```
 
 Plain `mvn clean package` will FAIL (no internet access to Maven Central / Atlassian repos).
-Build takes ~20–30 s. Artifact: `target/jira-internal-messenger-1.0.0-SNAPSHOT.jar`
+Build takes ~20–30 s. Artifact: `target/corbitchat-jira-dc-1.0.0.jar`
 
 ## Install
 
 ```bash
-docker cp target/jira-internal-messenger-1.0.0-SNAPSHOT.jar jira-srv:/var/jira/plugins/installed-plugins/
-docker exec -u 0 jira-srv bash -lc 'chmod 644 /var/jira/plugins/installed-plugins/jira-internal-messenger-1.0.0-SNAPSHOT.jar'
+docker exec -u 0 jira-srv bash -lc 'rm -f /var/jira/plugins/installed-plugins/jira-internal-messenger-*.jar /var/jira/plugins/installed-plugins/corbitchat-jira-dc-*.jar'
+docker cp target/corbitchat-jira-dc-1.0.0.jar jira-srv:/var/jira/plugins/installed-plugins/
+docker exec -u 0 jira-srv bash -lc 'chmod 644 /var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0.jar'
 docker restart jira-srv
 ```
 

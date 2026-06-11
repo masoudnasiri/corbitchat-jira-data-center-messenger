@@ -22,7 +22,7 @@ import java.util.Map;
 import java.util.TreeSet;
 
 public class JimAoSchemaDiagnostics {
-    public static final String PLUGIN_KEY = "com.corbitlogic.jira.internalmessenger.jira-internal-messenger";
+    public static final String PLUGIN_KEY = "com.corbitlogic.corbitchat.jira.dc";
     private final TransactionalExecutorFactory transactionalExecutorFactory;
 
     public JimAoSchemaDiagnostics(TransactionalExecutorFactory transactionalExecutorFactory) {
