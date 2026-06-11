@@ -63,6 +63,7 @@
     };
 
     var state = {
+        licenseBlocked: false,
         conversations: [],
         selectedConversationId: null,
         selectedConversation: null,
@@ -2707,7 +2708,8 @@
             return;
         }
 
-        var readOnly = state.selectedConversation && isSystemConversation(state.selectedConversation);
+        var readOnly = state.licenseBlocked ||
+            (state.selectedConversation && isSystemConversation(state.selectedConversation));
         var busy = state.sending || state.uploading;
         var canSend = hasComposerPayload();
 
@@ -3563,6 +3565,63 @@
         });
     }
 
+    // ===== Marketplace license =====
+
+    function showLicenseBanner(message, blocking) {
+        if (!els.app || document.getElementById('jim-license-banner')) {
+            return;
+        }
+        var banner = document.createElement('div');
+        banner.id = 'jim-license-banner';
+        banner.className = 'jim-license-banner' + (blocking ? ' jim-license-banner-blocking' : '');
+        banner.setAttribute('role', 'alert');
+        var icon = document.createElement('span');
+        icon.className = 'jim-license-banner-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = '\u26A0';
+        var text = document.createElement('span');
+        text.className = 'jim-license-banner-text';
+        text.textContent = message;
+        banner.appendChild(icon);
+        banner.appendChild(text);
+        // The app shell is a flex row (sidebar | main), so the banner lives at
+        // the top of the main chat column.
+        var main = document.getElementById('jim-chat-panel-shell')
+            || els.app.querySelector('.jim-main')
+            || els.app;
+        main.insertBefore(banner, main.firstChild);
+    }
+
+    function applyLicenseLock() {
+        state.licenseBlocked = true;
+        if (els.composerReadonly) {
+            els.composerReadonly.textContent = 'Messaging is disabled \u2014 the CorbitChat license is missing or expired.';
+        }
+        if (els.searchInput) {
+            els.searchInput.disabled = true;
+            els.searchInput.placeholder = 'License required';
+        }
+        if (els.newConversationButton) {
+            els.newConversationButton.disabled = true;
+        }
+        updateComposerState();
+    }
+
+    function checkLicense() {
+        if (!window.JimApi || typeof window.JimApi.getLicenseStatus !== 'function') {
+            return;
+        }
+        window.JimApi.getLicenseStatus().then(function (status) {
+            if (status && status.licensed === false) {
+                showLicenseBanner('CorbitChat license is missing or expired. Messaging is disabled until a valid license is installed via Manage apps. Existing conversations stay readable.', true);
+                applyLicenseLock();
+            }
+        }).catch(function () {
+            // Never break the chat UI because the license endpoint failed.
+            showLicenseBanner('CorbitChat could not verify its license. If problems persist, contact your Jira administrator.', false);
+        });
+    }
+
     function init() {
         cacheElements();
         if (!els.app) {
@@ -3588,6 +3647,7 @@
         bindEvents();
         ensureMessageActionsBound();
         updateComposerState();
+        checkLicense();
         setupPushNotifications();
         if (!state.projectMode) {
             restoreActiveTab();

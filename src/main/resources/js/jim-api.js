@@ -63,6 +63,10 @@
     }
 
     global.JimApi = {
+        getLicenseStatus: function () {
+            return request('GET', '/license/status');
+        },
+
         listConversations: function () {
             return request('GET', '/conversations');
         },

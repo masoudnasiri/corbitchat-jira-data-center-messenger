@@ -27,6 +27,7 @@ import com.corbitlogic.jira.internalmessenger.dto.GroupMemberRequestDto;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestJsonMapper;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
 import com.corbitlogic.jira.internalmessenger.service.JimGroupService;
+import com.corbitlogic.jira.internalmessenger.service.JimLicenseService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
 import com.corbitlogic.jira.internalmessenger.service.JimReadStateService;
@@ -53,14 +54,16 @@ public class JimGroupResource {
     private final JimGroupService groupService;
     private final JimReadStateService readStateService;
     private final JimRestJsonMapper restJsonMapper;
+    private final JimLicenseService licenseService;
 
     @Inject
-    public JimGroupResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimGroupService groupService, JimReadStateService readStateService, JimRestJsonMapper restJsonMapper) {
+    public JimGroupResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimGroupService groupService, JimReadStateService readStateService, JimRestJsonMapper restJsonMapper, JimLicenseService licenseService) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.groupService = groupService;
         this.readStateService = readStateService;
         this.restJsonMapper = restJsonMapper;
+        this.licenseService = licenseService;
     }
 
     @POST
@@ -69,6 +72,9 @@ public class JimGroupResource {
         String userKey = this.resolveCurrentUserKey();
         if (userKey == null) {
             return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        if (!this.licenseService.canUseMessaging()) {
+            return JimRestResponses.licenseBlocked();
         }
         if (request == null || request.getName() == null || request.getName().trim().isEmpty()) {
             return JimRestResponses.errorJson(400, "bad_request", "name is required");

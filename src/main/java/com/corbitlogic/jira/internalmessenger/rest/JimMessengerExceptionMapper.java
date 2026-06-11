@@ -9,6 +9,7 @@
 package com.corbitlogic.jira.internalmessenger.rest;
 
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
+import com.corbitlogic.jira.internalmessenger.service.JimLicenseBlockedException;
 import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.ext.ExceptionMapper;
@@ -18,7 +19,8 @@ import javax.ws.rs.ext.Provider;
 public class JimMessengerExceptionMapper
 implements ExceptionMapper<JimMessengerException> {
     public Response toResponse(JimMessengerException exception) {
-        return JimRestResponses.errorJson(exception.getStatusCode(), "request_failed", exception.getMessage());
+        String errorCode = exception instanceof JimLicenseBlockedException ? "LICENSE_INVALID" : "request_failed";
+        return JimRestResponses.errorJson(exception.getStatusCode(), errorCode, exception.getMessage());
     }
 }
 

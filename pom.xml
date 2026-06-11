@@ -116,6 +116,26 @@
             <version>5.0.0</version>
             <scope>provided</scope>
         </dependency>
+
+        <!-- Atlassian Marketplace licensing (UPM) -->
+        <dependency>
+            <groupId>com.atlassian.upm</groupId>
+            <artifactId>licensing-api</artifactId>
+            <version>6.5.9</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.atlassian.upm</groupId>
+            <artifactId>upm-api</artifactId>
+            <version>6.5.7</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>joda-time</groupId>
+            <artifactId>joda-time</artifactId>
+            <version>2.12.7</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -145,6 +165,9 @@
                             com.atlassian.activeobjects.spi,
                             com.atlassian.event.api,
                             com.atlassian.jira.*,
+                            com.atlassian.upm.api.license,
+                            com.atlassian.upm.api.license.entity,
+                            com.atlassian.upm.api.util,
                             org.ofbiz.core.entity,
                             org.slf4j,
                             net.java.ao,

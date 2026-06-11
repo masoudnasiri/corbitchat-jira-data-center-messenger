@@ -601,8 +601,77 @@
         });
     }
 
+    // ===== License =====
+
+    var LICENSE_LABELS = {
+        state: 'Status',
+        licensed: 'Licensed',
+        present: 'License installed',
+        valid: 'License valid',
+        dataCenter: 'Data Center license',
+        evaluation: 'Evaluation license',
+        errorKey: 'Error code',
+        errorMessage: 'Error',
+        pluginKey: 'Plugin key',
+        expiryDate: 'Expiry date'
+    };
+
+    function renderLicense(license) {
+        var rows = [];
+        for (var key in LICENSE_LABELS) {
+            if (!Object.prototype.hasOwnProperty.call(license, key)) {
+                continue;
+            }
+            var value = license[key];
+            var display;
+            if (value === null || value === undefined) {
+                display = '<span class="jim-diag-muted">' + (key === 'dataCenter' ? 'Unknown' : '&#8211;') + '</span>';
+            } else if (value === true) {
+                display = '<span class="jim-diag-ok">Yes</span>';
+            } else if (value === false) {
+                display = '<span class="jim-diag-bad">No</span>';
+            } else {
+                display = escapeHtml(value);
+            }
+            rows.push('<tr><td class="jim-diag-label">' + escapeHtml(LICENSE_LABELS[key]) + '</td><td>' + display + '</td></tr>');
+        }
+        el('jim-license-rows').innerHTML = rows.join('');
+
+        var banner = el('jim-license-state-banner');
+        if (banner) {
+            if (license.licensed) {
+                banner.className = 'jim-admin-license-banner jim-admin-license-ok';
+                banner.textContent = 'CorbitChat is licensed and fully functional.';
+            } else {
+                banner.className = 'jim-admin-license-banner jim-admin-license-bad';
+                banner.textContent = 'CorbitChat is not licensed (' + (license.state || 'INVALID') +
+                    '). Messaging is blocked for all users. Install a valid license under Manage apps \u2192 CorbitChat.';
+            }
+            banner.hidden = false;
+        }
+
+        var card = el('jim-overview-license');
+        if (card) {
+            card.textContent = license.licensed ? 'Valid' : (license.state || 'Invalid');
+            card.style.color = license.licensed ? '' : '#bf2600';
+        }
+    }
+
+    function loadLicense() {
+        return request('GET', '/license').then(function (license) {
+            renderLicense(license);
+        }).catch(function (error) {
+            el('jim-license-rows').innerHTML = '<tr><td colspan="2">' + escapeHtml(error.message) + '</td></tr>';
+            var card = el('jim-overview-license');
+            if (card) {
+                card.textContent = 'Unknown';
+            }
+        });
+    }
+
     function loadOverview() {
         loadDiagnostics();
+        loadLicense();
         request('GET', '/audit').then(function (response) {
             var entries = response.entries || [];
             if (!entries.length) {
@@ -633,6 +702,7 @@
         bindSettingsActions();
         bindPolicyActions();
         el('jim-diag-refresh').addEventListener('click', loadDiagnostics);
+        el('jim-license-refresh').addEventListener('click', loadLicense);
         loadSettings();
         loadPolicies();
         loadOverview();

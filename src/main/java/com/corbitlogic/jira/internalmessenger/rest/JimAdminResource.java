@@ -41,6 +41,7 @@ import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
 import com.corbitlogic.jira.internalmessenger.service.JimAccessPolicyService;
 import com.corbitlogic.jira.internalmessenger.service.JimAdminAuditService;
 import com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService;
+import com.corbitlogic.jira.internalmessenger.service.JimLicenseService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 import com.corbitlogic.jira.internalmessenger.service.JimPushService;
 import java.util.ArrayList;
@@ -76,9 +77,10 @@ public class JimAdminResource {
     private final JimPushService pushService;
     private final ActiveObjects activeObjects;
     private final ApplicationProperties applicationProperties;
+    private final JimLicenseService licenseService;
 
     @Inject
-    public JimAdminResource(JiraAuthenticationContext authenticationContext, GlobalPermissionManager globalPermissionManager, JimAdminSettingsService adminSettingsService, JimAccessPolicyService accessPolicyService, JimAdminAuditService auditService, JimPushService pushService, ActiveObjects activeObjects, ApplicationProperties applicationProperties) {
+    public JimAdminResource(JiraAuthenticationContext authenticationContext, GlobalPermissionManager globalPermissionManager, JimAdminSettingsService adminSettingsService, JimAccessPolicyService accessPolicyService, JimAdminAuditService auditService, JimPushService pushService, ActiveObjects activeObjects, ApplicationProperties applicationProperties, JimLicenseService licenseService) {
         this.authenticationContext = authenticationContext;
         this.globalPermissionManager = globalPermissionManager;
         this.adminSettingsService = adminSettingsService;
@@ -87,6 +89,22 @@ public class JimAdminResource {
         this.pushService = pushService;
         this.activeObjects = activeObjects;
         this.applicationProperties = applicationProperties;
+        this.licenseService = licenseService;
+    }
+
+    @GET
+    @Path(value="/license")
+    public Response getLicenseStatus() {
+        try {
+            this.requireSysAdmin();
+            return JimRestResponses.okJson(this.licenseService.getStatus().toAdminMap());
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("GET /admin/license", ex);
+        }
     }
 
     @GET
@@ -110,6 +128,9 @@ public class JimAdminResource {
     public Response updateSettings(Map<String, Object> changes) {
         try {
             ApplicationUser admin = this.requireSysAdmin();
+            if (!this.licenseService.canUseAdminSettings()) {
+                return JimRestResponses.licenseBlocked();
+            }
             List<String> descriptions = this.adminSettingsService.updateSettings(changes);
             this.auditService.record(admin.getKey(), "settings.update", String.join((CharSequence)"; ", descriptions));
             return JimRestResponses.okJson(this.adminSettingsService.getAllSettings());
@@ -149,6 +170,9 @@ public class JimAdminResource {
     public Response createPolicy(Map<String, Object> request) {
         try {
             ApplicationUser admin = this.requireSysAdmin();
+            if (!this.licenseService.canUseAdminSettings()) {
+                return JimRestResponses.licenseBlocked();
+            }
             if (request == null) {
                 return JimRestResponses.errorJson(400, "bad_request", "Request body is required");
             }
@@ -170,6 +194,9 @@ public class JimAdminResource {
     public Response updatePolicy(@PathParam(value="policyId") int policyId, Map<String, Object> request) {
         try {
             ApplicationUser admin = this.requireSysAdmin();
+            if (!this.licenseService.canUseAdminSettings()) {
+                return JimRestResponses.licenseBlocked();
+            }
             if (request == null) {
                 return JimRestResponses.errorJson(400, "bad_request", "Request body is required");
             }
@@ -190,6 +217,9 @@ public class JimAdminResource {
     public Response deletePolicy(@PathParam(value="policyId") int policyId) {
         try {
             ApplicationUser admin = this.requireSysAdmin();
+            if (!this.licenseService.canUseAdminSettings()) {
+                return JimRestResponses.licenseBlocked();
+            }
             this.accessPolicyService.deletePolicy(policyId);
             this.auditService.record(admin.getKey(), "policy.delete", "policyId=" + policyId);
             LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
@@ -285,6 +315,9 @@ public class JimAdminResource {
     public Response sendTestNotification() {
         try {
             ApplicationUser admin = this.requireSysAdmin();
+            if (!this.licenseService.canUsePushNotifications()) {
+                return JimRestResponses.licenseBlocked();
+            }
             if (!this.adminSettingsService.isWebPushEnabled()) {
                 return JimRestResponses.errorJson(400, "bad_request", "Web push is disabled. Enable it in Notification Settings first.");
             }

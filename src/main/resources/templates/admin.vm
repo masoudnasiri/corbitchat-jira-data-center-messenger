@@ -18,6 +18,7 @@
         <button type="button" class="jim-admin-tab" data-tab="notifications" role="tab" aria-selected="false">Notifications</button>
         <button type="button" class="jim-admin-tab" data-tab="attachments" role="tab" aria-selected="false">Attachments</button>
         <button type="button" class="jim-admin-tab" data-tab="diagnostics" role="tab" aria-selected="false">Diagnostics</button>
+        <button type="button" class="jim-admin-tab" data-tab="license" role="tab" aria-selected="false">License</button>
         <button type="button" class="jim-admin-tab" data-tab="help" role="tab" aria-selected="false">Help</button>
     </nav>
 
@@ -32,6 +33,7 @@
             <div class="jim-admin-card"><div class="jim-admin-card-label">Access policies</div><div class="jim-admin-card-value" data-overview="policyCount">...</div></div>
             <div class="jim-admin-card"><div class="jim-admin-card-label">Push subscriptions</div><div class="jim-admin-card-value" data-overview="pushSubscriptionCount">...</div></div>
             <div class="jim-admin-card"><div class="jim-admin-card-label">Plugin version</div><div class="jim-admin-card-value" data-overview="pluginVersion">...</div></div>
+            <div class="jim-admin-card"><div class="jim-admin-card-label">License</div><div class="jim-admin-card-value" id="jim-overview-license">...</div></div>
         </div>
         <h3>Recent admin changes</h3>
         <div id="jim-admin-audit-list" class="jim-admin-audit-list">Loading...</div>
@@ -125,6 +127,27 @@
             </tbody>
         </table>
         <button id="jim-diag-refresh" type="button" class="aui-button">Refresh</button>
+    </section>
+
+    <!-- ===== License ===== -->
+    <section class="jim-admin-panel" data-panel="license">
+        <h3>Marketplace license</h3>
+        <div id="jim-license-state-banner" class="jim-admin-license-banner" hidden></div>
+        <table class="aui jim-admin-diag-table">
+            <tbody id="jim-license-rows">
+            <tr><td colspan="2">Loading...</td></tr>
+            </tbody>
+        </table>
+        <button id="jim-license-refresh" type="button" class="aui-button">Refresh</button>
+        <div class="jim-admin-help" style="margin-top: 16px;">
+            <h4>Managing the license</h4>
+            <ul>
+                <li>Licenses are purchased and managed through Atlassian Marketplace; CorbitChat does not handle billing itself.</li>
+                <li>To install or update a license go to <strong>Administration &rarr; Manage apps</strong>, expand <strong>CorbitChat</strong> and paste the license key into the <strong>License key</strong> field.</li>
+                <li>While the license is missing or expired, sending messages, creating conversations, user search, attachments, push notifications and admin configuration changes are blocked. Existing conversations stay readable and this admin overview remains accessible.</li>
+                <li>The raw license key is never displayed here, returned by the REST API, or written to logs.</li>
+            </ul>
+        </div>
     </section>
 
     <!-- ===== Help ===== -->

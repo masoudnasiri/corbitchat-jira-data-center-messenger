@@ -3190,3 +3190,39 @@
         padding: 6px 14px;
     }
 }
+
+/* ===== Marketplace license banner ===== */
+
+#jim-messenger-app .jim-license-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 16px;
+    background: #fffae6;
+    border-bottom: 1px solid #ffe380;
+    color: #172b4d;
+    font-size: 13px;
+    line-height: 1.4;
+    flex: 0 0 auto;
+}
+
+#jim-messenger-app .jim-license-banner-blocking {
+    background: #ffebe6;
+    border-bottom-color: #ffbdad;
+}
+
+#jim-messenger-app .jim-license-banner-icon {
+    font-size: 16px;
+    color: #ff8b00;
+    flex: 0 0 auto;
+}
+
+#jim-messenger-app .jim-license-banner-blocking .jim-license-banner-icon {
+    color: #de350b;
+}
+
+#jim-messenger-app .jim-license-banner-text {
+    flex: 1 1 auto;
+}

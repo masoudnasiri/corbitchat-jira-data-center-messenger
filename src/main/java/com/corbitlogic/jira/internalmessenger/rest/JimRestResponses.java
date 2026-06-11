@@ -25,6 +25,11 @@ public final class JimRestResponses {
         return Response.ok(body).type(MediaType.APPLICATION_JSON_TYPE).build();
     }
 
+    /** HTTP 402 response for actions blocked by a missing/invalid Marketplace license. */
+    public static Response licenseBlocked() {
+        return JimRestResponses.errorJson(402, "LICENSE_INVALID", "CorbitChat license is missing or expired.");
+    }
+
     public static Response errorJson(int statusCode, String error, String message) {
         LinkedHashMap<String, String> body = new LinkedHashMap<String, String>();
         body.put("error", error);

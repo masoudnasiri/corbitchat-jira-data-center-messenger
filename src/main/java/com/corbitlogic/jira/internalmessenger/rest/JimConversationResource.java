@@ -42,6 +42,7 @@ import com.corbitlogic.jira.internalmessenger.model.JimConversationType;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestJsonMapper;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
 import com.corbitlogic.jira.internalmessenger.service.JimAccessPolicyService;
+import com.corbitlogic.jira.internalmessenger.service.JimLicenseService;
 import com.corbitlogic.jira.internalmessenger.service.JimAttachmentService;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
@@ -84,9 +85,10 @@ public class JimConversationResource {
     private final JimPresenceService presenceService;
     private final JimRestJsonMapper restJsonMapper;
     private final JimAccessPolicyService accessPolicyService;
+    private final JimLicenseService licenseService;
 
     @Inject
-    public JimConversationResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimAttachmentStorageService attachmentStorageService, JimPresenceService presenceService, JimRestJsonMapper restJsonMapper, JimAccessPolicyService accessPolicyService, JimPluginBootstrap pluginBootstrap) {
+    public JimConversationResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimAttachmentStorageService attachmentStorageService, JimPresenceService presenceService, JimRestJsonMapper restJsonMapper, JimAccessPolicyService accessPolicyService, JimLicenseService licenseService, JimPluginBootstrap pluginBootstrap) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
@@ -97,6 +99,7 @@ public class JimConversationResource {
         this.presenceService = presenceService;
         this.restJsonMapper = restJsonMapper;
         this.accessPolicyService = accessPolicyService;
+        this.licenseService = licenseService;
     }
 
     private void enforceDirectChatPolicy(JimConversation conversation, String currentUserKey) {
@@ -208,6 +211,9 @@ public class JimConversationResource {
         if (request == null || request.getTargetUserKey() == null) {
             return JimRestResponses.errorJson(400, "bad_request", "targetUserKey is required");
         }
+        if (!this.licenseService.canUseMessaging()) {
+            return JimRestResponses.licenseBlocked();
+        }
         try {
             String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
             ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
@@ -264,6 +270,9 @@ public class JimConversationResource {
         if (request == null || request.getBody() == null && requestedIssueKey.isEmpty()) {
             return JimRestResponses.errorJson(400, "bad_request", "body is required");
         }
+        if (!this.licenseService.canUseMessaging()) {
+            return JimRestResponses.licenseBlocked();
+        }
         try {
             JimMessage message;
             String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
@@ -297,6 +306,9 @@ public class JimConversationResource {
         String userKey = this.resolveCurrentUserKey();
         if (userKey == null) {
             return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        if (!this.licenseService.canUploadAttachments()) {
+            return JimRestResponses.licenseBlocked();
         }
         try {
             String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
