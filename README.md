@@ -277,27 +277,6 @@ Includes:
 
 ---
 
-## Suggested GitHub Topics
-
-```text
-jira
-jira-data-center
-atlassian
-jira-plugin
-team-chat
-messenger
-collaboration
-notifications
-web-push
-self-hosted
-enterprise
-project-management
-corbitchat
-corbitlogic
-```
-
----
-
 ## License
 
 CorbitChat source code is published in this repository.
