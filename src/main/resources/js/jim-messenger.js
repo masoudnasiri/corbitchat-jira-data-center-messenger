@@ -74,8 +74,11 @@
         conversationPollTimer: null,
         sending: false,
         uploading: false,
-        selectedFile: null,
-        selectedFilePreviewUrl: null,
+        // Multi-file: parallel arrays. selectedFiles[i] is the File and
+        // selectedFilePreviewUrls[i] is its object URL (only for images,
+        // otherwise null) so we can revoke and free memory on remove.
+        selectedFiles: [],
+        selectedFilePreviewUrls: [],
         loadingConversations: false,
         loadingMessages: false,
         initialLoadComplete: false,
@@ -109,7 +112,20 @@
     };
 
     /* Must match the backend whitelist in JimReactionServiceImpl */
-    var REACTION_EMOJI = ['\uD83D\uDC4D', '\u2705', '\uD83D\uDE04', '\uD83C\uDF89', '\u2764\uFE0F', '\uD83D\uDC40'];
+    // Curated reaction palette: 10 modern emojis. No heart/love.
+    // 👍 😂 🙏 👏 🔥 ✅ 🎉 💡 🚀 🤔
+    var REACTION_EMOJI = [
+        '\uD83D\uDC4D', // 👍 Thumbs Up
+        '\uD83D\uDE02', // 😂 Laugh
+        '\uD83D\uDE4F', // 🙏 Thanks
+        '\uD83D\uDC4F', // 👏 Clap
+        '\uD83D\uDD25', // 🔥 Fire
+        '\u2705',       // ✅ Done
+        '\uD83C\uDF89', // 🎉 Celebrate
+        '\uD83D\uDCA1', // 💡 Idea
+        '\uD83D\uDE80', // 🚀 Rocket
+        '\uD83E\uDD14'  // 🤔 Thinking
+    ];
 
     var els = {};
 
@@ -193,6 +209,12 @@
         els.imageLightboxName = document.getElementById('jim-image-lightbox-name');
         els.imageLightboxDownload = document.getElementById('jim-image-lightbox-download');
         els.imageLightboxClose = document.getElementById('jim-image-lightbox-close');
+        els.forwardModal = document.getElementById('jim-forward-modal');
+        els.forwardPreview = document.getElementById('jim-forward-preview');
+        els.forwardSearch = document.getElementById('jim-forward-search');
+        els.forwardTargets = document.getElementById('jim-forward-targets');
+        els.forwardCancel = document.getElementById('jim-forward-cancel');
+        els.forwardError = document.getElementById('jim-forward-error');
         els.groupModal = document.getElementById('jim-group-modal');
         els.groupName = document.getElementById('jim-group-name');
         els.groupMemberSearch = document.getElementById('jim-group-member-search');
@@ -203,9 +225,27 @@
         els.groupCreate = document.getElementById('jim-group-create');
     }
 
-    var EMOJI_SET = ['\uD83D\uDE00', '\uD83D\uDE04', '\uD83D\uDE02', '\uD83D\uDE0A', '\uD83D\uDE09', '\uD83D\uDE0D',
-        '\uD83D\uDC4D', '\uD83D\uDC4C', '\uD83D\uDE4F', '\uD83D\uDCAA', '\uD83C\uDF89', '\u2705',
-        '\u274C', '\u2764\uFE0F', '\uD83D\uDD25', '\uD83D\uDC40'];
+    // Composer's emoji-insertion palette. Aligned with the modern reaction set
+    // (no heart/love), but slightly larger so users can also insert common
+    // typing emojis like 😀 😎 ✨ that don't belong in reactions.
+    var EMOJI_SET = [
+        '\uD83D\uDE00', // 😀
+        '\uD83D\uDE04', // 😄
+        '\uD83D\uDE02', // 😂
+        '\uD83D\uDE09', // 😉
+        '\uD83D\uDE0A', // 😊
+        '\uD83D\uDE0E', // 😎
+        '\uD83E\uDD14', // 🤔
+        '\uD83D\uDC4D', // 👍
+        '\uD83D\uDC4F', // 👏
+        '\uD83D\uDE4F', // 🙏
+        '\uD83D\uDD25', // 🔥
+        '\u2705',       // ✅
+        '\uD83C\uDF89', // 🎉
+        '\uD83D\uDCA1', // 💡
+        '\uD83D\uDE80', // 🚀
+        '\u2728'        // ✨
+    ];
 
     function renderEmojiPalette() {
         if (!els.emojiPalette || els.emojiPalette.childNodes.length) {
@@ -870,12 +910,20 @@
         return contextPath() + url;
     }
 
+    /** Returns true if any file is staged for upload. */
+    function hasSelectedFiles() {
+        return state.selectedFiles && state.selectedFiles.length > 0;
+    }
+
+    /** Clears the entire selected-file queue and revokes any preview blob URLs. */
     function clearSelectedFile() {
-        if (state.selectedFilePreviewUrl) {
-            URL.revokeObjectURL(state.selectedFilePreviewUrl);
+        for (var i = 0; i < state.selectedFilePreviewUrls.length; i++) {
+            if (state.selectedFilePreviewUrls[i]) {
+                URL.revokeObjectURL(state.selectedFilePreviewUrls[i]);
+            }
         }
-        state.selectedFile = null;
-        state.selectedFilePreviewUrl = null;
+        state.selectedFiles = [];
+        state.selectedFilePreviewUrls = [];
         if (els.fileInput) {
             els.fileInput.value = '';
         }
@@ -883,76 +931,132 @@
         updateComposerState();
     }
 
+    /** Removes one specific file (and its preview URL) from the queue. */
+    function removeSelectedFileAt(index) {
+        if (index < 0 || index >= state.selectedFiles.length) {
+            return;
+        }
+        if (state.selectedFilePreviewUrls[index]) {
+            URL.revokeObjectURL(state.selectedFilePreviewUrls[index]);
+        }
+        state.selectedFiles.splice(index, 1);
+        state.selectedFilePreviewUrls.splice(index, 1);
+        if (els.fileInput) {
+            els.fileInput.value = '';
+        }
+        renderSelectedAttachment();
+        updateComposerState();
+    }
+
+    /**
+     * Renders the staged-attachment area as a list of chips, one per
+     * selected file. Each chip has an inline remove button so the user can
+     * drop a single file without clearing the whole queue. The existing
+     * single-slot DOM is reused as the container for backward compat.
+     */
     function renderSelectedAttachment() {
         if (!els.selectedAttachment) {
             return;
         }
-
-        if (!state.selectedFile) {
+        if (!hasSelectedFiles()) {
             setHidden(els.selectedAttachment, true);
-            if (els.selectedAttachmentPreview) {
-                els.selectedAttachmentPreview.innerHTML = '';
-                setHidden(els.selectedAttachmentPreview, true);
-            }
+            els.selectedAttachment.innerHTML = '';
             return;
         }
-
+        els.selectedAttachment.classList.add('jim-selected-attachments-multi');
+        var chips = [];
+        for (var i = 0; i < state.selectedFiles.length; i++) {
+            var file = state.selectedFiles[i];
+            var previewUrl = state.selectedFilePreviewUrls[i];
+            var name = file.name || 'attachment';
+            var size = formatFileSize(file.size);
+            var thumbHtml = previewUrl
+                ? '<span class="jim-selected-attachment-preview">' +
+                  '<img src="' + escapeHtml(previewUrl) + '" alt="" class="jim-selected-attachment-thumb" />' +
+                  '</span>'
+                : '<span class="jim-selected-attachment-icon" aria-hidden="true">&#128206;</span>';
+            chips.push(
+                '<span class="jim-selected-attachment-chip">' +
+                thumbHtml +
+                '<span class="jim-selected-attachment-meta">' +
+                '<span class="jim-selected-attachment-name" dir="auto">' + escapeHtml(name) + '</span>' +
+                '<span class="jim-selected-attachment-size">' + escapeHtml(size) + '</span>' +
+                '</span>' +
+                '<button type="button" class="jim-composer-chip-remove" data-action="remove-file" ' +
+                'data-file-index="' + i + '" aria-label="Remove attachment">&times;</button>' +
+                '</span>'
+            );
+        }
+        els.selectedAttachment.innerHTML = chips.join('');
         setHidden(els.selectedAttachment, false);
-        if (els.selectedAttachmentName) {
-            els.selectedAttachmentName.textContent = state.selectedFile.name || 'attachment';
-        }
-        if (els.selectedAttachmentSize) {
-            els.selectedAttachmentSize.textContent = formatFileSize(state.selectedFile.size);
-        }
-
-        if (els.selectedAttachmentPreview) {
-            if (state.selectedFile.type && state.selectedFile.type.indexOf('image/') === 0 && state.selectedFilePreviewUrl) {
-                els.selectedAttachmentPreview.innerHTML =
-                    '<img src="' + escapeHtml(state.selectedFilePreviewUrl) + '" alt="" class="jim-selected-attachment-thumb" />';
-                setHidden(els.selectedAttachmentPreview, false);
-            } else {
-                els.selectedAttachmentPreview.innerHTML = '';
-                setHidden(els.selectedAttachmentPreview, true);
-            }
-        }
     }
 
     function onFileInputChange() {
         if (!els.fileInput || !els.fileInput.files || !els.fileInput.files.length) {
-            clearSelectedFile();
             return;
         }
-        acceptIncomingFile(els.fileInput.files[0]);
+        acceptIncomingFiles(els.fileInput.files);
     }
 
     /**
-     * Common entry point used by the attach button, drag-and-drop, and paste:
-     * validates the file and stages it as the pending attachment.
+     * Common entry point for staging multiple files (attach button,
+     * drag-and-drop, paste). Each file is independently validated and
+     * appended to the queue; a file that fails (e.g. too big) is reported
+     * but does not abort the others. Always call this with a FileList or
+     * an array; for a single file, pass [file].
      */
-    function acceptIncomingFile(file) {
-        if (!file) {
-            clearSelectedFile();
+    function acceptIncomingFiles(files) {
+        if (!files || !files.length) {
             return false;
-        }
-        if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-            showComposerError('File exceeds the maximum allowed size of 200 MB.');
-            clearSelectedFile();
-            return false;
-        }
-        if (state.selectedFilePreviewUrl) {
-            URL.revokeObjectURL(state.selectedFilePreviewUrl);
-            state.selectedFilePreviewUrl = null;
         }
         clearSelectedIssue();
-        state.selectedFile = file;
-        if (file.type && file.type.indexOf('image/') === 0) {
-            state.selectedFilePreviewUrl = URL.createObjectURL(file);
+        var accepted = 0;
+        var rejected = [];
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            if (!file) {
+                continue;
+            }
+            if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+                rejected.push(file.name || 'file');
+                continue;
+            }
+            state.selectedFiles.push(file);
+            state.selectedFilePreviewUrls.push(
+                file.type && file.type.indexOf('image/') === 0
+                    ? URL.createObjectURL(file)
+                    : null
+            );
+            accepted++;
+        }
+        if (accepted === 0) {
+            showComposerError(rejected.length
+                ? 'No files added (all exceed the 200 MB limit).'
+                : 'No files added.');
+            return false;
         }
         renderSelectedAttachment();
         updateComposerState();
-        showComposerError(null);
+        if (rejected.length) {
+            showComposerError(
+                rejected.length + ' file(s) skipped (over 200 MB): ' + rejected.join(', ')
+            );
+        } else {
+            showComposerError(null);
+        }
         focusMessageInput();
         return true;
+    }
+
+    /**
+     * Single-file convenience wrapper for callers that still pass a single
+     * File (paste handler, programmatic flows).
+     */
+    function acceptIncomingFile(file) {
+        if (!file) {
+            return false;
+        }
+        return acceptIncomingFiles([file]);
     }
 
     function focusMessageInput() {
@@ -2025,12 +2129,15 @@
         var chips = [];
         for (var i = 0; i < reactions.length; i++) {
             var reaction = reactions[i];
+            var count = Number(reaction.count) || 0;
             chips.push('<button type="button" class="jim-reaction-chip' +
                 (reaction.reactedByMe ? ' jim-reaction-chip-mine' : '') +
                 '" data-action="react-pick" data-message-id="' + message.id +
-                '" data-emoji="' + escapeHtml(reaction.emoji) + '" aria-label="Toggle reaction">' +
-                escapeHtml(reaction.emoji) +
-                ' <span class="jim-reaction-count">' + (Number(reaction.count) || 0) + '</span></button>');
+                '" data-emoji="' + escapeHtml(reaction.emoji) +
+                '" data-count="' + count +
+                '" aria-label="Toggle reaction">' +
+                '<span class="jim-reaction-emoji">' + escapeHtml(reaction.emoji) + '</span>' +
+                '<span class="jim-reaction-count">' + count + '</span></button>');
         }
 
         if (isPicking) {
@@ -2054,6 +2161,12 @@
         var actions = [];
         actions.push('<button type="button" class="jim-message-action jim-react-action" data-action="react" data-message-id="' + message.id + '">React</button>');
         actions.push('<button type="button" class="jim-message-action jim-reply-action" data-action="reply" data-message-id="' + message.id + '">Reply</button>');
+        // Forwarding is text-only for safety (attachments would need a server-side
+        // copy endpoint that doesn't exist yet, and forwarding a download URL
+        // would 401 in the recipient's account).
+        if (isForwardableMessage(message)) {
+            actions.push('<button type="button" class="jim-message-action jim-forward-action" data-action="forward" data-message-id="' + message.id + '">Forward</button>');
+        }
         actions.push('<button type="button" class="jim-message-action jim-pin-action" data-action="' +
             (message.pinned ? 'unpin' : 'pin') + '" data-message-id="' + message.id + '">' +
             (message.pinned ? 'Unpin' : 'Pin') + '</button>');
@@ -2105,6 +2218,145 @@
         if (els.messageInfoModal) {
             setHidden(els.messageInfoModal, true);
         }
+    }
+
+    // ===== Message forwarding =====
+    //
+    // Text-only by design. Attachments are deliberately not forwardable for
+    // this iteration: forwarding a download URL would 401 in another user's
+    // session, and copying the underlying file requires a server-side
+    // endpoint we don't have. Issue-link messages forward the rendered body
+    // (Jira will re-render the smart link in the target conversation).
+
+    function isForwardableMessage(message) {
+        if (!message || message.deleted) {
+            return false;
+        }
+        if (isSystemMessage(message)) {
+            return false;
+        }
+        if (message.attachments && message.attachments.length) {
+            return false;
+        }
+        var body = message.body ? String(message.body).trim() : '';
+        return body.length > 0;
+    }
+
+    function buildForwardedBody(message) {
+        var sender = (message.senderDisplayName || message.senderUserKey || 'a user').trim();
+        var body = String(message.body || '').trim();
+        return '[Forwarded from ' + sender + ']\n' + body;
+    }
+
+    function openForwardModal(messageId) {
+        if (!els.forwardModal) {
+            return;
+        }
+        var message = findMessageById(messageId);
+        if (!message || !isForwardableMessage(message)) {
+            return;
+        }
+        state.forwardingMessageId = messageId;
+        if (els.forwardPreview) {
+            els.forwardPreview.textContent = String(message.body || '').slice(0, 240);
+        }
+        if (els.forwardSearch) {
+            els.forwardSearch.value = '';
+        }
+        if (els.forwardError) {
+            setHidden(els.forwardError, true);
+            els.forwardError.textContent = '';
+        }
+        renderForwardTargets('');
+        setHidden(els.forwardModal, false);
+        if (els.forwardSearch) {
+            try { els.forwardSearch.focus(); } catch (e) { /* ignore */ }
+        }
+    }
+
+    function closeForwardModal() {
+        state.forwardingMessageId = null;
+        if (els.forwardModal) {
+            setHidden(els.forwardModal, true);
+        }
+    }
+
+    function eligibleForwardTargets() {
+        // Anything the user can already send a message into:
+        // direct chats, group chats and project group chats. Exclude system /
+        // assistant conversations.
+        var targets = [];
+        for (var i = 0; i < state.conversations.length; i++) {
+            var c = state.conversations[i];
+            if (!c || c.isSystem || c.type === 'SYSTEM') {
+                continue;
+            }
+            targets.push(c);
+        }
+        return targets;
+    }
+
+    function renderForwardTargets(query) {
+        if (!els.forwardTargets) {
+            return;
+        }
+        var q = (query || '').trim().toLowerCase();
+        var targets = eligibleForwardTargets();
+        if (q) {
+            targets = targets.filter(function (c) {
+                var name = String(c.displayName || '').toLowerCase();
+                return name.indexOf(q) !== -1;
+            });
+        }
+        if (!targets.length) {
+            els.forwardTargets.innerHTML = '<div class="jim-empty-state">No conversations match.</div>';
+            return;
+        }
+        var rows = [];
+        for (var i = 0; i < targets.length; i++) {
+            var c = targets[i];
+            var kindLabel = c.isProjectChat ? 'Project chat' : (isGroupConversation(c) ? 'Group' : 'Direct');
+            rows.push(
+                '<button type="button" class="jim-forward-target" data-forward-target="' + c.id + '">' +
+                '<span class="jim-forward-target-name" dir="auto">' + escapeHtml(c.displayName || 'Conversation') + '</span>' +
+                '<span class="jim-forward-target-kind">' + escapeHtml(kindLabel) + '</span>' +
+                '</button>'
+            );
+        }
+        els.forwardTargets.innerHTML = rows.join('');
+    }
+
+    function submitForward(targetConversationId) {
+        var messageId = state.forwardingMessageId;
+        if (!messageId || !targetConversationId) {
+            return;
+        }
+        var message = findMessageById(messageId);
+        if (!message || !isForwardableMessage(message)) {
+            closeForwardModal();
+            return;
+        }
+        var bodyToSend = buildForwardedBody(message);
+        if (els.forwardError) {
+            setHidden(els.forwardError, true);
+            els.forwardError.textContent = '';
+        }
+        JimApi.sendMessage(targetConversationId, bodyToSend, null).then(function () {
+            closeForwardModal();
+            // If we forwarded into the conversation we're already viewing,
+            // refresh the message list immediately so the user sees it.
+            if (state.selectedConversationId === targetConversationId) {
+                loadMessages(state.selectedConversationId, false, true);
+            }
+            loadConversations(false);
+        }).catch(function (error) {
+            logError('forwardMessage', error);
+            var detail = error && error.message ? error.message : 'Unable to forward message.';
+            if (els.forwardError) {
+                els.forwardError.textContent = detail;
+                setHidden(els.forwardError, false);
+            }
+        });
     }
 
     function renderMessageInfo(receipts) {
@@ -2614,6 +2866,10 @@
                 setReplyTarget(findMessageById(messageId));
                 return;
             }
+            if (action === 'forward') {
+                openForwardModal(messageId);
+                return;
+            }
             if (action === 'info') {
                 openMessageInfo(messageId);
                 return;
@@ -2784,7 +3040,7 @@
     }
 
     function hasComposerPayload() {
-        return hasComposerText() || !!state.selectedFile || !!state.selectedIssue;
+        return hasComposerText() || hasSelectedFiles() || !!state.selectedIssue;
     }
 
     function updateComposerState() {
@@ -2818,16 +3074,18 @@
         if (els.issueButton) {
             els.issueButton.disabled = !!readOnly || busy;
         }
-        if (els.selectedAttachmentRemove) {
-            els.selectedAttachmentRemove.disabled = !!readOnly || busy;
-        }
-
+        // Send button shows the paper-plane SVG when idle and a short status
+        // label while in flight, so users get clear feedback without losing
+        // the icon shape.
+        var SEND_ICON_SVG = '<svg class="jim-send-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+            '<path fill="currentColor" d="M3.4 20.4 21 12 3.4 3.6c-.5-.2-1 .3-.8.8L4.6 11l8.4 1-8.4 1-2 6.6c-.2.5.3 1 .8.8z"/>' +
+            '</svg>';
         if (state.uploading) {
-            els.sendButton.textContent = 'Uploading...';
+            els.sendButton.innerHTML = '<span class="jim-send-label">Uploading\u2026</span>';
         } else if (state.sending) {
-            els.sendButton.textContent = 'Sending...';
+            els.sendButton.innerHTML = '<span class="jim-send-label">Sending\u2026</span>';
         } else {
-            els.sendButton.textContent = 'Send';
+            els.sendButton.innerHTML = SEND_ICON_SVG;
         }
 
         setHidden(els.uploadProgress, !state.uploading);
@@ -2905,6 +3163,13 @@
             }
             state.loadingMessages = false;
             renderMessages();
+            // Auto-mark-read while the user is actively viewing this chat so
+            // new incoming messages (delivered via polling) don't leave an
+            // unread badge behind. The tab must be visible to count as
+            // "actively viewing".
+            if (!document.hidden && state.selectedConversationId === conversationId) {
+                maybeMarkReadActiveConversation(conversationId);
+            }
         }).catch(function (error) {
             state.loadingMessages = false;
             logError('loadMessages', error);
@@ -2924,6 +3189,33 @@
             logError('markRead', error);
             return null;
         });
+    }
+
+    /**
+     * Marks the active conversation as read whenever incoming messages or a
+     * stale badge would otherwise produce a "ghost" unread count. We only
+     * call the server when the local sidebar still shows unread > 0 OR there
+     * are visible unread messages in the loaded list, so this stays cheap
+     * during the regular message poll.
+     */
+    function maybeMarkReadActiveConversation(conversationId) {
+        var conv = findConversationById(conversationId);
+        var localUnread = conv ? (Number(conv.unreadCount) || 0) : 0;
+        var hasUnreadMessages = false;
+        for (var i = 0; i < state.messages.length; i++) {
+            var m = state.messages[i];
+            if (m && m.id && !m.readByCurrentUser && !isOwnMessage(m)) {
+                hasUnreadMessages = true;
+                break;
+            }
+        }
+        if (localUnread === 0 && !hasUnreadMessages) {
+            return;
+        }
+        // Update the sidebar badge immediately so the user doesn't have to
+        // wait for the next conversation poll to see it clear.
+        clearConversationUnread(conversationId);
+        markRead(conversationId);
     }
 
     function selectConversation(conversationId) {
@@ -3174,7 +3466,7 @@
         }
 
         var body = normalizeMessageBody(els.messageInput.value);
-        if (!body && !state.selectedFile && !state.selectedIssue) {
+        if (!body && !hasSelectedFiles() && !state.selectedIssue) {
             showComposerError('Add a message or choose a file to send.');
             return;
         }
@@ -3185,27 +3477,8 @@
 
         showComposerError(null);
 
-        if (state.selectedFile) {
-            state.uploading = true;
-            updateComposerState();
-            JimApi.uploadAttachment(state.selectedConversationId, state.selectedFile, body || null).then(function () {
-                els.messageInput.value = '';
-                clearSelectedFile();
-                clearReplyTarget();
-                state.shouldAutoScroll = true;
-                return loadMessages(state.selectedConversationId, false, true);
-            }).then(function () {
-                return loadConversations(false);
-            }).catch(function (error) {
-                logError('uploadAttachment', error);
-                var detail = error && error.message ? error.message : 'Unable to upload attachment.';
-                showComposerError(detail);
-                showError(detail);
-            }).then(function () {
-                state.uploading = false;
-                updateComposerState();
-                focusMessageInput();
-            });
+        if (hasSelectedFiles()) {
+            uploadSelectedFilesQueued(body);
             return;
         }
 
@@ -3259,6 +3532,56 @@
     }
 
     /**
+     * Uploads all files in the staged queue sequentially. The optional body
+     * text is sent with the first file only (the rest are uploaded as
+     * stand-alone attachments). Each upload is awaited so a failure on one
+     * file is reported but does not block subsequent files.
+     */
+    function uploadSelectedFilesQueued(body) {
+        var convId = state.selectedConversationId;
+        var files = state.selectedFiles.slice();
+        var caption = body || null;
+        state.uploading = true;
+        updateComposerState();
+
+        var anyFailed = false;
+        var failedNames = [];
+        var chain = Promise.resolve();
+        files.forEach(function (file, idx) {
+            chain = chain.then(function () {
+                var bodyForThis = idx === 0 ? caption : null;
+                return JimApi.uploadAttachment(convId, file, bodyForThis).catch(function (error) {
+                    logError('uploadAttachment', error);
+                    anyFailed = true;
+                    failedNames.push(file.name || 'file');
+                });
+            });
+        });
+
+        chain
+            .then(function () {
+                els.messageInput.value = '';
+                clearSelectedFile();
+                clearReplyTarget();
+                state.shouldAutoScroll = true;
+                return loadMessages(convId, false, true);
+            })
+            .then(function () {
+                return loadConversations(false);
+            })
+            .then(function () {
+                state.uploading = false;
+                updateComposerState();
+                focusMessageInput();
+                if (anyFailed) {
+                    var detail = failedNames.length + ' attachment(s) failed: ' + failedNames.join(', ');
+                    showComposerError(detail);
+                    showError(detail);
+                }
+            });
+    }
+
+    /**
      * Paste handler for the message input. Files (e.g. clipboard image from a
      * screenshot tool) are staged as the pending attachment; plain text falls
      * through to the browser's default behaviour.
@@ -3271,10 +3594,10 @@
         if (!data) {
             return;
         }
-        var file = pickFileFromDataTransfer(data);
-        if (file) {
+        var files = collectFilesFromDataTransfer(data);
+        if (files.length) {
             event.preventDefault();
-            acceptIncomingFile(file);
+            acceptIncomingFiles(files);
         }
         // Otherwise let the browser paste text normally; updateComposerState
         // already fires from the 'input' event after paste completes.
@@ -3353,9 +3676,9 @@
             event.preventDefault();
             clearOverlay();
 
-            var file = pickFileFromDataTransfer(event.dataTransfer);
-            if (file) {
-                acceptIncomingFile(file);
+            var droppedFiles = collectFilesFromDataTransfer(event.dataTransfer);
+            if (droppedFiles.length) {
+                acceptIncomingFiles(droppedFiles);
                 return;
             }
             var text = event.dataTransfer.getData('text/plain')
@@ -3391,24 +3714,34 @@
         return true;
     }
 
-    function pickFileFromDataTransfer(transfer) {
+    /**
+     * Collect every file from a DataTransfer/ClipboardData payload. Some
+     * browsers expose them via .files (FileList) and some only via .items
+     * (with kind === 'file') — we look at both and de-duplicate.
+     */
+    function collectFilesFromDataTransfer(transfer) {
+        var out = [];
         if (!transfer) {
-            return null;
+            return out;
         }
         if (transfer.files && transfer.files.length) {
-            return transfer.files[0];
+            for (var i = 0; i < transfer.files.length; i++) {
+                if (transfer.files[i]) {
+                    out.push(transfer.files[i]);
+                }
+            }
         }
-        if (transfer.items) {
-            for (var i = 0; i < transfer.items.length; i++) {
-                if (transfer.items[i].kind === 'file') {
-                    var f = transfer.items[i].getAsFile();
+        if (!out.length && transfer.items) {
+            for (var j = 0; j < transfer.items.length; j++) {
+                if (transfer.items[j].kind === 'file') {
+                    var f = transfer.items[j].getAsFile();
                     if (f) {
-                        return f;
+                        out.push(f);
                     }
                 }
             }
         }
-        return null;
+        return out;
     }
 
     function insertTextIntoComposer(text) {
@@ -3475,8 +3808,21 @@
             });
             els.fileInput.addEventListener('change', onFileInputChange);
         }
-        if (els.selectedAttachmentRemove) {
-            els.selectedAttachmentRemove.addEventListener('click', clearSelectedFile);
+        // Per-chip remove buttons are delegated through the selected-attachment
+        // container so they keep working after each re-render.
+        if (els.selectedAttachment) {
+            els.selectedAttachment.addEventListener('click', function (event) {
+                var removeBtn = event.target && event.target.closest
+                    ? event.target.closest('[data-action="remove-file"]')
+                    : null;
+                if (!removeBtn) {
+                    return;
+                }
+                var idx = parseInt(removeBtn.getAttribute('data-file-index'), 10);
+                if (!isNaN(idx)) {
+                    removeSelectedFileAt(idx);
+                }
+            });
         }
         if (els.composerReplyCancel) {
             els.composerReplyCancel.addEventListener('click', clearReplyTarget);
@@ -3501,6 +3847,35 @@
                 }
             });
             els.messageInfoClose.addEventListener('click', closeMessageInfo);
+        }
+        if (els.forwardModal) {
+            els.forwardModal.addEventListener('click', function (event) {
+                if (event.target === els.forwardModal) {
+                    closeForwardModal();
+                }
+            });
+        }
+        if (els.forwardCancel) {
+            els.forwardCancel.addEventListener('click', closeForwardModal);
+        }
+        if (els.forwardSearch) {
+            els.forwardSearch.addEventListener('input', function () {
+                renderForwardTargets(els.forwardSearch.value);
+            });
+        }
+        if (els.forwardTargets) {
+            els.forwardTargets.addEventListener('click', function (event) {
+                var btn = event.target && event.target.closest
+                    ? event.target.closest('[data-forward-target]')
+                    : null;
+                if (!btn) {
+                    return;
+                }
+                var targetId = parseInt(btn.getAttribute('data-forward-target'), 10);
+                if (!isNaN(targetId)) {
+                    submitForward(targetId);
+                }
+            });
         }
         if (els.imageLightbox) {
             if (els.messageList) {

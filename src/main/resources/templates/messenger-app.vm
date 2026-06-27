@@ -100,14 +100,7 @@
                             </div>
                             <button id="jim-composer-reply-cancel" type="button" class="jim-composer-chip-remove" aria-label="Cancel reply">&times;</button>
                         </div>
-                        <div id="jim-selected-attachment" class="jim-selected-attachment" hidden>
-                            <div id="jim-selected-attachment-preview" class="jim-selected-attachment-preview" hidden></div>
-                            <div class="jim-selected-attachment-meta">
-                                <span id="jim-selected-attachment-name" class="jim-selected-attachment-name"></span>
-                                <span id="jim-selected-attachment-size" class="jim-selected-attachment-size"></span>
-                            </div>
-                            <button id="jim-selected-attachment-remove" type="button" class="jim-composer-chip-remove" aria-label="Remove attachment">&times;</button>
-                        </div>
+                        <div id="jim-selected-attachment" class="jim-selected-attachment" hidden></div>
                         <div id="jim-selected-issue" class="jim-selected-issue" hidden>
                             <span class="jim-selected-issue-icon" aria-hidden="true">&#128279;</span>
                             <span id="jim-selected-issue-key" class="jim-selected-issue-key"></span>
@@ -134,33 +127,58 @@
                                 <div id="jim-issue-search-results" class="jim-issue-search-results"></div>
                             </div>
                             <div id="jim-composer-controls" class="jim-composer-row">
-                                <input id="jim-file-input" type="file" class="jim-visually-hidden" tabindex="-1" aria-hidden="true" />
+                                <input id="jim-file-input" type="file" class="jim-visually-hidden" tabindex="-1" aria-hidden="true" multiple />
                                 <button id="jim-attach-button"
                                         type="button"
                                         class="jim-composer-icon-button jim-attach-button"
-                                        aria-label="Attach a file"
-                                        title="Attach a file">&#128206;</button>
+                                        aria-label="Attach files"
+                                        title="Attach files">
+                                    <svg class="jim-composer-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M16.5 7.5l-7 7a3 3 0 1 0 4.243 4.243L20 13.5a5 5 0 1 0-7.071-7.071L6.343 13.014a7 7 0 1 0 9.9 9.9L20 19.157"/>
+                                    </svg>
+                                </button>
                                 <button id="jim-mention-button"
                                         type="button"
                                         class="jim-composer-icon-button jim-mention-button"
                                         aria-label="Mention a member"
                                         title="Mention a member"
-                                        hidden>@</button>
+                                        hidden>
+                                    <svg class="jim-composer-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <circle cx="12" cy="12" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                                        <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M15.5 12v1.5a2.5 2.5 0 0 0 5 0V12a8.5 8.5 0 1 0-3.5 6.875"/>
+                                    </svg>
+                                </button>
                                 <button id="jim-issue-button"
                                         type="button"
                                         class="jim-composer-icon-button jim-issue-button"
                                         aria-label="Link a Jira issue"
-                                        title="Link a Jira issue">&#128279;</button>
+                                        title="Link a Jira issue">
+                                    <svg class="jim-composer-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M10.5 13.5a4 4 0 0 0 5.66 0l3-3a4 4 0 1 0-5.66-5.66l-1.5 1.5M13.5 10.5a4 4 0 0 0-5.66 0l-3 3a4 4 0 1 0 5.66 5.66l1.5-1.5"/>
+                                    </svg>
+                                </button>
                                 <button id="jim-emoji-button"
                                         type="button"
                                         class="jim-composer-icon-button jim-emoji-button"
                                         aria-label="Insert emoji"
-                                        title="Insert emoji">&#128578;</button>
+                                        title="Insert emoji">
+                                    <svg class="jim-composer-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                                        <circle cx="9" cy="10" r="1.2" fill="currentColor"/>
+                                        <circle cx="15" cy="10" r="1.2" fill="currentColor"/>
+                                        <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8.5 14.5c1 1.5 2.2 2.5 3.5 2.5s2.5-1 3.5-2.5"/>
+                                    </svg>
+                                </button>
                                 <button id="jim-voice-button"
                                         type="button"
                                         class="jim-composer-icon-button jim-voice-button"
                                         aria-label="Record a voice message"
-                                        title="Record a voice message">&#127908;</button>
+                                        title="Record a voice message">
+                                    <svg class="jim-composer-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <rect x="9" y="3" width="6" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                                        <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/>
+                                    </svg>
+                                </button>
                                 <textarea id="jim-message-input"
                                           class="jim-composer-input"
                                           rows="1"
@@ -173,7 +191,9 @@
                                         class="jim-send-button"
                                         aria-label="$i18n.getText('jim.composer.send')"
                                         disabled>
-                                    $i18n.getText("jim.composer.send")
+                                    <svg class="jim-send-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path fill="currentColor" d="M3.4 20.4 21 12 3.4 3.6c-.5-.2-1 .3-.8.8L4.6 11l8.4 1-8.4 1-2 6.6c-.2.5.3 1 .8.8z"/>
+                                    </svg>
                                 </button>
                             </div>
                         </div>
@@ -213,6 +233,23 @@
                 </div>
                 <div class="jim-modal-actions">
                     <button id="jim-message-info-close" type="button" class="jim-modal-button">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="jim-forward-modal" class="jim-modal-overlay" hidden>
+            <div class="jim-modal jim-forward-modal" role="dialog" aria-modal="true" aria-labelledby="jim-forward-modal-title">
+                <h3 id="jim-forward-modal-title" class="jim-modal-title">Forward message</h3>
+                <div id="jim-forward-preview" class="jim-forward-preview" dir="auto"></div>
+                <label class="jim-modal-label" for="jim-forward-search">Send to</label>
+                <input id="jim-forward-search" class="jim-search-input" type="search" autocomplete="off"
+                       placeholder="Search conversations..." />
+                <div id="jim-forward-targets" class="jim-forward-targets" role="listbox" aria-label="Forwarding targets">
+                    <div class="jim-loading">Loading conversations...</div>
+                </div>
+                <div id="jim-forward-error" class="jim-inline-error" role="alert" hidden></div>
+                <div class="jim-modal-actions">
+                    <button id="jim-forward-cancel" type="button" class="jim-modal-button">Cancel</button>
                 </div>
             </div>
         </div>
