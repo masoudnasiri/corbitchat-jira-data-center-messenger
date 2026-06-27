@@ -4186,10 +4186,67 @@
         return outputArray;
     }
 
+    /**
+     * Resolves the SW URL and scope as absolute URLs bound to the current
+     * page origin. Using new URL() against window.location.origin (rather
+     * than string concatenation) makes the origin explicit and removes any
+     * chance of the SW being registered against an opaque origin if the
+     * page happens to be in a sandboxed/iframe context. The servlet sends
+     * Service-Worker-Allowed: / so an explicit broader scope is permitted.
+     */
+    function pushUrls() {
+        var origin = window.location.origin;
+        var ctx = contextPath();
+        return {
+            origin: origin,
+            sw: new URL(ctx + '/plugins/servlet/jim/sw.js', origin).href,
+            scope: new URL(ctx + '/', origin).href
+        };
+    }
+
+    function logPushDiagnostics(stage, extra) {
+        try {
+            var info = {
+                stage: stage,
+                locationHref: window.location.href,
+                locationOrigin: window.location.origin,
+                isSecureContext: window.isSecureContext,
+                notificationPermission: (window.Notification && window.Notification.permission) || 'unsupported'
+            };
+            if (extra) {
+                for (var k in extra) {
+                    if (Object.prototype.hasOwnProperty.call(extra, k)) {
+                        info[k] = extra[k];
+                    }
+                }
+            }
+            console.log('[CorbitChat Push]', info);
+        } catch (logError) {
+            // best effort
+        }
+    }
+
     function subscribeForPush() {
-        return navigator.serviceWorker.register(
-                contextPath() + '/plugins/servlet/jim/sw.js',
-                { updateViaCache: 'none' })
+        var urls = pushUrls();
+
+        // Fail fast with a clear message if this code is running inside an
+        // opaque-origin context (sandboxed iframe, blob/data URL, srcdoc).
+        // A service worker registered from such a page inherits the opaque
+        // origin and its fetches go out with Origin: null, which the Jira
+        // server (correctly) refuses as cross-origin.
+        if (!urls.origin || urls.origin === 'null') {
+            logPushDiagnostics('blocked-opaque-origin');
+            return Promise.reject(new Error(
+                'Push setup failed because the request was not made from the Jira page origin.'
+            ));
+        }
+
+        logPushDiagnostics('register', { swUrl: urls.sw, scope: urls.scope });
+
+        return navigator.serviceWorker.register(urls.sw, {
+                scope: urls.scope,
+                updateViaCache: 'none'
+            })
             .then(function (registration) {
                 // Force an update check so a redeployed service worker
                 // replaces the old one immediately.
@@ -4202,6 +4259,10 @@
             })
             .then(function (registration) {
                 return registration.pushManager.getSubscription().then(function (existing) {
+                    logPushDiagnostics('ready', {
+                        scope: registration.scope,
+                        hasSubscription: !!existing
+                    });
                     if (existing) {
                         return existing;
                     }
@@ -4216,6 +4277,10 @@
             .then(function (subscription) {
                 var payload = subscription && subscription.toJSON ? subscription.toJSON() : subscription;
                 return JimApi.savePushSubscription(payload);
+            })
+            .catch(function (error) {
+                logPushDiagnostics('error', { message: error && error.message });
+                throw error;
             });
     }
 
@@ -4246,7 +4311,7 @@
     }
 
     function unsubscribeFromPush() {
-        return navigator.serviceWorker.getRegistration(contextPath() + '/plugins/servlet/jim/sw.js')
+        return navigator.serviceWorker.getRegistration(pushUrls().sw)
             .then(function (registration) {
                 return registration ? registration.pushManager.getSubscription() : null;
             })
@@ -4324,6 +4389,12 @@
             }
             subscribeForPush().catch(function (error) {
                 logError('push.subscribe', error);
+                // Surface a clear message when the failure is the
+                // opaque-origin case so the user knows it isn't a generic
+                // network glitch.
+                if (error && error.message && error.message.indexOf('Jira page origin') !== -1) {
+                    showError(error.message);
+                }
             });
         });
     }
@@ -4336,6 +4407,9 @@
             // Keep the subscription fresh on every chat visit.
             subscribeForPush().catch(function (error) {
                 logError('push.subscribe', error);
+                if (error && error.message && error.message.indexOf('Jira page origin') !== -1) {
+                    showError(error.message);
+                }
             });
         }
         var button = document.getElementById('jim-push-enable');

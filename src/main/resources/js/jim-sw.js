@@ -13,14 +13,27 @@
     var SERVLET_MARKER = '/plugins/servlet/jim/sw.js';
     var swPath = self.location.pathname;
     var contextPath = swPath.slice(0, swPath.length - SERVLET_MARKER.length);
-    var summaryUrl = contextPath + '/rest/jim/1.0/push/summary';
-    var chatUrl = contextPath + '/plugins/servlet/jim/chat';
+    // Build absolute URLs against the SW's own origin so the fetch is
+    // unambiguously same-origin. Using new URL() (rather than string
+    // concatenation) makes the resolved origin explicit and removes any
+    // chance that a stale SW computes a stringy path that resolves
+    // somewhere unexpected.
+    var summaryUrl = new URL(contextPath + '/rest/jim/1.0/push/summary', self.location.origin).href;
+    var chatUrl = new URL(contextPath + '/plugins/servlet/jim/chat', self.location.origin).href;
 
     self.addEventListener('install', function () {
         self.skipWaiting();
     });
 
     self.addEventListener('activate', function (event) {
+        // One-shot diagnostic line so origin / URL issues are visible in
+        // Chrome DevTools -> Application -> Service Workers -> Console.
+        try {
+            console.log('[CorbitChat SW] activate origin=', self.location.origin,
+                ' href=', self.location.href, ' summaryUrl=', summaryUrl);
+        } catch (logError) {
+            // best effort
+        }
         event.waitUntil(self.clients.claim());
     });
 
@@ -47,10 +60,17 @@
         }
 
         event.waitUntil(
-            fetch(summaryUrl, {
+            // Explicit same-origin Request so any URL-resolution mistake
+            // surfaces as an error here instead of being silently treated
+            // as cross-origin by the browser. The credentials field still
+            // sends the Jira session cookie automatically.
+            fetch(new Request(summaryUrl, {
+                method: 'GET',
                 credentials: 'same-origin',
+                mode: 'same-origin',
+                cache: 'no-cache',
                 headers: { 'Accept': 'application/json' }
-            })
+            }))
                 .then(function (response) {
                     if (!response.ok) {
                         throw new Error('summary failed: ' + response.status);
@@ -69,7 +89,15 @@
                         data: { url: chatUrl }
                     });
                 })
-                .catch(function () {
+                .catch(function (fetchError) {
+                    try {
+                        console.warn('[CorbitChat SW] /push/summary fetch failed: ',
+                            fetchError && fetchError.message,
+                            ' swOrigin=', self.location.origin,
+                            ' url=', summaryUrl);
+                    } catch (logError) {
+                        // best effort
+                    }
                     return self.registration.showNotification('CorbitChat', {
                         body: 'You have new messages',
                         tag: 'jim-unread',
