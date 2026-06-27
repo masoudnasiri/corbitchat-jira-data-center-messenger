@@ -17,6 +17,7 @@
         <button type="button" class="jim-admin-tab" data-tab="access" role="tab" aria-selected="false">Access Control</button>
         <button type="button" class="jim-admin-tab" data-tab="notifications" role="tab" aria-selected="false">Notifications</button>
         <button type="button" class="jim-admin-tab" data-tab="attachments" role="tab" aria-selected="false">Attachments</button>
+        <button type="button" class="jim-admin-tab" data-tab="branding" role="tab" aria-selected="false">Branding</button>
         <button type="button" class="jim-admin-tab" data-tab="diagnostics" role="tab" aria-selected="false">Diagnostics</button>
         <button type="button" class="jim-admin-tab" data-tab="license" role="tab" aria-selected="false">License</button>
         <button type="button" class="jim-admin-tab" data-tab="help" role="tab" aria-selected="false">Help</button>
@@ -114,6 +115,35 @@
             <label class="jim-admin-check"><input type="checkbox" id="jim-set-imagePreviewEnabled"/> Show inline image previews in chat</label>
             <div class="jim-admin-actions">
                 <button id="jim-save-attachments" type="button" class="aui-button aui-button-primary">Save attachment settings</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== Branding ===== -->
+    <section class="jim-admin-panel" data-panel="branding">
+        <h3>Branding</h3>
+        <p class="jim-admin-hint">Customise the chat title and logo shown in the sidebar header. Leave a field blank to fall back to the built-in CorbitChat default.</p>
+        <div class="jim-admin-field">
+            <label class="jim-admin-label" for="jim-set-brandingTitle">Chat title</label>
+            <input type="text" id="jim-set-brandingTitle" maxlength="60" placeholder="CorbitChat"/>
+            <span class="jim-admin-hint">Shown in the sidebar header. Up to 60 characters. Leave blank to use &ldquo;CorbitChat&rdquo;.</span>
+
+            <label class="jim-admin-label" for="jim-set-brandingLogoUrl">Chat logo URL</label>
+            <input type="text" id="jim-set-brandingLogoUrl" maxlength="1024" placeholder="/download/resources/com.corbitlogic.corbitchat.jira.dc:jim-messenger-resources/corbit-app-logo.png"/>
+            <span class="jim-admin-hint">Same-origin path starting with <code>/</code>, an <code>https://</code> URL, or a <code>data:image/...</code> URI. Leave blank to use the bundled CorbitChat logo. Recommended 36&times;36px or square SVG.</span>
+
+            <div class="jim-admin-branding-preview" id="jim-branding-preview" aria-live="polite">
+                <span class="jim-admin-branding-preview-label">Preview</span>
+                <span class="jim-admin-branding-preview-card">
+                    <img id="jim-branding-preview-logo" class="jim-admin-branding-preview-logo" alt="" hidden/>
+                    <span class="jim-admin-branding-preview-logo-fallback" id="jim-branding-preview-logo-fallback" aria-hidden="true">&#128172;</span>
+                    <span id="jim-branding-preview-title" class="jim-admin-branding-preview-title">CorbitChat</span>
+                </span>
+            </div>
+
+            <div class="jim-admin-actions">
+                <button id="jim-save-branding" type="button" class="aui-button aui-button-primary">Save branding</button>
+                <button id="jim-reset-branding" type="button" class="aui-button">Reset to defaults</button>
             </div>
         </div>
     </section>

@@ -34,6 +34,10 @@ public interface JimAdminSettingsService {
 
     public boolean isImagePreviewEnabled();
 
+    public String getBrandingTitle();
+
+    public String getBrandingLogoUrl();
+
     public Map<String, Object> getAllSettings();
 
     public List<String> updateSettings(Map<String, Object> var1);

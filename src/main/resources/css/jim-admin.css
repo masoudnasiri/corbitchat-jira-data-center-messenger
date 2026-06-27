@@ -413,3 +413,54 @@
 #jim-admin-page .jim-diag-muted {
     color: #6b778c;
 }
+
+/* ===== Branding tab ===== */
+
+#jim-admin-page .jim-admin-branding-preview {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 16px 0;
+}
+
+#jim-admin-page .jim-admin-branding-preview-label {
+    color: #6b778c;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+#jim-admin-page .jim-admin-branding-preview-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border: 1px solid #dfe1e6;
+    border-radius: 6px;
+    background: #ffffff;
+}
+
+#jim-admin-page .jim-admin-branding-preview-logo {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    border-radius: 6px;
+}
+
+#jim-admin-page .jim-admin-branding-preview-logo-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: #e9f2ff;
+    color: #0052cc;
+    border-radius: 6px;
+    font-size: 18px;
+}
+
+#jim-admin-page .jim-admin-branding-preview-title {
+    color: #172b4d;
+    font-weight: 700;
+    font-size: 15px;
+}

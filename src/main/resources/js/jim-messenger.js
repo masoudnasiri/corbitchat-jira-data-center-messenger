@@ -866,19 +866,23 @@
             clearSelectedFile();
             return;
         }
+        acceptIncomingFile(els.fileInput.files[0]);
+    }
 
-        var file = els.fileInput.files[0];
+    /**
+     * Common entry point used by the attach button, drag-and-drop, and paste:
+     * validates the file and stages it as the pending attachment.
+     */
+    function acceptIncomingFile(file) {
         if (!file) {
             clearSelectedFile();
-            return;
+            return false;
         }
-
         if (file.size > MAX_UPLOAD_SIZE_BYTES) {
             showComposerError('File exceeds the maximum allowed size of 10 MB.');
             clearSelectedFile();
-            return;
+            return false;
         }
-
         if (state.selectedFilePreviewUrl) {
             URL.revokeObjectURL(state.selectedFilePreviewUrl);
             state.selectedFilePreviewUrl = null;
@@ -891,6 +895,27 @@
         renderSelectedAttachment();
         updateComposerState();
         showComposerError(null);
+        focusMessageInput();
+        return true;
+    }
+
+    function focusMessageInput() {
+        if (!els.messageInput) {
+            return;
+        }
+        // Skip when the composer is hidden/read-only so we don't steal focus
+        // away from the recipient picker on the empty state.
+        if (els.composer && els.composer.classList.contains('jim-composer-is-readonly')) {
+            return;
+        }
+        if (els.messageInput.disabled || els.messageInput.readOnly) {
+            return;
+        }
+        try {
+            els.messageInput.focus({ preventScroll: true });
+        } catch (e) {
+            els.messageInput.focus();
+        }
     }
 
     function resolveIssueUrl(url) {
@@ -3113,6 +3138,7 @@
             }).then(function () {
                 state.uploading = false;
                 updateComposerState();
+                focusMessageInput();
             });
             return;
         }
@@ -3136,6 +3162,7 @@
             }).then(function () {
                 state.sending = false;
                 updateComposerState();
+                focusMessageInput();
             });
             return;
         }
@@ -3161,7 +3188,183 @@
         }).then(function () {
             state.sending = false;
             updateComposerState();
+            focusMessageInput();
         });
+    }
+
+    /**
+     * Paste handler for the message input. Files (e.g. clipboard image from a
+     * screenshot tool) are staged as the pending attachment; plain text falls
+     * through to the browser's default behaviour.
+     */
+    function onComposerPaste(event) {
+        if (!composerAcceptsInput()) {
+            return;
+        }
+        var data = event.clipboardData;
+        if (!data) {
+            return;
+        }
+        var file = pickFileFromDataTransfer(data);
+        if (file) {
+            event.preventDefault();
+            acceptIncomingFile(file);
+        }
+        // Otherwise let the browser paste text normally; updateComposerState
+        // already fires from the 'input' event after paste completes.
+    }
+
+    /**
+     * Drag-and-drop on the chat panel: drop a file/image to stage it as the
+     * pending attachment; drop plain text to insert it into the input.
+     * No state mutation happens until the actual 'drop' event fires.
+     */
+    function bindComposerDragAndDrop() {
+        if (!els.chatPanelShell) {
+            return;
+        }
+        var shell = els.chatPanelShell;
+        var dragDepth = 0;
+
+        function hasUsefulPayload(transfer) {
+            if (!transfer) {
+                return false;
+            }
+            if (transfer.types) {
+                for (var i = 0; i < transfer.types.length; i++) {
+                    var type = transfer.types[i];
+                    if (type === 'Files' || type === 'text/plain' || type === 'text/uri-list') {
+                        return true;
+                    }
+                }
+            }
+            return transfer.files && transfer.files.length > 0;
+        }
+
+        function clearOverlay() {
+            dragDepth = 0;
+            shell.classList.remove('jim-chat-drop-active');
+        }
+
+        shell.addEventListener('dragenter', function (event) {
+            if (!composerAcceptsInput() || !hasUsefulPayload(event.dataTransfer)) {
+                return;
+            }
+            event.preventDefault();
+            dragDepth++;
+            shell.classList.add('jim-chat-drop-active');
+        });
+
+        shell.addEventListener('dragover', function (event) {
+            if (!composerAcceptsInput() || !hasUsefulPayload(event.dataTransfer)) {
+                return;
+            }
+            event.preventDefault();
+            if (event.dataTransfer) {
+                event.dataTransfer.dropEffect = 'copy';
+            }
+        });
+
+        shell.addEventListener('dragleave', function (event) {
+            if (dragDepth === 0) {
+                return;
+            }
+            dragDepth--;
+            if (dragDepth <= 0) {
+                clearOverlay();
+            }
+        });
+
+        shell.addEventListener('drop', function (event) {
+            if (!composerAcceptsInput()) {
+                clearOverlay();
+                return;
+            }
+            if (!hasUsefulPayload(event.dataTransfer)) {
+                clearOverlay();
+                return;
+            }
+            event.preventDefault();
+            clearOverlay();
+
+            var file = pickFileFromDataTransfer(event.dataTransfer);
+            if (file) {
+                acceptIncomingFile(file);
+                return;
+            }
+            var text = event.dataTransfer.getData('text/plain')
+                || event.dataTransfer.getData('text/uri-list');
+            if (text) {
+                insertTextIntoComposer(text);
+            }
+        });
+
+        // If the user drops outside the shell or releases the mouse elsewhere,
+        // make sure the overlay state doesn't get stuck.
+        window.addEventListener('dragend', clearOverlay);
+        window.addEventListener('drop', function (event) {
+            if (!shell.contains(event.target)) {
+                clearOverlay();
+            }
+        });
+    }
+
+    function composerAcceptsInput() {
+        if (!state.selectedConversationId) {
+            return false;
+        }
+        if (state.selectedConversation && isSystemConversation(state.selectedConversation)) {
+            return false;
+        }
+        if (state.licenseBlocked) {
+            return false;
+        }
+        if (els.composer && els.composer.classList.contains('jim-composer-is-readonly')) {
+            return false;
+        }
+        return true;
+    }
+
+    function pickFileFromDataTransfer(transfer) {
+        if (!transfer) {
+            return null;
+        }
+        if (transfer.files && transfer.files.length) {
+            return transfer.files[0];
+        }
+        if (transfer.items) {
+            for (var i = 0; i < transfer.items.length; i++) {
+                if (transfer.items[i].kind === 'file') {
+                    var f = transfer.items[i].getAsFile();
+                    if (f) {
+                        return f;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    function insertTextIntoComposer(text) {
+        if (!els.messageInput || !text) {
+            return;
+        }
+        var input = els.messageInput;
+        var start = typeof input.selectionStart === 'number' ? input.selectionStart : input.value.length;
+        var end = typeof input.selectionEnd === 'number' ? input.selectionEnd : input.value.length;
+        var before = input.value.substring(0, start);
+        var after = input.value.substring(end);
+        var needsLeadingSpace = before.length > 0 && !/\s$/.test(before);
+        var insertion = (needsLeadingSpace ? ' ' : '') + text;
+        input.value = before + insertion + after;
+        var caret = before.length + insertion.length;
+        try {
+            input.setSelectionRange(caret, caret);
+        } catch (e) {
+            // setSelectionRange is unsupported on some input types; safe to skip.
+        }
+        updateComposerState();
+        focusMessageInput();
     }
 
     function startPolling() {
@@ -3394,7 +3597,10 @@
                     sendMessage();
                 }
             });
+            els.messageInput.addEventListener('paste', onComposerPaste);
         }
+
+        bindComposerDragAndDrop();
 
         document.addEventListener('click', function (event) {
             if (els.searchResults && els.searchInput

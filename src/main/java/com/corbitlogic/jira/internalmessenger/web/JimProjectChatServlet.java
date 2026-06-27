@@ -29,6 +29,7 @@ import com.atlassian.jira.user.ApplicationUser;
 import com.atlassian.plugin.webresource.WebResourceManager;
 import com.atlassian.templaterenderer.TemplateRenderer;
 import com.corbitlogic.jira.internalmessenger.ao.JimConversation;
+import com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService;
 import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
 import com.corbitlogic.jira.internalmessenger.service.JimProjectChatService;
 import java.io.IOException;
@@ -55,14 +56,16 @@ extends HttpServlet {
     private final AvatarService avatarService;
     private final JimProjectChatService projectChatService;
     private final JimPermissionService permissionService;
+    private final JimAdminSettingsService adminSettingsService;
 
-    public JimProjectChatServlet(JiraAuthenticationContext authenticationContext, TemplateRenderer templateRenderer, WebResourceManager webResourceManager, AvatarService avatarService, JimProjectChatService projectChatService, JimPermissionService permissionService) {
+    public JimProjectChatServlet(JiraAuthenticationContext authenticationContext, TemplateRenderer templateRenderer, WebResourceManager webResourceManager, AvatarService avatarService, JimProjectChatService projectChatService, JimPermissionService permissionService, JimAdminSettingsService adminSettingsService) {
         this.authenticationContext = authenticationContext;
         this.templateRenderer = templateRenderer;
         this.webResourceManager = webResourceManager;
         this.avatarService = avatarService;
         this.projectChatService = projectChatService;
         this.permissionService = permissionService;
+        this.adminSettingsService = adminSettingsService;
     }
 
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
@@ -102,6 +105,8 @@ extends HttpServlet {
         context.put("i18n", this.authenticationContext.getI18nHelper());
         context.put("logoAvailable", logoAvailable);
         context.put("logoUrl", logoUrl);
+        context.put("brandTitle", this.resolveBrandTitle());
+        context.put("brandLogoUrl", this.resolveBrandLogoUrl(logoAvailable, logoUrl));
         context.put("projectChatMode", true);
         context.put("projectKey", project.getKey());
         context.put("projectName", project.getName());
@@ -109,6 +114,29 @@ extends HttpServlet {
         context.put("projectIsMember", isMember);
         context.put("projectLeadDisplayName", lead != null ? lead.getDisplayName() : null);
         this.templateRenderer.render(TEMPLATE_PATH, context, (Writer)response.getWriter());
+    }
+
+    private String resolveBrandTitle() {
+        try {
+            String title = this.adminSettingsService.getBrandingTitle();
+            return title != null && !title.isEmpty() ? title : "CorbitChat";
+        }
+        catch (RuntimeException ex) {
+            return "CorbitChat";
+        }
+    }
+
+    private String resolveBrandLogoUrl(boolean logoAvailable, String defaultLogoUrl) {
+        try {
+            String url = this.adminSettingsService.getBrandingLogoUrl();
+            if (url != null && !url.isEmpty()) {
+                return url;
+            }
+        }
+        catch (RuntimeException ex) {
+            // fall back to bundled logo
+        }
+        return logoAvailable ? defaultLogoUrl : null;
     }
 
     private String resolveAvatarUrl(ApplicationUser user) {

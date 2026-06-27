@@ -24,6 +24,7 @@ import com.atlassian.plugin.PluginParseException;
 import com.atlassian.plugin.web.ContextProvider;
 import com.atlassian.plugin.webresource.WebResourceManager;
 import com.corbitlogic.jira.internalmessenger.ao.JimConversation;
+import com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService;
 import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
 import com.corbitlogic.jira.internalmessenger.service.JimProjectChatService;
 import java.net.URI;
@@ -41,13 +42,15 @@ implements ContextProvider {
     private final WebResourceManager webResourceManager;
     private final JimProjectChatService projectChatService;
     private final JimPermissionService permissionService;
+    private final JimAdminSettingsService adminSettingsService;
 
-    public JimProjectChatPanelContextProvider(JiraAuthenticationContext authenticationContext, AvatarService avatarService, WebResourceManager webResourceManager, JimProjectChatService projectChatService, JimPermissionService permissionService) {
+    public JimProjectChatPanelContextProvider(JiraAuthenticationContext authenticationContext, AvatarService avatarService, WebResourceManager webResourceManager, JimProjectChatService projectChatService, JimPermissionService permissionService, JimAdminSettingsService adminSettingsService) {
         this.authenticationContext = authenticationContext;
         this.avatarService = avatarService;
         this.webResourceManager = webResourceManager;
         this.projectChatService = projectChatService;
         this.permissionService = permissionService;
+        this.adminSettingsService = adminSettingsService;
     }
 
     public void init(Map<String, String> params) throws PluginParseException {
@@ -62,6 +65,17 @@ implements ContextProvider {
             ctx.put("currentUserKey", user.getKey());
             ctx.put("currentUserDisplayName", user.getDisplayName());
             ctx.put("currentUserAvatarUrl", this.resolveAvatarUrl(user));
+        }
+        try {
+            String title = this.adminSettingsService.getBrandingTitle();
+            ctx.put("brandTitle", title != null && !title.isEmpty() ? title : "CorbitChat");
+            String logoUrl = this.adminSettingsService.getBrandingLogoUrl();
+            if (logoUrl != null && !logoUrl.isEmpty()) {
+                ctx.put("brandLogoUrl", logoUrl);
+            }
+        }
+        catch (RuntimeException ex) {
+            ctx.put("brandTitle", "CorbitChat");
         }
         if ((project = this.resolveProject(context)) != null) {
             ctx.put("projectChatMode", true);

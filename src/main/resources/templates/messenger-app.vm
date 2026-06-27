@@ -9,14 +9,26 @@
          data-project-lead-name="$!projectLeadDisplayName"
          #end>
 
+        #set($jimDisplayTitle = $brandTitle)
+        #if(!$jimDisplayTitle || $jimDisplayTitle == "")
+            #set($jimDisplayTitle = "CorbitChat")
+        #end
+        #set($jimDisplayLogoUrl = $brandLogoUrl)
+        #if(!$jimDisplayLogoUrl || $jimDisplayLogoUrl == "")
+            #if($logoAvailable && $logoUrl)
+                #set($jimDisplayLogoUrl = $logoUrl)
+            #else
+                #set($jimDisplayLogoUrl = "")
+            #end
+        #end
         <aside class="jim-sidebar" aria-label="Conversations">
             <header class="jim-sidebar-header">
                 <div class="jim-sidebar-brand">
-                    #if($logoAvailable && $logoUrl)
-                    <img class="jim-sidebar-brand-logo" src="$logoUrl" alt="CorbitChat logo" width="36" height="36" />
+                    #if($jimDisplayLogoUrl && $jimDisplayLogoUrl != "")
+                    <img class="jim-sidebar-brand-logo" src="$jimDisplayLogoUrl" alt="$jimDisplayTitle logo" width="36" height="36" />
                     #end
                     <div class="jim-sidebar-brand-text">
-                        <div class="jim-sidebar-brand-title">CorbitChat</div>
+                        <div class="jim-sidebar-brand-title">$jimDisplayTitle</div>
                         <div id="jim-sidebar-unread-summary" class="jim-sidebar-brand-subtitle">0 unread messages</div>
                     </div>
                 </div>

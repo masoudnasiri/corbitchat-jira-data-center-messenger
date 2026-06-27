@@ -21,6 +21,7 @@ import com.atlassian.jira.user.ApplicationUser;
 import com.atlassian.plugin.webresource.WebResourceManager;
 import com.atlassian.templaterenderer.TemplateRenderer;
 import com.corbitlogic.jira.internalmessenger.bootstrap.JimPluginBootstrap;
+import com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService;
 import java.io.IOException;
 import java.io.Writer;
 import java.net.URI;
@@ -40,12 +41,14 @@ extends HttpServlet {
     private final TemplateRenderer templateRenderer;
     private final WebResourceManager webResourceManager;
     private final AvatarService avatarService;
+    private final JimAdminSettingsService adminSettingsService;
 
-    public JimChatServlet(JiraAuthenticationContext authenticationContext, TemplateRenderer templateRenderer, WebResourceManager webResourceManager, AvatarService avatarService, JimPluginBootstrap pluginBootstrap) {
+    public JimChatServlet(JiraAuthenticationContext authenticationContext, TemplateRenderer templateRenderer, WebResourceManager webResourceManager, AvatarService avatarService, JimPluginBootstrap pluginBootstrap, JimAdminSettingsService adminSettingsService) {
         this.authenticationContext = authenticationContext;
         this.templateRenderer = templateRenderer;
         this.webResourceManager = webResourceManager;
         this.avatarService = avatarService;
+        this.adminSettingsService = adminSettingsService;
     }
 
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
@@ -69,7 +72,32 @@ extends HttpServlet {
         context.put("i18n", this.authenticationContext.getI18nHelper());
         context.put("logoAvailable", logoAvailable);
         context.put("logoUrl", logoUrl);
+        context.put("brandTitle", this.resolveBrandTitle());
+        context.put("brandLogoUrl", this.resolveBrandLogoUrl(logoAvailable, logoUrl));
         this.templateRenderer.render(TEMPLATE_PATH, context, (Writer)response.getWriter());
+    }
+
+    private String resolveBrandTitle() {
+        try {
+            String title = this.adminSettingsService.getBrandingTitle();
+            return title != null && !title.isEmpty() ? title : "CorbitChat";
+        }
+        catch (RuntimeException ex) {
+            return "CorbitChat";
+        }
+    }
+
+    private String resolveBrandLogoUrl(boolean logoAvailable, String defaultLogoUrl) {
+        try {
+            String url = this.adminSettingsService.getBrandingLogoUrl();
+            if (url != null && !url.isEmpty()) {
+                return url;
+            }
+        }
+        catch (RuntimeException ex) {
+            // fall back to bundled logo
+        }
+        return logoAvailable ? defaultLogoUrl : null;
     }
 
     private String resolveAvatarUrl(ApplicationUser user) {

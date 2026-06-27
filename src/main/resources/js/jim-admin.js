@@ -143,6 +143,51 @@
         for (var r = 0; r < radios.length; r++) {
             radios[r].checked = radios[r].value === settings.chatMode;
         }
+        var brandTitle = el('jim-set-brandingTitle');
+        if (brandTitle) {
+            brandTitle.value = settings.brandingTitle && settings.brandingTitle !== 'CorbitChat'
+                ? settings.brandingTitle
+                : (settings.brandingTitle || '');
+        }
+        var brandLogo = el('jim-set-brandingLogoUrl');
+        if (brandLogo) {
+            brandLogo.value = settings.brandingLogoUrl || '';
+        }
+        renderBrandingPreview();
+    }
+
+    function renderBrandingPreview() {
+        var titleInput = el('jim-set-brandingTitle');
+        var logoInput = el('jim-set-brandingLogoUrl');
+        var titleEl = el('jim-branding-preview-title');
+        var logoEl = el('jim-branding-preview-logo');
+        var fallbackEl = el('jim-branding-preview-logo-fallback');
+        if (!titleEl || !logoEl || !fallbackEl) {
+            return;
+        }
+        var titleValue = (titleInput && titleInput.value || '').trim();
+        titleEl.textContent = titleValue || 'CorbitChat';
+        var logoValue = (logoInput && logoInput.value || '').trim();
+        if (logoValue) {
+            var lower = logoValue.toLowerCase();
+            var safeScheme = logoValue.charAt(0) === '/'
+                || lower.indexOf('http://') === 0
+                || lower.indexOf('https://') === 0
+                || lower.indexOf('data:image/') === 0;
+            if (safeScheme) {
+                logoEl.src = logoValue;
+                logoEl.hidden = false;
+                fallbackEl.hidden = true;
+                logoEl.onerror = function () {
+                    logoEl.hidden = true;
+                    fallbackEl.hidden = false;
+                };
+                return;
+            }
+        }
+        logoEl.removeAttribute('src');
+        logoEl.hidden = true;
+        fallbackEl.hidden = false;
     }
 
     function loadSettings() {
@@ -189,6 +234,33 @@
                 imagePreviewEnabled: el('jim-set-imagePreviewEnabled').checked
             }, 'Attachment settings saved.');
         });
+
+        var brandTitle = el('jim-set-brandingTitle');
+        var brandLogo = el('jim-set-brandingLogoUrl');
+        if (brandTitle) {
+            brandTitle.addEventListener('input', renderBrandingPreview);
+        }
+        if (brandLogo) {
+            brandLogo.addEventListener('input', renderBrandingPreview);
+        }
+        var brandSave = el('jim-save-branding');
+        if (brandSave) {
+            brandSave.addEventListener('click', function () {
+                saveSettings({
+                    brandingTitle: (brandTitle ? brandTitle.value : '').trim(),
+                    brandingLogoUrl: (brandLogo ? brandLogo.value : '').trim()
+                }, 'Branding saved. Reload the chat page to see it applied.');
+            });
+        }
+        var brandReset = el('jim-reset-branding');
+        if (brandReset) {
+            brandReset.addEventListener('click', function () {
+                if (brandTitle) { brandTitle.value = ''; }
+                if (brandLogo) { brandLogo.value = ''; }
+                renderBrandingPreview();
+                saveSettings({ brandingTitle: '', brandingLogoUrl: '' }, 'Branding reset to defaults.');
+            });
+        }
 
         el('jim-test-notification').addEventListener('click', function () {
             request('POST', '/test-notification').then(function (result) {

@@ -31,6 +31,11 @@ implements JimAdminSettingsService {
     static final String KEY_MAX_ATTACHMENT_SIZE_MB = "maxAttachmentSizeMb";
     static final String KEY_ALLOWED_EXTENSIONS = "allowedExtensions";
     static final String KEY_IMAGE_PREVIEW_ENABLED = "imagePreviewEnabled";
+    static final String KEY_BRANDING_TITLE = "brandingTitle";
+    static final String KEY_BRANDING_LOGO_URL = "brandingLogoUrl";
+    static final String DEFAULT_BRANDING_TITLE = "CorbitChat";
+    static final int MAX_BRANDING_TITLE_LENGTH = 60;
+    static final int MAX_BRANDING_LOGO_URL_LENGTH = 1024;
     private static final List<String> CHAT_MODES = Arrays.asList("ALLOW_ALL", "RESTRICTED", "DISABLED");
     private static final List<String> DETAIL_LEVELS = Arrays.asList("FULL_MESSAGE", "SENDER_ONLY", "GENERIC_ONLY");
     private final PluginSettingsFactory pluginSettingsFactory;
@@ -91,6 +96,18 @@ implements JimAdminSettingsService {
     }
 
     @Override
+    public String getBrandingTitle() {
+        String value = this.stringValue(KEY_BRANDING_TITLE);
+        return value == null || value.isEmpty() ? DEFAULT_BRANDING_TITLE : value;
+    }
+
+    @Override
+    public String getBrandingLogoUrl() {
+        String value = this.stringValue(KEY_BRANDING_LOGO_URL);
+        return value != null ? value : "";
+    }
+
+    @Override
     public Map<String, Object> getAllSettings() {
         LinkedHashMap<String, Object> settings = new LinkedHashMap<String, Object>();
         settings.put(KEY_CHAT_MODE, this.getChatMode());
@@ -103,6 +120,8 @@ implements JimAdminSettingsService {
         settings.put(KEY_MAX_ATTACHMENT_SIZE_MB, this.getMaxAttachmentSizeMb());
         settings.put(KEY_ALLOWED_EXTENSIONS, this.getAllowedExtensions());
         settings.put(KEY_IMAGE_PREVIEW_ENABLED, this.isImagePreviewEnabled());
+        settings.put(KEY_BRANDING_TITLE, this.getBrandingTitle());
+        settings.put(KEY_BRANDING_LOGO_URL, this.getBrandingLogoUrl());
         return settings;
     }
 
@@ -127,6 +146,29 @@ implements JimAdminSettingsService {
     private String normalizeAndValidate(String key, Object rawValue) {
         String value = rawValue == null ? "" : String.valueOf(rawValue).trim();
         switch (key) {
+            case "brandingTitle": {
+                if (value.length() > MAX_BRANDING_TITLE_LENGTH) {
+                    throw JimMessengerException.badRequest(key + " must be at most " + MAX_BRANDING_TITLE_LENGTH + " characters");
+                }
+                return value;
+            }
+            case "brandingLogoUrl": {
+                if (value.isEmpty()) {
+                    return "";
+                }
+                if (value.length() > MAX_BRANDING_LOGO_URL_LENGTH) {
+                    throw JimMessengerException.badRequest(key + " must be at most " + MAX_BRANDING_LOGO_URL_LENGTH + " characters");
+                }
+                String lower = value.toLowerCase(Locale.ROOT);
+                if (lower.startsWith("javascript:") || lower.startsWith("vbscript:") || lower.startsWith("file:")) {
+                    throw JimMessengerException.badRequest(key + " uses an unsupported URL scheme");
+                }
+                boolean ok = value.startsWith("/") || lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("data:image/");
+                if (!ok) {
+                    throw JimMessengerException.badRequest(key + " must start with '/', 'http://', 'https://' or 'data:image/'");
+                }
+                return value;
+            }
             case "chatMode": {
                 return JimAdminSettingsServiceImpl.requireOneOf(key, value, CHAT_MODES);
             }
