@@ -176,7 +176,7 @@ public class JimRestJsonMapper {
         item.put("readByCurrentUser", message.getID() <= currentUserLastRead);
         item.put("seenByOther", seenByOther);
         item.put("seenAt", seenByOther ? this.resolveOtherParticipantLastReadAt(conversation, currentUserKey) : null);
-        item.put("canEdit", ownMessage && isUserMessage && !deleted);
+        item.put("canEdit", ownMessage && isUserMessage && !deleted && this.isWithinEditWindow(message));
         item.put("canDelete", ownMessage && isUserMessage && !deleted && this.isWithinDeleteWindow(message));
         item.put("replyTo", this.buildReplyPreview(message, replyContext));
         item.put("attachments", deleted ? Collections.emptyList() : this.toAttachmentMaps(attachments != null ? attachments : Collections.emptyList()));
@@ -481,6 +481,14 @@ public class JimRestJsonMapper {
             return false;
         }
         return JimMessageLifecycle.isWithinDeleteWindow(createdAt, System.currentTimeMillis());
+    }
+
+    private boolean isWithinEditWindow(JimMessage message) {
+        Long createdAt = message.getCreatedAt();
+        if (createdAt == null) {
+            return false;
+        }
+        return JimMessageLifecycle.isWithinEditWindow(createdAt, System.currentTimeMillis());
     }
 
     private String buildAttachmentUrl(int attachmentId, String action) {

@@ -53,6 +53,7 @@ import net.java.ao.Query;
 public class JimMessageServiceImpl
 implements JimMessageService {
     public static final String DELETE_WINDOW_EXPIRED_MESSAGE = "Messages can only be deleted within 10 minutes.";
+    public static final String EDIT_WINDOW_EXPIRED_MESSAGE = "Messages can only be edited within 30 minutes.";
     private final ActiveObjects activeObjects;
     private final JimConversationService conversationService;
     private final JimPermissionService permissionService;
@@ -251,9 +252,13 @@ implements JimMessageService {
         if (JimMessageFlags.isDeleted(message)) {
             throw JimMessengerException.badRequest("Deleted messages cannot be edited");
         }
+        long now = System.currentTimeMillis();
+        Long createdAt = message.getCreatedAt();
+        if (createdAt == null || !JimMessageLifecycle.isWithinEditWindow(createdAt, now)) {
+            throw JimMessengerException.forbidden(EDIT_WINDOW_EXPIRED_MESSAGE);
+        }
         List<JimAttachment> attachments = this.attachmentService.listAttachmentsForMessage(messageId);
         String normalizedBody = this.normalizeEditableBody(body, attachments);
-        long now = System.currentTimeMillis();
         int conversationId = message.getConversationId();
         return (JimMessage)this.activeObjects.executeInTransaction(() -> {
             message.setBody(normalizedBody);

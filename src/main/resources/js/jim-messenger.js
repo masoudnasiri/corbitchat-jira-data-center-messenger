@@ -8,6 +8,7 @@
     var MAX_MESSAGE_LENGTH = 4000;
     var MAX_UPLOAD_SIZE_BYTES = 200 * 1024 * 1024;
     var DELETE_WINDOW_MS = 10 * 60 * 1000;
+    var EDIT_WINDOW_MS = 30 * 60 * 1000;
 
     var EVENT_CARD_CONFIG = {
         MENTION: {
@@ -2076,6 +2077,20 @@
         return createdAt > 0 && (Date.now() - createdAt) <= DELETE_WINDOW_MS;
     }
 
+    /**
+     * Mirror of the server's edit-window check (30 min). The server is the
+     * source of truth and will reject expired edits with HTTP 403; we also
+     * check on the client so the Edit button disappears immediately when
+     * the window lapses, not only on the next conversation poll.
+     */
+    function isWithinEditWindow(message) {
+        if (!message || message.deleted || !isOwnMessage(message)) {
+            return false;
+        }
+        var createdAt = Number(message.createdAt || 0);
+        return createdAt > 0 && (Date.now() - createdAt) <= EDIT_WINDOW_MS;
+    }
+
     function replyPreviewText(message) {
         if (!message || !message.replyTo) {
             return '';
@@ -2176,7 +2191,14 @@
             if (conversationForInfo && (isGroupConversation(conversationForInfo) || conversationForInfo.isProjectChat)) {
                 actions.push('<button type="button" class="jim-message-action jim-info-action" data-action="info" data-message-id="' + message.id + '">Info</button>');
             }
-            if (message.canEdit !== false && normalizeEventType(message) !== 'ISSUE_LINK') {
+            // Edit is only offered for the message owner, on user (non-system,
+            // non-issue-link) messages, and only within the 30-minute edit
+            // window. The server's canEdit flag already enforces this, but
+            // we re-check the time window locally so the button disappears
+            // immediately when the window lapses, not only on the next poll.
+            if (message.canEdit !== false
+                    && normalizeEventType(message) !== 'ISSUE_LINK'
+                    && isWithinEditWindow(message)) {
                 actions.push('<button type="button" class="jim-message-action jim-edit-action" data-action="edit" data-message-id="' + message.id + '">Edit</button>');
             }
             if (canDeleteMessage(message)) {
@@ -2946,6 +2968,16 @@
                 return;
             }
             if (action === 'edit') {
+                // Defensive: don't even open the editor for a message past
+                // the 30-minute edit window. The Edit button shouldn't be
+                // visible in that state, but a stale DOM (e.g. user opened
+                // actions just before the window lapsed) could still hit
+                // here.
+                var editTarget = findMessageById(messageId);
+                if (!editTarget || !isWithinEditWindow(editTarget)) {
+                    showError('Messages can only be edited within 30 minutes.');
+                    return;
+                }
                 state.editingMessageId = messageId;
                 state.deleteConfirmMessageId = null;
                 renderMessages();
