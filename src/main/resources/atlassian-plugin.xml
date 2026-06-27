@@ -4,7 +4,7 @@
         <description>${project.description}</description>
         <version>${project.version}</version>
         <vendor name="CorbitLogic" url="https://corbitlogic.com"/>
-        <param name="atlassian-licensing-enabled">true</param>
+        <!-- internal build: Marketplace licensing intentionally disabled. -->
         <param name="atlassian-data-center-status">compatible</param>
         <param name="atlassian-data-center-compatible">true</param>
     </plugin-info>
@@ -38,8 +38,6 @@
                       interface="com.atlassian.sal.api.rdbms.TransactionalExecutorFactory"/>
     <component-import key="pluginSettingsFactory"
                       interface="com.atlassian.sal.api.pluginsettings.PluginSettingsFactory"/>
-    <component-import key="pluginLicenseManager"
-                      interface="com.atlassian.upm.api.license.PluginLicenseManager"/>
 
     <component key="jimAoSchemaDiagnostics"
                class="com.corbitlogic.jira.internalmessenger.service.JimAoSchemaDiagnostics">

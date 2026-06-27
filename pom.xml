@@ -8,11 +8,11 @@
 
     <groupId>com.corbitlogic</groupId>
     <artifactId>corbitchat-jira-dc</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.0-internal</version>
     <packaging>atlassian-plugin</packaging>
 
-    <name>CorbitChat — Team Messenger for Jira</name>
-    <description>CorbitChat brings Slack-style team messaging into Jira Data Center, including direct messages, project/team conversations, mentions, attachments, push notifications, and Jira-native collaboration controls.</description>
+    <name>CorbitChat — Team Messenger for Jira (Internal Build)</name>
+    <description>Internal on-prem distribution of CorbitChat — Slack-style team messaging for Jira Data Center with direct messages, project/team conversations, mentions, attachments, push notifications, and Jira-native collaboration controls. Marketplace licensing is intentionally disabled in this build.</description>
 
     <properties>
         <jira.version>9.17.5</jira.version>
@@ -117,25 +117,8 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Atlassian Marketplace licensing (UPM) -->
-        <dependency>
-            <groupId>com.atlassian.upm</groupId>
-            <artifactId>licensing-api</artifactId>
-            <version>6.5.9</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.atlassian.upm</groupId>
-            <artifactId>upm-api</artifactId>
-            <version>6.5.7</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>joda-time</groupId>
-            <artifactId>joda-time</artifactId>
-            <version>2.12.7</version>
-            <scope>provided</scope>
-        </dependency>
+        <!-- Internal build: UPM/licensing-api intentionally omitted; license
+             enforcement is disabled and never imported at runtime. -->
     </dependencies>
 
     <build>
@@ -165,9 +148,6 @@
                             com.atlassian.activeobjects.spi,
                             com.atlassian.event.api,
                             com.atlassian.jira.*,
-                            com.atlassian.upm.api.license,
-                            com.atlassian.upm.api.license.entity,
-                            com.atlassian.upm.api.util,
                             org.ofbiz.core.entity,
                             org.slf4j,
                             net.java.ao,
