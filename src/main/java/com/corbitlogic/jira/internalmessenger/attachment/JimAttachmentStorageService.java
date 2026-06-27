@@ -48,10 +48,14 @@ public class JimAttachmentStorageService {
     }
 
     public StoredAttachmentFile storeUploadedFile(File sourceFile, String contentType, String originalFilename) throws IOException {
+        return this.storeUploadedFile(sourceFile, contentType, originalFilename, null);
+    }
+
+    public StoredAttachmentFile storeUploadedFile(File sourceFile, String contentType, String originalFilename, String adminAllowedExtensionsCsv) throws IOException {
         if (sourceFile == null || !sourceFile.exists()) {
             throw JimMessengerException.badRequest("Uploaded file is missing");
         }
-        JimAttachmentPolicy.validateUpload(sourceFile.length(), contentType, originalFilename);
+        JimAttachmentPolicy.validateUpload(sourceFile.length(), contentType, originalFilename, adminAllowedExtensionsCsv);
         String sanitizedOriginal = JimAttachmentPolicy.sanitizeOriginalFilename(originalFilename);
         String storedFilename = UUID.randomUUID().toString().replace("-", "") + this.buildStoredExtension(sanitizedOriginal);
         String relativePath = this.buildRelativePath(storedFilename);

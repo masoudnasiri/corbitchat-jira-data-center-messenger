@@ -165,6 +165,7 @@
                                           class="jim-composer-input"
                                           rows="1"
                                           maxlength="4000"
+                                          dir="auto"
                                           aria-label="$i18n.getText('jim.composer.label')"
                                           placeholder="$i18n.getText('jim.composer.placeholder')"></textarea>
                                 <button id="jim-send-button"

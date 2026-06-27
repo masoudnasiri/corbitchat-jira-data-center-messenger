@@ -102,7 +102,7 @@ public class JimAttachmentService {
         }
         this.enforceAdminAttachmentSettings(uploadedFile, originalFilename);
         this.storageService.ensureStorageRootExists();
-        JimAttachmentStorageService.StoredAttachmentFile storedFile = this.storageService.storeUploadedFile(uploadedFile, contentType, originalFilename);
+        JimAttachmentStorageService.StoredAttachmentFile storedFile = this.storageService.storeUploadedFile(uploadedFile, contentType, originalFilename, this.adminSettingsService.getAllowedExtensions());
         String preview = JimAttachmentPolicy.buildPreviewText(normalizedBody, storedFile.getFileKind(), storedFile.getOriginalFilename());
         long now = System.currentTimeMillis();
         UploadResult result = (UploadResult)this.activeObjects.executeInTransaction(() -> {

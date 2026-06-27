@@ -35,7 +35,8 @@ implements JimAdminSettingsService {
     static final String KEY_BRANDING_LOGO_URL = "brandingLogoUrl";
     static final String DEFAULT_BRANDING_TITLE = "CorbitChat";
     static final int MAX_BRANDING_TITLE_LENGTH = 60;
-    static final int MAX_BRANDING_LOGO_URL_LENGTH = 1024;
+    /** Large enough to hold a base64 data URL for a ~370 KB logo image. */
+    static final int MAX_BRANDING_LOGO_URL_LENGTH = 524288;
     private static final List<String> CHAT_MODES = Arrays.asList("ALLOW_ALL", "RESTRICTED", "DISABLED");
     private static final List<String> DETAIL_LEVELS = Arrays.asList("FULL_MESSAGE", "SENDER_ONLY", "GENERIC_ONLY");
     private final PluginSettingsFactory pluginSettingsFactory;

@@ -14,7 +14,13 @@ public final class JimAttachmentPolicy {
     public static final long MAX_FILE_SIZE_BYTES = 0xA00000L;
     public static final String STORAGE_SUBDIR = "data/corbitchat/attachments";
     private static final Set<String> ALLOWED_IMAGE_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("image/png", "image/jpeg", "image/gif", "image/webp")));
-    private static final Set<String> ALLOWED_FILE_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("application/pdf", "text/plain", "application/zip", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint")));
+    private static final Set<String> ALLOWED_FILE_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
+        "application/pdf", "text/plain", "text/csv", "text/markdown", "text/x-markdown",
+        "application/zip", "application/x-rar-compressed", "application/vnd.rar", "application/x-7z-compressed",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint")));
     private static final Set<String> ALLOWED_AUDIO_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("audio/webm", "audio/ogg", "audio/mpeg", "audio/mp4", "audio/wav", "audio/x-wav", "audio/aac")));
     private static final Set<String> BLOCKED_EXTENSIONS = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("exe", "bat", "cmd", "com", "msi", "sh", "bash", "js", "jar", "jsp", "php", "html", "htm", "svg")));
 
@@ -34,21 +40,46 @@ public final class JimAttachmentPolicy {
     }
 
     public static void validateUpload(long fileSize, String contentType, String originalFilename) {
+        JimAttachmentPolicy.validateUpload(fileSize, contentType, originalFilename, null);
+    }
+
+    /**
+     * When {@code adminAllowedExtensionsCsv} is non-blank, the admin-configured
+     * extension allowlist becomes the authoritative whitelist and the built-in
+     * MIME safe list is skipped (admin explicitly opted those types in).
+     * The hard-blocked extension set (exe/bat/cmd/...) is always enforced and
+     * cannot be bypassed by the admin allowlist.
+     */
+    public static void validateUpload(long fileSize, String contentType, String originalFilename, String adminAllowedExtensionsCsv) {
         if (fileSize <= 0L) {
             throw JimMessengerException.badRequest("Uploaded file is empty");
         }
         if (fileSize > 0xA00000L) {
             throw JimMessengerException.badRequest("File exceeds the maximum allowed size of 10 MB");
         }
-        String normalizedType = JimAttachmentPolicy.normalizeContentType(contentType);
-        if (!JimAttachmentPolicy.allowedMimeTypes().contains(normalizedType)) {
-            throw JimMessengerException.badRequest("File type is not allowed");
-        }
         String sanitizedName = JimAttachmentPolicy.sanitizeOriginalFilename(originalFilename);
         String extension = JimAttachmentPolicy.extractExtension(sanitizedName);
         if (extension != null && BLOCKED_EXTENSIONS.contains(extension)) {
             throw JimMessengerException.badRequest("File extension is not allowed");
         }
+        boolean adminOverride = adminAllowedExtensionsCsv != null && !adminAllowedExtensionsCsv.trim().isEmpty()
+                && extension != null && JimAttachmentPolicy.csvContains(adminAllowedExtensionsCsv, extension);
+        if (adminOverride) {
+            return;
+        }
+        String normalizedType = JimAttachmentPolicy.normalizeContentType(contentType);
+        if (!JimAttachmentPolicy.allowedMimeTypes().contains(normalizedType)) {
+            throw JimMessengerException.badRequest("File type is not allowed");
+        }
+    }
+
+    private static boolean csvContains(String csv, String value) {
+        for (String candidate : csv.split(",")) {
+            if (candidate.trim().equalsIgnoreCase(value)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static String resolveFileKind(String contentType) {

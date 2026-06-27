@@ -1339,11 +1339,11 @@
                 !!conversation.otherUserActive) +
             '  <div class="jim-conversation-main">' +
             '    <div class="jim-conversation-item-top">' +
-            '      <span class="jim-conversation-title">' + groupMark + escapeHtml(conversation.displayName) + '</span>' +
+            '      <span class="jim-conversation-title" dir="auto">' + groupMark + escapeHtml(conversation.displayName) + '</span>' +
             renderConversationMetaRight(formatTime(conversation.lastMessageAt), conversation.unreadCount) +
             '    </div>' +
             '    <div class="jim-conversation-item-bottom">' +
-            '      <span class="jim-conversation-preview">' + escapeHtml(conversation.lastMessagePreview || '') + '</span>' +
+            '      <span class="jim-conversation-preview" dir="auto">' + escapeHtml(conversation.lastMessagePreview || '') + '</span>' +
             '    </div>' +
             '  </div>' +
             '</button>';
@@ -1367,11 +1367,11 @@
             '  <div class="jim-assistant-icon jim-conversation-avatar" aria-hidden="true">&#9889;</div>' +
             '  <div class="jim-conversation-main">' +
             '    <div class="jim-conversation-item-top">' +
-            '      <span class="jim-conversation-title">' + escapeHtml(conversation.displayName) + '</span>' +
+            '      <span class="jim-conversation-title" dir="auto">' + escapeHtml(conversation.displayName) + '</span>' +
             '      <span class="jim-assistant-badge">BOT</span>' +
             '    </div>' +
             '    <div class="jim-conversation-item-bottom">' +
-            '      <span class="jim-conversation-preview">' + escapeHtml(conversation.lastMessagePreview || '') + '</span>' +
+            '      <span class="jim-conversation-preview" dir="auto">' + escapeHtml(conversation.lastMessagePreview || '') + '</span>' +
             renderConversationMetaRight(formatTime(conversation.lastMessageAt), conversation.unreadCount) +
             '    </div>' +
             '  </div>' +
@@ -1941,7 +1941,7 @@
         return '' +
             '<button type="button" class="jim-reply-preview" data-reply-target-id="' + message.replyTo.id + '">' +
             '  <span class="jim-reply-preview-author">' + escapeHtml(author) + '</span>' +
-            '  <span class="jim-reply-preview-text">' + escapeHtml(text) + '</span>' +
+            '  <span class="jim-reply-preview-text" dir="auto">' + escapeHtml(text) + '</span>' +
             '</button>';
     }
 
@@ -2190,7 +2190,7 @@
             contentHtml = renderEditForm(message);
         } else {
             var body = message.body ? String(message.body).trim() : '';
-            contentHtml = body ? '<div class="jim-message-text">' + renderMessageTextHtml(body) + '</div>' : '';
+            contentHtml = body ? '<div class="jim-message-text" dir="auto">' + renderMessageTextHtml(body) + '</div>' : '';
             if (normalizeEventType(message) === 'ISSUE_LINK') {
                 contentHtml += renderIssueChatCard(message);
             }

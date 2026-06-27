@@ -464,3 +464,14 @@
     font-weight: 700;
     font-size: 15px;
 }
+
+#jim-admin-page .jim-admin-branding-logo-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+#jim-admin-page .jim-admin-branding-logo-file {
+    max-width: 320px;
+}

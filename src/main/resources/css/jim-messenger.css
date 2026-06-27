@@ -77,6 +77,16 @@
     background: var(--jim-bg);
 }
 
+/* Bidirectional text: let mixed Persian/Arabic/Hebrew + Latin text render
+   each paragraph in its own direction based on first strong character. */
+#jim-messenger-app .jim-message-text,
+#jim-messenger-app .jim-composer-input,
+#jim-messenger-app .jim-conversation-preview,
+#jim-messenger-app .jim-conversation-title,
+#jim-messenger-app .jim-reply-preview-text {
+    unicode-bidi: plaintext;
+}
+
 #jim-messenger-app #jim-chat-panel-shell.jim-chat-drop-active {
     position: relative;
 }

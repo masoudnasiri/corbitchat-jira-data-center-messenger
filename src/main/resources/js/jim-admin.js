@@ -237,11 +237,56 @@
 
         var brandTitle = el('jim-set-brandingTitle');
         var brandLogo = el('jim-set-brandingLogoUrl');
+        var brandLogoFile = el('jim-branding-logo-file');
+        var brandLogoClear = el('jim-branding-logo-clear');
         if (brandTitle) {
             brandTitle.addEventListener('input', renderBrandingPreview);
         }
         if (brandLogo) {
             brandLogo.addEventListener('input', renderBrandingPreview);
+        }
+        if (brandLogoFile) {
+            brandLogoFile.addEventListener('change', function () {
+                var file = brandLogoFile.files && brandLogoFile.files[0];
+                if (!file) {
+                    return;
+                }
+                if (!/^image\//.test(file.type)) {
+                    showMessage('Please choose an image file (PNG, JPG, GIF, or WebP).', true);
+                    brandLogoFile.value = '';
+                    return;
+                }
+                var MAX_BYTES = 300 * 1024;
+                if (file.size > MAX_BYTES) {
+                    showMessage('Image is too large (max 300 KB).', true);
+                    brandLogoFile.value = '';
+                    return;
+                }
+                var reader = new FileReader();
+                reader.onload = function () {
+                    var dataUrl = String(reader.result || '');
+                    if (dataUrl.indexOf('data:image/') !== 0) {
+                        showMessage('Could not read this image file.', true);
+                        return;
+                    }
+                    if (brandLogo) {
+                        brandLogo.value = dataUrl;
+                    }
+                    renderBrandingPreview();
+                    showMessage('Logo loaded. Click "Save branding" to apply.');
+                };
+                reader.onerror = function () {
+                    showMessage('Could not read this image file.', true);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+        if (brandLogoClear) {
+            brandLogoClear.addEventListener('click', function () {
+                if (brandLogoFile) { brandLogoFile.value = ''; }
+                if (brandLogo) { brandLogo.value = ''; }
+                renderBrandingPreview();
+            });
         }
         var brandSave = el('jim-save-branding');
         if (brandSave) {

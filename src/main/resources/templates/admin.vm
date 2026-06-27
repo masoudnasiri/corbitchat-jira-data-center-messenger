@@ -128,9 +128,16 @@
             <input type="text" id="jim-set-brandingTitle" maxlength="60" placeholder="CorbitChat"/>
             <span class="jim-admin-hint">Shown in the sidebar header. Up to 60 characters. Leave blank to use &ldquo;CorbitChat&rdquo;.</span>
 
-            <label class="jim-admin-label" for="jim-set-brandingLogoUrl">Chat logo URL</label>
-            <input type="text" id="jim-set-brandingLogoUrl" maxlength="1024" placeholder="/download/resources/com.corbitlogic.corbitchat.jira.dc:jim-messenger-resources/corbit-app-logo.png"/>
-            <span class="jim-admin-hint">Same-origin path starting with <code>/</code>, an <code>https://</code> URL, or a <code>data:image/...</code> URI. Leave blank to use the bundled CorbitChat logo. Recommended 36&times;36px or square SVG.</span>
+            <label class="jim-admin-label" for="jim-set-brandingLogoUrl">Chat logo</label>
+            <div class="jim-admin-branding-logo-row">
+                <input type="file" id="jim-branding-logo-file" class="jim-admin-branding-logo-file" accept="image/png,image/jpeg,image/gif,image/webp"/>
+                <button id="jim-branding-logo-clear" type="button" class="aui-button aui-button-link">Clear</button>
+            </div>
+            <span class="jim-admin-hint">Pick a PNG/JPG/GIF/WebP (recommended square, ~256&times;256px, max 300&nbsp;KB). The file is embedded as a data URL &mdash; no separate upload is needed. You can also paste a URL into the field below instead.</span>
+
+            <label class="jim-admin-label" for="jim-set-brandingLogoUrl">Logo URL (optional, or auto-filled from the picker above)</label>
+            <input type="text" id="jim-set-brandingLogoUrl" maxlength="524288" placeholder="/download/resources/com.corbitlogic.corbitchat.jira.dc:jim-messenger-resources/corbit-app-logo.png"/>
+            <span class="jim-admin-hint">Same-origin path starting with <code>/</code>, an <code>https://</code> URL, or a <code>data:image/...</code> URI. Leave blank to use the bundled CorbitChat logo.</span>
 
             <div class="jim-admin-branding-preview" id="jim-branding-preview" aria-live="polite">
                 <span class="jim-admin-branding-preview-label">Preview</span>
