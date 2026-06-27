@@ -67,9 +67,16 @@
             #end
             <div class="jim-sidebar-footer-text">
                 <div class="jim-sidebar-footer-name">$!currentUserDisplayName</div>
-                <div class="jim-sidebar-footer-status"><span class="jim-presence-dot" aria-hidden="true"></span>Active</div>
+                <div class="jim-sidebar-footer-status">
+                    <span class="jim-presence-dot" aria-hidden="true"></span>
+                    <span class="jim-sidebar-footer-active">Active</span>
+                    <span class="jim-sidebar-footer-divider" aria-hidden="true"> &middot; </span>
+                    <button id="jim-push-enable"
+                            type="button"
+                            class="jim-push-status-link"
+                            hidden>Enable notifications</button>
+                </div>
             </div>
-            <button id="jim-push-enable" type="button" class="jim-push-toggle" hidden title="Enable notifications">&#128276;</button>
         </footer>
         </aside>
 

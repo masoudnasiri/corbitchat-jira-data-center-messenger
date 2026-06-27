@@ -4229,20 +4229,53 @@
             });
     }
 
+    /**
+     * Renders the bottom-left notification status as plain text.
+     *
+     *   - "Enable notifications" : default, clickable - asks for permission
+     *   - "Notifications on"     : push subscribed; clicking disables
+     *   - "Notifications blocked": permission === 'denied' (browser-level);
+     *                              not clickable, shown so the user knows
+     *                              they need to fix it in browser settings
+     *
+     * The crossed-bell glyph is gone - that style is reserved for muting
+     * individual conversations.
+     */
     function refreshPushButton(button) {
-        if (window.Notification.permission === 'denied') {
+        if (!pushSupported()) {
             button.hidden = true;
             return;
         }
         button.hidden = false;
+        button.classList.remove('jim-push-status-on', 'jim-push-status-blocked');
+        if (window.Notification.permission === 'denied') {
+            button.textContent = 'Notifications blocked';
+            button.classList.add('jim-push-status-blocked');
+            button.setAttribute('aria-label', 'Browser has blocked notifications for this site');
+            button.setAttribute('title', 'Allow notifications in your browser settings to receive push messages');
+            button.setAttribute('aria-disabled', 'true');
+            return;
+        }
         var enabled = pushEnabled();
-        button.innerHTML = enabled ? '&#128277;' : '&#128276;';
-        var label = enabled ? 'Disable notifications' : 'Enable notifications';
-        button.title = label;
-        button.setAttribute('aria-label', label);
+        if (enabled) {
+            button.textContent = 'Notifications on';
+            button.classList.add('jim-push-status-on');
+            button.setAttribute('aria-label', 'Notifications are on (click to disable)');
+            button.setAttribute('title', 'Click to disable push notifications');
+        } else {
+            button.textContent = 'Enable notifications';
+            button.setAttribute('aria-label', 'Enable browser push notifications');
+            button.setAttribute('title', 'Enable browser push notifications');
+        }
+        button.removeAttribute('aria-disabled');
     }
 
     function onPushButtonClick(button) {
+        // No action when the browser has blocked notifications - the user
+        // has to fix it in their browser settings.
+        if (window.Notification && window.Notification.permission === 'denied') {
+            return;
+        }
         if (pushEnabled()) {
             setPushDisabled(true);
             unsubscribeFromPush().catch(function (error) {
