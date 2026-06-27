@@ -2235,17 +2235,44 @@
         if (isSystemMessage(message)) {
             return false;
         }
-        if (message.attachments && message.attachments.length) {
-            return false;
-        }
-        var body = message.body ? String(message.body).trim() : '';
-        return body.length > 0;
+        // Forwardable when there's text, an attachment (file/image/voice),
+        // or both. Issue-link cards forward as text — their body already
+        // contains the smart link.
+        var hasBody = message.body && String(message.body).trim().length > 0;
+        var hasAttachments = !!(message.attachments && message.attachments.length);
+        return hasBody || hasAttachments;
     }
 
     function buildForwardedBody(message) {
         var sender = (message.senderDisplayName || message.senderUserKey || 'a user').trim();
         var body = String(message.body || '').trim();
-        return '[Forwarded from ' + sender + ']\n' + body;
+        var header = '[Forwarded from ' + sender + ']';
+        return body ? header + '\n' + body : header;
+    }
+
+    /**
+     * For attachment forwarding we download the original bytes (the current
+     * user already has access — the server-side ACL check on the original
+     * conversation succeeded for them) and re-upload as a fresh attachment
+     * to the target conversation. The caption carries the forwarded marker.
+     */
+    function fetchAttachmentAsFile(attachment) {
+        var url = resolveAttachmentUrl(attachment.downloadUrl);
+        if (!url) {
+            return Promise.reject(new Error('Attachment download URL is missing'));
+        }
+        return fetch(url, { credentials: 'same-origin' }).then(function (response) {
+            if (!response.ok) {
+                throw new Error('Could not download original attachment (HTTP ' + response.status + ')');
+            }
+            return response.blob().then(function (blob) {
+                var name = attachment.fileName || 'attachment';
+                var type = attachment.contentType || blob.type || 'application/octet-stream';
+                // File constructor isn't universally supported in older IE, but
+                // any browser that runs CorbitChat has it (Edge 18+ / FF / Chrome).
+                return new File([blob], name, { type: type });
+            });
+        });
     }
 
     function openForwardModal(messageId) {
@@ -2336,12 +2363,56 @@
             closeForwardModal();
             return;
         }
-        var bodyToSend = buildForwardedBody(message);
         if (els.forwardError) {
             setHidden(els.forwardError, true);
             els.forwardError.textContent = '';
         }
-        JimApi.sendMessage(targetConversationId, bodyToSend, null).then(function () {
+        var bodyToSend = buildForwardedBody(message);
+        var attachments = message.attachments || [];
+        var hadBody = message.body && String(message.body).trim().length > 0;
+
+        var forwardPromise;
+        if (!attachments.length) {
+            forwardPromise = JimApi.sendMessage(targetConversationId, bodyToSend, null);
+        } else {
+            // Download each original attachment and re-upload as a fresh
+            // attachment to the target conversation. Caption rides with the
+            // first upload only (matches multi-file send behaviour). If the
+            // original had no body, the forwarded marker still goes there
+            // so the recipient can see it's a forward.
+            var captionForFirst = hadBody ? bodyToSend : '[Forwarded attachment]';
+            forwardPromise = (function () {
+                var failed = [];
+                var chain = Promise.resolve();
+                attachments.forEach(function (att, idx) {
+                    chain = chain.then(function () {
+                        return fetchAttachmentAsFile(att).then(function (file) {
+                            var capForThis = idx === 0 ? captionForFirst : null;
+                            return JimApi.uploadAttachment(targetConversationId, file, capForThis);
+                        }).catch(function (error) {
+                            logError('forwardAttachment', error);
+                            failed.push(att.fileName || 'attachment');
+                        });
+                    });
+                });
+                return chain.then(function () {
+                    if (failed.length === attachments.length) {
+                        throw new Error('Could not forward attachment(s).');
+                    }
+                    if (failed.length) {
+                        // Surface a partial-success warning but treat the
+                        // overall forward as successful.
+                        if (els.forwardError) {
+                            els.forwardError.textContent = failed.length +
+                                ' attachment(s) skipped: ' + failed.join(', ');
+                            setHidden(els.forwardError, false);
+                        }
+                    }
+                });
+            })();
+        }
+
+        forwardPromise.then(function () {
             closeForwardModal();
             // If we forwarded into the conversation we're already viewing,
             // refresh the message list immediately so the user sees it.

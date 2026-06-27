@@ -65,13 +65,22 @@ public class JimAttachmentService {
         this.adminSettingsService = adminSettingsService;
     }
 
-    private void enforceAdminAttachmentSettings(File uploadedFile, String originalFilename) {
+    private void enforceAdminAttachmentSettings(File uploadedFile, String contentType, String originalFilename) {
         if (!this.adminSettingsService.isAttachmentsEnabled()) {
             throw JimMessengerException.forbidden("Attachments have been disabled by the administrator");
         }
         long maxBytes = (long)this.adminSettingsService.getMaxAttachmentSizeMb() * 1024L * 1024L;
         if (uploadedFile != null && uploadedFile.length() > maxBytes) {
             throw JimMessengerException.badRequest("File exceeds the maximum allowed size of " + this.adminSettingsService.getMaxAttachmentSizeMb() + " MB");
+        }
+        // Voice messages are recorded by the browser's MediaRecorder, not
+        // user-uploaded files. They have known browser-generated extensions
+        // (webm/ogg/mp4/etc.) that admins won't typically include in the
+        // extension allowlist, so we skip the allowlist for audio content
+        // types. The hardcoded BLOCKED_EXTENSIONS in JimAttachmentPolicy
+        // and the audio MIME safe list still apply.
+        if ("AUDIO".equals(JimAttachmentPolicy.resolveFileKind(contentType))) {
+            return;
         }
         String allowedExtensions = this.adminSettingsService.getAllowedExtensions();
         if (allowedExtensions != null && !allowedExtensions.isEmpty()) {
@@ -100,7 +109,7 @@ public class JimAttachmentService {
         if (normalizedBody.isEmpty() && (uploadedFile == null || !uploadedFile.exists())) {
             throw JimMessengerException.badRequest("A file is required");
         }
-        this.enforceAdminAttachmentSettings(uploadedFile, originalFilename);
+        this.enforceAdminAttachmentSettings(uploadedFile, contentType, originalFilename);
         this.storageService.ensureStorageRootExists();
         JimAttachmentStorageService.StoredAttachmentFile storedFile = this.storageService.storeUploadedFile(uploadedFile, contentType, originalFilename, this.adminSettingsService.getAllowedExtensions());
         String preview = JimAttachmentPolicy.buildPreviewText(normalizedBody, storedFile.getFileKind(), storedFile.getOriginalFilename());

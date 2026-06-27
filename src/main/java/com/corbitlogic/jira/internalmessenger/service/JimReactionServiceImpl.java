@@ -32,7 +32,25 @@ import net.java.ao.RawEntity;
 
 public class JimReactionServiceImpl
 implements JimReactionService {
-    private static final Set<String> ALLOWED_EMOJI = new HashSet<String>(Arrays.asList("\ud83d\udc4d", "\u2705", "\ud83d\ude04", "\ud83c\udf89", "\u2764\ufe0f", "\ud83d\udc40"));
+    /**
+     * Curated 10-emoji reaction palette (kept in sync with the client-side
+     * REACTION_EMOJI in jim-messenger.js). Heart/love is intentionally
+     * absent. Existing rows in the database that used the old set
+     * (e.g. \u2764\ufe0f, \uD83D\uDC40) remain readable; only new
+     * toggleReaction() calls are restricted to this set.
+     */
+    private static final Set<String> ALLOWED_EMOJI = new HashSet<String>(Arrays.asList(
+            "\uD83D\uDC4D", // 👍
+            "\uD83D\uDE02", // 😂
+            "\uD83D\uDE4F", // 🙏
+            "\uD83D\uDC4F", // 👏
+            "\uD83D\uDD25", // 🔥
+            "\u2705",       // ✅
+            "\uD83C\uDF89", // 🎉
+            "\uD83D\uDCA1", // 💡
+            "\uD83D\uDE80", // 🚀
+            "\uD83E\uDD14"  // 🤔
+    ));
     private final ActiveObjects activeObjects;
     private final JimMessageService messageService;
     private final JimPermissionService permissionService;
