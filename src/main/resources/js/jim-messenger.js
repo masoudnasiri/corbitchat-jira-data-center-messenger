@@ -1,8 +1,15 @@
 (function () {
     'use strict';
 
-    var MESSAGE_POLL_MS = 5000;
+    // In-app chat delivery is the primary mechanism; push is best-effort
+    // on top. Poll aggressively so receivers see messages within ~2.5s
+    // even if push is broken on their browser/profile. Tuned so the
+    // poll cost is comparable to a typical Jira heartbeat.
+    var MESSAGE_POLL_MS = 2500;
     var CONVERSATION_POLL_MS = 10000;
+    // After the tab regains focus we trigger an immediate refresh
+    // (Chrome aggressively throttles setInterval in background tabs).
+    var FOCUS_REFRESH_DEBOUNCE_MS = 250;
     var SEARCH_DEBOUNCE_MS = 300;
     var MIN_SEARCH_LENGTH = 2;
     var MAX_MESSAGE_LENGTH = 4000;
@@ -3889,6 +3896,44 @@
             }
             loadConversations(false);
         }, CONVERSATION_POLL_MS);
+
+        bindVisibilityRefresh();
+    }
+
+    /**
+     * Triggers an immediate refresh whenever the tab regains visibility.
+     * Without this, Chrome's background-tab throttling (which can extend
+     * setInterval to once-per-minute after a tab has been idle for a few
+     * minutes) makes the perceived chat latency very long when the user
+     * returns to the chat from another tab. The handler is debounced so a
+     * burst of focus/blur events doesn't flood the server.
+     */
+    function bindVisibilityRefresh() {
+        if (state.visibilityHandlerBound) {
+            return;
+        }
+        state.visibilityHandlerBound = true;
+        var triggerRefresh = function () {
+            if (document.hidden) {
+                return;
+            }
+            if (state.visibilityRefreshTimer) {
+                window.clearTimeout(state.visibilityRefreshTimer);
+            }
+            state.visibilityRefreshTimer = window.setTimeout(function () {
+                state.visibilityRefreshTimer = null;
+                if (document.hidden) {
+                    return;
+                }
+                try { console.log('[CorbitChat poll] visibility refresh'); } catch (e) {}
+                if (state.selectedConversationId && !state.loadingMessages) {
+                    loadMessages(state.selectedConversationId, false, false);
+                }
+                loadConversations(false);
+            }, FOCUS_REFRESH_DEBOUNCE_MS);
+        };
+        document.addEventListener('visibilitychange', triggerRefresh);
+        window.addEventListener('focus', triggerRefresh);
     }
 
     function stopPolling() {
@@ -4524,19 +4569,35 @@
         if (!state.projectMode) {
             restoreActiveTab();
         }
-        // Critical ordering: start conversation loading + polling BEFORE
-        // touching push setup. Polling is the primary message-delivery
-        // mechanism (push is best-effort on top), so it must never wait
-        // on - or be aborted by - push registration. setupPushNotifications
-        // is wrapped in try/catch as a second line of defence: even if a
-        // synchronous error somehow escapes from inside (opaque origin,
-        // unexpected DOM state, etc.) it cannot stop init() from finishing.
-        loadConversations(true).then(startPolling);
-        try {
-            setupPushNotifications();
-        } catch (pushSetupError) {
-            logError('push.setup', pushSetupError);
-        }
+        // Polling is the primary message-delivery channel; push is
+        // best-effort on top. We MUST start polling regardless of:
+        //   - whether loadConversations resolves or rejects
+        //   - whether push subscription succeeds, hangs or throws
+        //   - browser notification permission state
+        //
+        // 1) startPolling fires whether the initial conversation load
+        //    succeeded or not (.then + .catch both schedule it). If the
+        //    conversation list failed to load it'll retry on the regular
+        //    poll cycle anyway.
+        // 2) setupPushNotifications is deferred to a setTimeout(0) so it
+        //    runs after the current event-loop tick - completely outside
+        //    init()'s synchronous critical path. Any error inside is
+        //    caught locally.
+        loadConversations(true)
+            .then(startPolling)
+            .catch(function (error) {
+                logError('init.loadConversations', error);
+                // Still start polling so the chat can recover once the
+                // server (or the user's connection) comes back.
+                startPolling();
+            });
+        window.setTimeout(function () {
+            try {
+                setupPushNotifications();
+            } catch (pushSetupError) {
+                logError('push.setup', pushSetupError);
+            }
+        }, 0);
     }
 
     onReady(init);
