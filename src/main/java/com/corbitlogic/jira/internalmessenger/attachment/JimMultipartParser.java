@@ -119,9 +119,103 @@ public final class JimMultipartParser {
             return null;
         }
         String fieldName = JimMultipartParser.extractQuotedValue(disposition, "name");
-        String filename = JimMultipartParser.extractQuotedValue(disposition, "filename");
+        String filename = JimMultipartParser.extractFilename(disposition);
         byte[] bytes = content.getBytes(StandardCharsets.ISO_8859_1);
         return new ParsedPart(fieldName, filename, contentType, bytes);
+    }
+
+    /**
+     * Extract a filename from a Content-Disposition header, honouring RFC 5987
+     * {@code filename*=UTF-8''...} when present and otherwise recovering UTF-8
+     * bytes from the legacy {@code filename="..."} form (which we read as
+     * ISO-8859-1 to keep the multipart body byte-transparent).
+     *
+     * Without this, a Persian or other non-ASCII filename arrives as mojibake
+     * (e.g. "سند.pdf" -> "Ø³Ù†Ø¯.pdf").
+     */
+    private static String extractFilename(String disposition) {
+        String rfc5987 = JimMultipartParser.extractRawValue(disposition, "filename*");
+        if (rfc5987 != null && !rfc5987.isEmpty()) {
+            String decoded = JimMultipartParser.decodeRfc5987(rfc5987);
+            if (decoded != null) {
+                return decoded;
+            }
+        }
+        String legacy = JimMultipartParser.extractQuotedValue(disposition, "filename");
+        if (legacy == null || legacy.isEmpty()) {
+            return legacy;
+        }
+        // The multipart body was decoded as ISO-8859-1, so each char 0-255
+        // is one original byte. Re-encode and decode as UTF-8 to recover
+        // non-ASCII characters that the browser sent as raw UTF-8 bytes.
+        try {
+            return new String(legacy.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8);
+        } catch (RuntimeException ex) {
+            return legacy;
+        }
+    }
+
+    /**
+     * Decodes an RFC 5987 extended-value: {@code charset'language'encoded-value}.
+     * Only UTF-8 and ISO-8859-1 charsets are accepted; anything else falls back
+     * to UTF-8. Returns null if the encoding is malformed.
+     */
+    private static String decodeRfc5987(String value) {
+        int firstQuote = value.indexOf('\'');
+        if (firstQuote <= 0) {
+            return null;
+        }
+        int secondQuote = value.indexOf('\'', firstQuote + 1);
+        if (secondQuote < 0) {
+            return null;
+        }
+        String charset = value.substring(0, firstQuote).trim();
+        String encoded = value.substring(secondQuote + 1);
+        java.nio.charset.Charset cs;
+        try {
+            cs = java.nio.charset.Charset.forName(charset.isEmpty() ? "UTF-8" : charset);
+        } catch (RuntimeException ex) {
+            cs = StandardCharsets.UTF_8;
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream(encoded.length());
+        for (int i = 0; i < encoded.length(); ) {
+            char c = encoded.charAt(i);
+            if (c == '%' && i + 2 < encoded.length()) {
+                int hi = Character.digit(encoded.charAt(i + 1), 16);
+                int lo = Character.digit(encoded.charAt(i + 2), 16);
+                if (hi < 0 || lo < 0) {
+                    return null;
+                }
+                out.write((hi << 4) | lo);
+                i += 3;
+            } else if (c < 0x80) {
+                out.write(c);
+                i++;
+            } else {
+                return null;
+            }
+        }
+        return new String(out.toByteArray(), cs);
+    }
+
+    /**
+     * Returns the unquoted raw token value for an attribute (e.g. {@code filename*})
+     * from a header like Content-Disposition, or null when the attribute is absent.
+     */
+    private static String extractRawValue(String header, String key) {
+        String lowerHeader = header.toLowerCase(Locale.ROOT);
+        String lowerKey = key.toLowerCase(Locale.ROOT) + "=";
+        int index = lowerHeader.indexOf(lowerKey);
+        if (index < 0) {
+            return null;
+        }
+        String remainder = header.substring(index + lowerKey.length()).trim();
+        if (remainder.startsWith("\"")) {
+            int endQuote = remainder.indexOf('"', 1);
+            return endQuote > 0 ? remainder.substring(1, endQuote) : null;
+        }
+        int end = remainder.indexOf(';');
+        return (end >= 0 ? remainder.substring(0, end) : remainder).trim();
     }
 
     private static String extractQuotedValue(String header, String key) {

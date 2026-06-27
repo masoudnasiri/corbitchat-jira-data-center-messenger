@@ -589,24 +589,52 @@
 
     function renderMessageTextHtml(body) {
         var html = escapeHtml(body);
-        if (!isGroupConversation(state.selectedConversation)) {
+        // Mentions are processed BEFORE linkify so the literal-string split
+        // operates on a tag-free string (otherwise an @name appearing inside
+        // an href attribute could be split-replaced and corrupt the URL).
+        if (isGroupConversation(state.selectedConversation)) {
+            var members = mentionableMembers().slice().sort(function (a, b) {
+                return b.displayName.length - a.displayName.length;
+            });
+            for (var i = 0; i < members.length; i++) {
+                var member = members[i];
+                var token = '@' + escapeHtml(member.displayName);
+                if (html.indexOf(token) < 0) {
+                    continue;
+                }
+                var mentionClass = member.userKey === state.currentUserKey
+                    ? 'jim-mention jim-mention-self'
+                    : 'jim-mention';
+                html = html.split(token).join('<span class="' + mentionClass + '">' + token + '</span>');
+            }
+        }
+        return linkifyHtml(html);
+    }
+
+    /**
+     * Wraps bare http/https URLs in the already-escaped message HTML with
+     * <a> tags. Trailing punctuation (., , ; : ! ? ) ] }) is left outside the
+     * link so "see https://example.com." renders without the trailing dot
+     * being part of the clickable target. The regex stops at < to avoid
+     * crossing into any tags added earlier (e.g. mention spans).
+     */
+    function linkifyHtml(html) {
+        if (!html) {
             return html;
         }
-        var members = mentionableMembers().slice().sort(function (a, b) {
-            return b.displayName.length - a.displayName.length;
-        });
-        for (var i = 0; i < members.length; i++) {
-            var member = members[i];
-            var token = '@' + escapeHtml(member.displayName);
-            if (html.indexOf(token) < 0) {
-                continue;
+        return html.replace(/https?:\/\/[^\s<]+/g, function (match) {
+            var trailing = '';
+            var trailingChars = '.,;:!?)]}\'"';
+            while (match.length > 0 && trailingChars.indexOf(match.charAt(match.length - 1)) >= 0) {
+                trailing = match.charAt(match.length - 1) + trailing;
+                match = match.substring(0, match.length - 1);
             }
-            var mentionClass = member.userKey === state.currentUserKey
-                ? 'jim-mention jim-mention-self'
-                : 'jim-mention';
-            html = html.split(token).join('<span class="' + mentionClass + '">' + token + '</span>');
-        }
-        return html;
+            if (!match) {
+                return trailing;
+            }
+            return '<a href="' + match + '" target="_blank" rel="noopener noreferrer nofollow" class="jim-link">'
+                + match + '</a>' + trailing;
+        });
     }
 
     function toggleMentionPalette(forceHide) {

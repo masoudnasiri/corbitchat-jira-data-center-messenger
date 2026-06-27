@@ -77,6 +77,20 @@
     background: var(--jim-bg);
 }
 
+/* Auto-linked URLs inside message bubbles. */
+#jim-messenger-app .jim-message-text .jim-link {
+    color: inherit;
+    text-decoration: underline;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+#jim-messenger-app .jim-message-text .jim-link:hover {
+    text-decoration-thickness: 2px;
+}
+#jim-messenger-app .jim-message-row-own .jim-message-text .jim-link {
+    color: #ffffff;
+}
+
 /* Bidirectional text: let mixed Persian/Arabic/Hebrew + Latin text render
    each paragraph in its own direction based on first strong character. */
 #jim-messenger-app .jim-message-text,
