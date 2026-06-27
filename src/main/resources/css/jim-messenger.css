@@ -1445,8 +1445,8 @@
 #jim-messenger-app .jim-mention-palette {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    max-height: 220px;
+    gap: 4px;
+    max-height: 280px;
     overflow-y: auto;
     padding: 6px;
     margin-bottom: 6px;
@@ -1459,29 +1459,161 @@
     display: none;
 }
 
+/* "Mention all members" header button - inserts mentions for everyone */
+#jim-messenger-app .jim-mention-all {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+
+#jim-messenger-app .jim-mention-all:hover {
+    background: #deebff;
+}
+
+#jim-messenger-app .jim-mention-all-icon {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--jim-brand);
+    color: #ffffff;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+#jim-messenger-app .jim-mention-all-text {
+    flex: 1;
+    text-align: start;
+}
+
+#jim-messenger-app .jim-mention-all-count {
+    color: var(--jim-muted);
+    font-weight: 500;
+    font-size: 12px;
+}
+
+#jim-messenger-app .jim-mention-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* Member row: [checkbox] + [avatar + name clickable area] */
 #jim-messenger-app .jim-mention-option {
     display: flex;
     align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 6px 8px;
-    border: 0;
+    gap: 4px;
+    padding: 0;
     border-radius: 8px;
     background: transparent;
-    text-align: start;
-    font-size: 13px;
     color: var(--jim-text);
-    cursor: pointer;
+    overflow: hidden;
 }
 
 #jim-messenger-app .jim-mention-option:hover {
     background: var(--jim-panel-bg);
 }
 
+#jim-messenger-app .jim-mention-checkbox-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-mention-checkbox {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--jim-brand);
+}
+
+/* The clickable name+avatar region (single-mention quick path) */
+#jim-messenger-app .jim-mention-option-body {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    text-align: start;
+    font-size: 13px;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+}
+
+#jim-messenger-app .jim-mention-option-body:hover {
+    background: var(--jim-hover);
+}
+
 #jim-messenger-app .jim-mention-option-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 1;
+}
+
+#jim-messenger-app .jim-mention-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 6px 4px 2px;
+    border-top: 1px solid var(--jim-border-subtle);
+    margin-top: 2px;
+}
+
+#jim-messenger-app .jim-mention-clear,
+#jim-messenger-app .jim-mention-insert {
+    padding: 5px 12px;
+    border: 1px solid var(--jim-border);
+    border-radius: 6px;
+    background: #ffffff;
+    color: var(--jim-text);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.12s ease, opacity 0.12s ease;
+}
+
+#jim-messenger-app .jim-mention-clear:hover {
+    background: var(--jim-hover);
+}
+
+#jim-messenger-app .jim-mention-insert {
+    background: var(--jim-brand);
+    border-color: var(--jim-brand);
+    color: #ffffff;
+    font-weight: 600;
+}
+
+#jim-messenger-app .jim-mention-insert:hover:not(:disabled) {
+    background: var(--jim-brand-hover);
+}
+
+#jim-messenger-app .jim-mention-insert:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 #jim-messenger-app .jim-mention {

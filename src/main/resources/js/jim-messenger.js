@@ -730,21 +730,116 @@
 
     function renderMentionPalette() {
         var members = mentionableMembers();
-        var items = [];
+        var mentionables = [];
         for (var i = 0; i < members.length; i++) {
-            var member = members[i];
-            if (member.userKey === state.currentUserKey) {
+            if (members[i].userKey === state.currentUserKey) {
                 continue;
             }
-            items.push('' +
-                '<button type="button" class="jim-mention-option" data-mention-name="' + escapeHtml(member.displayName) + '">' +
-                renderAvatar(member.avatarUrl, member.displayName, 'jim-avatar-sm') +
-                '<span class="jim-mention-option-name">' + escapeHtml(member.displayName) + '</span>' +
-                '</button>');
+            mentionables.push(members[i]);
         }
-        els.mentionPalette.innerHTML = items.length
-            ? items.join('')
-            : '<div class="jim-search-empty">No other members to mention</div>';
+
+        if (!mentionables.length) {
+            els.mentionPalette.innerHTML =
+                '<div class="jim-search-empty">No other members to mention</div>';
+            return;
+        }
+
+        // Layout:
+        //   [Mention all members]            <-- single click, inserts everyone
+        //   --- list ----------------------
+        //   [ ] <avatar> Alice                <-- tick to multi-select OR
+        //                                          click name area for quick single-mention
+        //   [x] <avatar> Bob
+        //   ...
+        //   [Clear] [Insert N selected]      <-- footer, only enabled when >=1 ticked
+        var html = [];
+        html.push(
+            '<button type="button" class="jim-mention-all" data-mention-all>' +
+            '<span class="jim-mention-all-icon" aria-hidden="true">@</span>' +
+            '<span class="jim-mention-all-text">Mention all members</span>' +
+            '<span class="jim-mention-all-count">' + mentionables.length + '</span>' +
+            '</button>'
+        );
+        html.push('<div class="jim-mention-list" role="listbox" aria-label="Members">');
+        for (var j = 0; j < mentionables.length; j++) {
+            var member = mentionables[j];
+            var name = member.displayName;
+            html.push(
+                '<div class="jim-mention-option" data-mention-row="' + escapeHtml(name) + '">' +
+                '<label class="jim-mention-checkbox-wrap" title="Add to selection">' +
+                '<input type="checkbox" class="jim-mention-checkbox" ' +
+                'data-mention-checkbox="' + escapeHtml(name) + '" ' +
+                'aria-label="Select ' + escapeHtml(name) + '"/>' +
+                '</label>' +
+                '<button type="button" class="jim-mention-option-body" ' +
+                'data-mention-name="' + escapeHtml(name) + '" ' +
+                'aria-label="Mention ' + escapeHtml(name) + '">' +
+                renderAvatar(member.avatarUrl, name, 'jim-avatar-sm') +
+                '<span class="jim-mention-option-name" dir="auto">' + escapeHtml(name) + '</span>' +
+                '</button>' +
+                '</div>'
+            );
+        }
+        html.push('</div>');
+        html.push(
+            '<div class="jim-mention-footer">' +
+            '<button type="button" class="jim-mention-clear" data-mention-clear>Clear</button>' +
+            '<button type="button" class="jim-mention-insert" data-mention-insert disabled>' +
+            'Insert <span class="jim-mention-insert-count">0</span> selected' +
+            '</button>' +
+            '</div>'
+        );
+        els.mentionPalette.innerHTML = html.join('');
+    }
+
+    /**
+     * Reads every checked .jim-mention-checkbox and returns the names so we
+     * can build the @-mention string for the composer. Names with spaces
+     * are still acceptable - the mention parser matches the longest
+     * display-name match per group member.
+     */
+    function selectedMentionNames() {
+        if (!els.mentionPalette) {
+            return [];
+        }
+        var checked = els.mentionPalette.querySelectorAll('.jim-mention-checkbox:checked');
+        var names = [];
+        for (var i = 0; i < checked.length; i++) {
+            var n = checked[i].getAttribute('data-mention-checkbox');
+            if (n) {
+                names.push(n);
+            }
+        }
+        return names;
+    }
+
+    function updateMentionInsertButton() {
+        if (!els.mentionPalette) {
+            return;
+        }
+        var btn = els.mentionPalette.querySelector('[data-mention-insert]');
+        var counter = els.mentionPalette.querySelector('.jim-mention-insert-count');
+        if (!btn) {
+            return;
+        }
+        var count = selectedMentionNames().length;
+        btn.disabled = count === 0;
+        if (counter) {
+            counter.textContent = String(count);
+        }
+    }
+
+    function insertMentionsAndClose(names) {
+        if (!names || !names.length || !els.messageInput) {
+            return;
+        }
+        var text = '';
+        for (var i = 0; i < names.length; i++) {
+            text += '@' + names[i] + ' ';
+        }
+        insertAtCursor(els.messageInput, text);
+        toggleMentionPalette(true);
+        updateComposerState();
     }
 
     /* ----- Issue linking ----- */
@@ -4128,13 +4223,58 @@
                 toggleMentionPalette(false);
             });
             els.mentionPalette.addEventListener('click', function (event) {
-                var option = event.target.closest('.jim-mention-option');
-                if (!option) {
+                var target = event.target;
+
+                // "Mention all members" - insert mentions for every member.
+                if (target.closest('[data-mention-all]')) {
+                    var allMembers = mentionableMembers();
+                    var allNames = [];
+                    for (var i = 0; i < allMembers.length; i++) {
+                        if (allMembers[i].userKey === state.currentUserKey) {
+                            continue;
+                        }
+                        allNames.push(allMembers[i].displayName);
+                    }
+                    insertMentionsAndClose(allNames);
                     return;
                 }
-                insertAtCursor(els.messageInput, '@' + (option.getAttribute('data-mention-name') || '') + ' ');
-                toggleMentionPalette(true);
-                updateComposerState();
+
+                // Footer "Clear" - untick everything.
+                if (target.closest('[data-mention-clear]')) {
+                    var boxes = els.mentionPalette.querySelectorAll('.jim-mention-checkbox');
+                    for (var b = 0; b < boxes.length; b++) {
+                        boxes[b].checked = false;
+                    }
+                    updateMentionInsertButton();
+                    return;
+                }
+
+                // Footer "Insert N selected" - mention every ticked member.
+                if (target.closest('[data-mention-insert]')) {
+                    insertMentionsAndClose(selectedMentionNames());
+                    return;
+                }
+
+                // Checkbox click - toggle selection only, do not insert yet.
+                // (The native checkbox change event also fires; we just
+                // refresh the footer counter from either path.)
+                if (target.matches('.jim-mention-checkbox')) {
+                    updateMentionInsertButton();
+                    return;
+                }
+
+                // Single-mention quick path: click the avatar / name area
+                // (data-mention-name on the inner button). This keeps the
+                // original one-click UX for users who don't need multi.
+                var body = target.closest('[data-mention-name]');
+                if (body) {
+                    insertMentionsAndClose([body.getAttribute('data-mention-name') || '']);
+                }
+            });
+            els.mentionPalette.addEventListener('change', function (event) {
+                if (event.target && event.target.matches('.jim-mention-checkbox')) {
+                    updateMentionInsertButton();
+                }
             });
         }
         if (els.issueButton && els.issuePalette) {
