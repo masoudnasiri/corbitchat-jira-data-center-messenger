@@ -587,6 +587,34 @@
         return result;
     }
 
+    /**
+     * Picks the text direction for a single message body based on which
+     * script dominates (count of RTL chars vs strong-LTR chars). This is
+     * stricter than HTML's dir="auto" which only looks at the first strong
+     * character — for chat messages like "Hello and سلام دنیا" the first
+     * char shouldn't override what's predominantly there.
+     *
+     * Unicode ranges covered (RTL): Hebrew, Arabic + supplements,
+     * Syriac, Thaana, Arabic Presentation Forms-A/B.
+     * Strong-LTR: Latin (basic + extended A/B + IPA extensions).
+     *
+     * Returns 'rtl' when strictly more RTL chars are present, otherwise 'ltr'
+     * (so empty / digits-only / punctuation-only stays LTR by default).
+     */
+    var RTL_CHAR_PATTERN = /[\u0590-\u05FF\u0600-\u06FF\u0700-\u074F\u0750-\u077F\u0780-\u07BF\u08A0-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/g;
+    var STRONG_LTR_CHAR_PATTERN = /[A-Za-z\u00C0-\u024F\u0250-\u02AF]/g;
+
+    function detectTextDirection(text) {
+        if (!text) {
+            return 'ltr';
+        }
+        var rtlMatches = text.match(RTL_CHAR_PATTERN);
+        var ltrMatches = text.match(STRONG_LTR_CHAR_PATTERN);
+        var rtl = rtlMatches ? rtlMatches.length : 0;
+        var ltr = ltrMatches ? ltrMatches.length : 0;
+        return rtl > ltr ? 'rtl' : 'ltr';
+    }
+
     function renderMessageTextHtml(body) {
         var html = escapeHtml(body);
         // Mentions are processed BEFORE linkify so the literal-string split
@@ -2218,7 +2246,10 @@
             contentHtml = renderEditForm(message);
         } else {
             var body = message.body ? String(message.body).trim() : '';
-            contentHtml = body ? '<div class="jim-message-text" dir="auto">' + renderMessageTextHtml(body) + '</div>' : '';
+            var textDir = detectTextDirection(body);
+            contentHtml = body
+                ? '<div class="jim-message-text jim-message-text-' + textDir + '">' + renderMessageTextHtml(body) + '</div>'
+                : '';
             if (normalizeEventType(message) === 'ISSUE_LINK') {
                 contentHtml += renderIssueChatCard(message);
             }

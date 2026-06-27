@@ -101,13 +101,33 @@
     color: #ffffff;
 }
 
-/* Bidirectional text: let mixed Persian/Arabic/Hebrew + Latin text render
-   each paragraph in its own direction based on first strong character. */
-#jim-messenger-app .jim-message-text,
+/* Bidirectional text inside text-bearing elements.
+
+   - Composer textarea, conversation sidebar title/preview and reply preview
+     use unicode-bidi: plaintext so the browser picks direction per paragraph
+     from the first strong character (best for live typing and short labels).
+
+   - Message body text (.jim-message-text) is classified explicitly in JS by
+     a majority-character vote — see detectTextDirection() — and tagged with
+     either .jim-message-text-rtl or .jim-message-text-ltr. The bubble's row
+     position is NOT changed by this; only the text inside the bubble gets
+     direction + alignment. */
 #jim-messenger-app .jim-composer-input,
 #jim-messenger-app .jim-conversation-preview,
 #jim-messenger-app .jim-conversation-title,
 #jim-messenger-app .jim-reply-preview-text {
+    unicode-bidi: plaintext;
+}
+
+#jim-messenger-app .jim-message-text-rtl {
+    direction: rtl;
+    text-align: right;
+    unicode-bidi: plaintext;
+}
+
+#jim-messenger-app .jim-message-text-ltr {
+    direction: ltr;
+    text-align: left;
     unicode-bidi: plaintext;
 }
 
