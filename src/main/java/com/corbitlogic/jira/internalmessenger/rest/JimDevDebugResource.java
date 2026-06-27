@@ -85,7 +85,7 @@ public class JimDevDebugResource {
             body.put("statusChangeListenerRegistered", this.pluginBootstrap.isStatusChangeListenerRegistered());
             LinkedHashMap<String, Object> attachments = new LinkedHashMap<String, Object>();
             attachments.put("attachmentAoEntityIncluded", true);
-            attachments.put("maxUploadSizeBytes", 0xA00000L);
+            attachments.put("maxUploadSizeBytes", com.corbitlogic.jira.internalmessenger.attachment.JimAttachmentPolicy.MAX_FILE_SIZE_BYTES);
             attachments.put("allowedMimeTypesCount", JimAttachmentPolicy.allowedMimeTypeCount());
             try {
                 attachments.put("attachmentStorageRootExists", this.attachmentStorageService.storageRootExists());

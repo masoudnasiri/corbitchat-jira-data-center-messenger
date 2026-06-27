@@ -6,7 +6,7 @@
     var SEARCH_DEBOUNCE_MS = 300;
     var MIN_SEARCH_LENGTH = 2;
     var MAX_MESSAGE_LENGTH = 4000;
-    var MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+    var MAX_UPLOAD_SIZE_BYTES = 200 * 1024 * 1024;
     var DELETE_WINDOW_MS = 10 * 60 * 1000;
 
     var EVENT_CARD_CONFIG = {
@@ -907,7 +907,7 @@
             return false;
         }
         if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-            showComposerError('File exceeds the maximum allowed size of 10 MB.');
+            showComposerError('File exceeds the maximum allowed size of 200 MB.');
             clearSelectedFile();
             return false;
         }

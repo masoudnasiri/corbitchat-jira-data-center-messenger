@@ -11,7 +11,8 @@ import java.util.Locale;
 import java.util.Set;
 
 public final class JimAttachmentPolicy {
-    public static final long MAX_FILE_SIZE_BYTES = 0xA00000L;
+    /** Absolute ceiling enforced by the server regardless of admin settings (200 MB). */
+    public static final long MAX_FILE_SIZE_BYTES = 200L * 1024L * 1024L;
     public static final String STORAGE_SUBDIR = "data/corbitchat/attachments";
     private static final Set<String> ALLOWED_IMAGE_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("image/png", "image/jpeg", "image/gif", "image/webp")));
     private static final Set<String> ALLOWED_FILE_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
@@ -54,8 +55,8 @@ public final class JimAttachmentPolicy {
         if (fileSize <= 0L) {
             throw JimMessengerException.badRequest("Uploaded file is empty");
         }
-        if (fileSize > 0xA00000L) {
-            throw JimMessengerException.badRequest("File exceeds the maximum allowed size of 10 MB");
+        if (fileSize > MAX_FILE_SIZE_BYTES) {
+            throw JimMessengerException.badRequest("File exceeds the maximum allowed size of 200 MB");
         }
         String sanitizedName = JimAttachmentPolicy.sanitizeOriginalFilename(originalFilename);
         String extension = JimAttachmentPolicy.extractExtension(sanitizedName);

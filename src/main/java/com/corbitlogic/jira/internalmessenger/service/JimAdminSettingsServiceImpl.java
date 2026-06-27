@@ -82,7 +82,7 @@ implements JimAdminSettingsService {
 
     @Override
     public int getMaxAttachmentSizeMb() {
-        return this.intValue(KEY_MAX_ATTACHMENT_SIZE_MB, 10, 1, 100);
+        return this.intValue(KEY_MAX_ATTACHMENT_SIZE_MB, 150, 1, 200);
     }
 
     @Override
@@ -195,8 +195,8 @@ implements JimAdminSettingsService {
                 catch (NumberFormatException ex) {
                     throw JimMessengerException.badRequest(key + " must be a number");
                 }
-                if (size < 1 || size > 100) {
-                    throw JimMessengerException.badRequest(key + " must be between 1 and 100");
+                if (size < 1 || size > 200) {
+                    throw JimMessengerException.badRequest(key + " must be between 1 and 200");
                 }
                 return String.valueOf(size);
             }

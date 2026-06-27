@@ -40,7 +40,9 @@ public final class JimMultipartParser {
         if (boundary == null) {
             throw JimMessengerException.badRequest("Multipart boundary is missing");
         }
-        byte[] bodyBytes = JimMultipartParser.readRequestBody((InputStream)request.getInputStream(), 0xA00400L);
+        // Hard cap = policy max + room for headers/boundary/body field bytes.
+        long maxBodyBytes = com.corbitlogic.jira.internalmessenger.attachment.JimAttachmentPolicy.MAX_FILE_SIZE_BYTES + 65536L;
+        byte[] bodyBytes = JimMultipartParser.readRequestBody((InputStream)request.getInputStream(), maxBodyBytes);
         String bodyText = new String(bodyBytes, StandardCharsets.ISO_8859_1);
         String delimiter = "--" + boundary;
         String[] parts = bodyText.split(delimiter);
