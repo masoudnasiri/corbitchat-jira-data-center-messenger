@@ -161,7 +161,14 @@ public class JimAttachmentService {
             ApplicationUser sender = ComponentAccessor.getUserManager().getUserByKey(senderUserKey);
             String senderName = sender != null ? sender.getDisplayName() : "New message";
             String body = preview != null && !preview.trim().isEmpty() ? preview.trim() : "Sent an attachment";
-            this.pushService.pushToUserAsync(recipient, senderName, body, "jim-conv-" + conversationId);
+            java.util.LinkedHashMap<String, String> attachmentPayload = new java.util.LinkedHashMap<String, String>();
+            attachmentPayload.put("title", senderName);
+            attachmentPayload.put("body", body);
+            attachmentPayload.put("tag", "jim-conv-" + conversationId);
+            attachmentPayload.put("type", "chat_message");
+            attachmentPayload.put("url", "/plugins/servlet/jim/chat");
+            attachmentPayload.put("conversationId", String.valueOf(conversationId));
+            this.pushService.pushToUserAsync(recipient, attachmentPayload);
         }
         catch (RuntimeException runtimeException) {
             // empty catch block

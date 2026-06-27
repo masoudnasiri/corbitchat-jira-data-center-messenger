@@ -46,7 +46,9 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import javax.crypto.Cipher;
 import javax.crypto.KeyAgreement;
@@ -153,28 +155,50 @@ implements JimPushService {
 
     @Override
     public void pushToUserAsync(String userKey, String title, String body, String tag) {
-        if (userKey == null) {
+        // Legacy 4-arg shape preserved for backward compatibility. Build a
+        // map and delegate to the canonical payload-first variant.
+        java.util.LinkedHashMap<String, String> payload = new java.util.LinkedHashMap<String, String>();
+        if (title != null) {
+            payload.put("title", title);
+        }
+        if (body != null) {
+            payload.put("body", body);
+        }
+        if (tag != null) {
+            payload.put("tag", tag);
+        }
+        this.pushToUserAsync(userKey, payload);
+    }
+
+    @Override
+    public void pushToUserAsync(String userKey, Map<String, String> payload) {
+        if (userKey == null || payload == null) {
             return;
         }
         if (!this.adminSettingsService.isWebPushEnabled()) {
             return;
         }
-        String effectiveTitle = title;
-        String effectiveBody = body;
-        String effectiveTag = tag;
-        if (title != null) {
-            String detailLevel = this.adminSettingsService.getNotificationDetailLevel();
-            if ("SENDER_ONLY".equals(detailLevel)) {
-                effectiveBody = "You have a new message";
-            } else if ("GENERIC_ONLY".equals(detailLevel)) {
-                effectiveTitle = "CorbitChat";
-                effectiveBody = "You have a new message";
-            }
-            if (this.adminSettingsService.isAggregateNotifications()) {
-                effectiveTag = "jim-unread";
-            }
+        String title = payload.get("title");
+        if (title == null) {
+            // Payload-less push is no-op now: the service worker shows a
+            // generic fallback for any push without a title field, so
+            // sending one from the server adds no information.
+            return;
         }
-        String payloadJson = effectiveTitle != null ? JimPushServiceImpl.buildPayloadJson(effectiveTitle, effectiveBody, effectiveTag) : null;
+        // Apply the admin "notification detail level" privacy setting on
+        // top of whatever the caller provided.
+        java.util.LinkedHashMap<String, String> effective = new java.util.LinkedHashMap<String, String>(payload);
+        String detailLevel = this.adminSettingsService.getNotificationDetailLevel();
+        if ("SENDER_ONLY".equals(detailLevel)) {
+            effective.put("body", "You have a new message");
+        } else if ("GENERIC_ONLY".equals(detailLevel)) {
+            effective.put("title", "CorbitChat");
+            effective.put("body", "You have a new message");
+        }
+        if (this.adminSettingsService.isAggregateNotifications()) {
+            effective.put("tag", "jim-unread");
+        }
+        String payloadJson = JimPushServiceImpl.buildPayloadJson(effective);
         try {
             this.eventExecutor.submit("web_push", () -> this.pushToUser(userKey, payloadJson));
         }
@@ -193,15 +217,30 @@ implements JimPushService {
         return this.failedPushCount.get();
     }
 
-    private static String buildPayloadJson(String title, String body, String tag) {
-        StringBuilder json = new StringBuilder("{\"title\":\"").append(JimPushServiceImpl.escapeJson(title)).append('\"');
-        if (body != null && !body.isEmpty()) {
-            json.append(",\"body\":\"").append(JimPushServiceImpl.escapeJson(body)).append('\"');
+    /**
+     * Emits a JSON object containing every non-blank field of the payload
+     * map in iteration order. All string values are JSON-escaped. The
+     * resulting string is what the service worker reads via
+     * event.data.json() in its push event handler.
+     */
+    private static String buildPayloadJson(Map<String, String> payload) {
+        StringBuilder json = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, String> entry : payload.entrySet()) {
+            String key = entry.getKey();
+            String value = entry.getValue();
+            if (key == null || key.isEmpty() || value == null || value.isEmpty()) {
+                continue;
+            }
+            if (!first) {
+                json.append(',');
+            }
+            first = false;
+            json.append('"').append(JimPushServiceImpl.escapeJson(key))
+                .append("\":\"").append(JimPushServiceImpl.escapeJson(value)).append('"');
         }
-        if (tag != null && !tag.isEmpty()) {
-            json.append(",\"tag\":\"").append(JimPushServiceImpl.escapeJson(tag)).append('\"');
-        }
-        return json.append('}').toString();
+        json.append('}');
+        return json.toString();
     }
 
     private static String escapeJson(String value) {

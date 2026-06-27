@@ -325,7 +325,13 @@ public class JimAdminResource {
             if (subscriptions == 0) {
                 return JimRestResponses.errorJson(400, "bad_request", "You have no push subscriptions. Open the chat page and enable notifications first.");
             }
-            this.pushService.pushToUserAsync(admin.getKey(), "CorbitChat test notification", "Sent from the CorbitChat admin console at " + String.valueOf(new Date()), "jim-admin-test");
+            java.util.LinkedHashMap<String, String> testPayload = new java.util.LinkedHashMap<String, String>();
+            testPayload.put("title", "CorbitChat test");
+            testPayload.put("body", "Push notifications are working.");
+            testPayload.put("url", "/plugins/servlet/jim/chat");
+            testPayload.put("type", "test");
+            testPayload.put("tag", "jim-admin-test");
+            this.pushService.pushToUserAsync(admin.getKey(), testPayload);
             this.auditService.record(admin.getKey(), "test.notification", "subscriptions=" + subscriptions);
             LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
             body.put("sent", true);

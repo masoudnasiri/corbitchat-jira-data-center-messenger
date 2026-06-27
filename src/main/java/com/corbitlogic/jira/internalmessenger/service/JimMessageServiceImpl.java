@@ -119,11 +119,11 @@ implements JimMessageService {
             return message;
         });
         this.notifyGroupMentionsSafely(conversationId, senderUserKey, normalizedBody, created.getID());
-        this.notifyDirectRecipientPushSafely(conversationId, senderUserKey, normalizedBody);
+        this.notifyDirectRecipientPushSafely(conversationId, senderUserKey, normalizedBody, created.getID());
         return created;
     }
 
-    private void notifyDirectRecipientPushSafely(int conversationId, String senderUserKey, String preview) {
+    private void notifyDirectRecipientPushSafely(int conversationId, String senderUserKey, String preview, int messageId) {
         try {
             String recipient;
             JimConversation conversation = this.conversationService.getConversation(conversationId);
@@ -136,7 +136,17 @@ implements JimMessageService {
             }
             ApplicationUser sender = ComponentAccessor.getUserManager().getUserByKey(senderUserKey);
             String senderName = sender != null ? sender.getDisplayName() : "New message";
-            this.pushService.pushToUserAsync(recipient, senderName, JimMessageServiceImpl.excerptForPush(preview), "jim-conv-" + conversationId);
+            java.util.LinkedHashMap<String, String> chatPayload = new java.util.LinkedHashMap<String, String>();
+            chatPayload.put("title", senderName);
+            chatPayload.put("body", JimMessageServiceImpl.excerptForPush(preview));
+            chatPayload.put("tag", "jim-conv-" + conversationId);
+            chatPayload.put("type", "chat_message");
+            chatPayload.put("url", "/plugins/servlet/jim/chat");
+            chatPayload.put("conversationId", String.valueOf(conversationId));
+            if (messageId > 0) {
+                chatPayload.put("messageId", String.valueOf(messageId));
+            }
+            this.pushService.pushToUserAsync(recipient, chatPayload);
         }
         catch (RuntimeException runtimeException) {
             // empty catch block
@@ -237,7 +247,7 @@ implements JimMessageService {
             return message;
         });
         this.notifyGroupMentionsSafely(conversationId, senderUserKey, storedBody, created.getID());
-        this.notifyDirectRecipientPushSafely(conversationId, senderUserKey, "Shared issue " + issueKey.trim() + (String)(storedBody.isEmpty() ? "" : ": " + storedBody));
+        this.notifyDirectRecipientPushSafely(conversationId, senderUserKey, "Shared issue " + issueKey.trim() + (String)(storedBody.isEmpty() ? "" : ": " + storedBody), created.getID());
         return created;
     }
 
@@ -356,7 +366,15 @@ implements JimMessageService {
         if (created != null) {
             try {
                 if (this.pushAllowedForEvent(normalizedEventType) && !this.presenceService.isViewingConversation(normalizedTarget, conversation.getID())) {
-                    this.pushService.pushToUserAsync(normalizedTarget, JimMessageServiceImpl.buildPushTitleForEvent(normalizedEventType, this.trimToNull(issueKey)), JimMessageServiceImpl.excerptForPush(normalizedBody), "jim-alarm-" + created.getID());
+                    java.util.LinkedHashMap<String, String> assistantPayload = new java.util.LinkedHashMap<String, String>();
+                    assistantPayload.put("title", JimMessageServiceImpl.buildPushTitleForEvent(normalizedEventType, this.trimToNull(issueKey)));
+                    assistantPayload.put("body", JimMessageServiceImpl.excerptForPush(normalizedBody));
+                    assistantPayload.put("tag", "jim-alarm-" + created.getID());
+                    assistantPayload.put("type", "jira_assistant");
+                    assistantPayload.put("url", "/plugins/servlet/jim/chat");
+                    assistantPayload.put("conversationId", String.valueOf(conversation.getID()));
+                    assistantPayload.put("messageId", String.valueOf(created.getID()));
+                    this.pushService.pushToUserAsync(normalizedTarget, assistantPayload);
                 }
             }
             catch (RuntimeException runtimeException) {

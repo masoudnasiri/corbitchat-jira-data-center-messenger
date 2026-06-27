@@ -1,45 +1,62 @@
 /**
  * CorbitChat service worker.
  *
- * Receives payload-less Web Push messages, fetches the unread summary from
- * the REST API (session cookie is sent automatically for same-origin
- * requests) and shows an OS notification. Clicking the notification focuses
- * an existing Jira tab or opens the chat page.
+ * Payload-first push handler. Every server-sent push is expected to carry
+ * a JSON payload describing the notification (title, body, url, type,
+ * conversationId, messageId, ...). The SW never fetches the REST API
+ * during a push event - older builds did, which produced cross-origin
+ * (origin: null) failures in Chrome when the SW happened to be in an
+ * opaque-origin context. If a push arrives without a payload (e.g. a
+ * manual DevTools "Push" trigger with no payload), the SW shows a
+ * generic fallback notification instead of contacting the server.
+ *
+ * Clicking the notification focuses an existing Jira tab or opens the
+ * chat page; the click handler does not depend on any REST call either.
  */
 (function () {
     'use strict';
 
-    // The SW is served from <context>/plugins/servlet/jim/sw.js
     var SERVLET_MARKER = '/plugins/servlet/jim/sw.js';
     var swPath = self.location.pathname;
     var contextPath = swPath.slice(0, swPath.length - SERVLET_MARKER.length);
-    // Build absolute URLs against the SW's own origin so the fetch is
-    // unambiguously same-origin. Using new URL() (rather than string
-    // concatenation) makes the resolved origin explicit and removes any
-    // chance that a stale SW computes a stringy path that resolves
-    // somewhere unexpected.
-    var summaryUrl = new URL(contextPath + '/rest/jim/1.0/push/summary', self.location.origin).href;
+    // Absolute URLs bound to the SW's own origin so they're unambiguous.
     var chatUrl = new URL(contextPath + '/plugins/servlet/jim/chat', self.location.origin).href;
+
+    var FALLBACK_TITLE = 'CorbitChat';
+    var FALLBACK_BODY = 'You have a new message';
+    var DEFAULT_TAG = 'jim-unread';
 
     self.addEventListener('install', function () {
         self.skipWaiting();
     });
 
     self.addEventListener('activate', function (event) {
-        // One-shot diagnostic line so origin / URL issues are visible in
-        // Chrome DevTools -> Application -> Service Workers -> Console.
         try {
             console.log('[CorbitChat SW] activate origin=', self.location.origin,
-                ' href=', self.location.href, ' summaryUrl=', summaryUrl);
+                ' href=', self.location.href, ' chatUrl=', chatUrl);
         } catch (logError) {
             // best effort
         }
         event.waitUntil(self.clients.claim());
     });
 
+    /**
+     * Resolves the notification target URL from a payload field. We accept
+     * absolute or relative URLs but always render them on the SW's own
+     * origin via new URL() so they can never escape the Jira host.
+     */
+    function resolveNotificationUrl(rawUrl) {
+        if (!rawUrl) {
+            return chatUrl;
+        }
+        try {
+            return new URL(String(rawUrl), self.location.origin).href;
+        } catch (e) {
+            return chatUrl;
+        }
+    }
+
     self.addEventListener('push', function (event) {
-        // Encrypted payload pushes carry the notification content directly:
-        // show it immediately without any network round-trip.
         var payload = null;
         if (event.data) {
             try {
@@ -48,64 +65,45 @@
                 payload = null;
             }
         }
-        if (payload && payload.title) {
-            event.waitUntil(self.registration.showNotification(payload.title, {
-                body: payload.body || '',
-                tag: payload.tag || 'jim-unread',
+
+        var title;
+        var options;
+        if (payload && typeof payload === 'object' && payload.title) {
+            // Payload path: use what the server told us. Notification data
+            // carries everything the click handler might need.
+            title = String(payload.title);
+            options = {
+                body: payload.body ? String(payload.body) : '',
+                tag: payload.tag ? String(payload.tag) : DEFAULT_TAG,
                 renotify: true,
                 requireInteraction: true,
-                data: { url: payload.url || chatUrl }
-            }));
-            return;
+                data: {
+                    url: resolveNotificationUrl(payload.url),
+                    type: payload.type || null,
+                    conversationId: payload.conversationId || null,
+                    messageId: payload.messageId || null
+                }
+            };
+        } else {
+            // No payload (e.g. DevTools manual Push, or a vendor-side
+            // server fallback): show a generic notification. The SW does
+            // NOT contact the server here.
+            try {
+                console.log('[CorbitChat SW] push without payload - showing generic fallback');
+            } catch (logError) {
+                // best effort
+            }
+            title = FALLBACK_TITLE;
+            options = {
+                body: FALLBACK_BODY,
+                tag: DEFAULT_TAG,
+                renotify: true,
+                requireInteraction: false,
+                data: { url: chatUrl, type: null, conversationId: null, messageId: null }
+            };
         }
 
-        event.waitUntil(
-            // Explicit same-origin Request so any URL-resolution mistake
-            // surfaces as an error here instead of being silently treated
-            // as cross-origin by the browser. The credentials field still
-            // sends the Jira session cookie automatically.
-            fetch(new Request(summaryUrl, {
-                method: 'GET',
-                credentials: 'same-origin',
-                mode: 'same-origin',
-                cache: 'no-cache',
-                headers: { 'Accept': 'application/json' }
-            }))
-                .then(function (response) {
-                    if (!response.ok) {
-                        throw new Error('summary failed: ' + response.status);
-                    }
-                    return response.json();
-                })
-                .then(function (summary) {
-                    if (!summary || Number(summary.unreadCount) === 0) {
-                        // Already read in another session; stay quiet.
-                        return undefined;
-                    }
-                    return self.registration.showNotification(summary.title || 'CorbitChat', {
-                        body: summary.body || 'You have new messages',
-                        tag: 'jim-unread',
-                        renotify: true,
-                        data: { url: chatUrl }
-                    });
-                })
-                .catch(function (fetchError) {
-                    try {
-                        console.warn('[CorbitChat SW] /push/summary fetch failed: ',
-                            fetchError && fetchError.message,
-                            ' swOrigin=', self.location.origin,
-                            ' url=', summaryUrl);
-                    } catch (logError) {
-                        // best effort
-                    }
-                    return self.registration.showNotification('CorbitChat', {
-                        body: 'You have new messages',
-                        tag: 'jim-unread',
-                        renotify: true,
-                        data: { url: chatUrl }
-                    });
-                })
-        );
+        event.waitUntil(self.registration.showNotification(title, options));
     });
 
     self.addEventListener('notificationclick', function (event) {

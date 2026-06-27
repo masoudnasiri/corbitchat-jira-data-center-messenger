@@ -3614,7 +3614,10 @@
 
         var replyToMessageId = state.replyToMessage ? state.replyToMessage.id : null;
 
+        var sendStart = Date.now();
+        try { console.log('[CorbitChat send] POST start convId=', state.selectedConversationId); } catch (e) {}
         JimApi.sendMessage(state.selectedConversationId, body, replyToMessageId).then(function () {
+            try { console.log('[CorbitChat send] POST ok in', Date.now() - sendStart, 'ms'); } catch (e) {}
             els.messageInput.value = '';
             clearReplyTarget();
             updateComposerState();
@@ -3871,6 +3874,7 @@
 
     function startPolling() {
         stopPolling();
+        try { console.log('[CorbitChat poll] startPolling - msg every', MESSAGE_POLL_MS, 'ms, conv every', CONVERSATION_POLL_MS, 'ms'); } catch (e) {}
 
         state.messagePollTimer = window.setInterval(function () {
             if (document.hidden || !state.selectedConversationId || state.loadingMessages) {
@@ -4197,11 +4201,25 @@
     function pushUrls() {
         var origin = window.location.origin;
         var ctx = contextPath();
-        return {
-            origin: origin,
-            sw: new URL(ctx + '/plugins/servlet/jim/sw.js', origin).href,
-            scope: new URL(ctx + '/', origin).href
-        };
+        // Guard against opaque-origin contexts (sandboxed iframe, blob:,
+        // data:, srcdoc, about:blank) where origin is the string 'null'.
+        // We must NOT call new URL(path, 'null') because it throws and
+        // would break init() if pushUrls() is called from the bootstrap
+        // path. The caller (subscribeForPush) detects an opaque origin
+        // through the empty sw/scope and rejects with a clear message.
+        if (!origin || origin === 'null') {
+            return { origin: origin || null, sw: '', scope: '' };
+        }
+        try {
+            return {
+                origin: origin,
+                sw: new URL(ctx + '/plugins/servlet/jim/sw.js', origin).href,
+                scope: new URL(ctx + '/', origin).href
+            };
+        } catch (urlError) {
+            // Any URL-construction failure is treated as opaque-origin too.
+            return { origin: origin || null, sw: '', scope: '' };
+        }
     }
 
     function logPushDiagnostics(stage, extra) {
@@ -4230,11 +4248,9 @@
         var urls = pushUrls();
 
         // Fail fast with a clear message if this code is running inside an
-        // opaque-origin context (sandboxed iframe, blob/data URL, srcdoc).
-        // A service worker registered from such a page inherits the opaque
-        // origin and its fetches go out with Origin: null, which the Jira
-        // server (correctly) refuses as cross-origin.
-        if (!urls.origin || urls.origin === 'null') {
+        // opaque-origin context. pushUrls() returns empty sw/scope strings
+        // for that case so this also covers any URL-construction failure.
+        if (!urls.origin || urls.origin === 'null' || !urls.sw) {
             logPushDiagnostics('blocked-opaque-origin');
             return Promise.reject(new Error(
                 'Push setup failed because the request was not made from the Jira page origin.'
@@ -4505,11 +4521,22 @@
         ensureMessageActionsBound();
         updateComposerState();
         checkLicense();
-        setupPushNotifications();
         if (!state.projectMode) {
             restoreActiveTab();
         }
+        // Critical ordering: start conversation loading + polling BEFORE
+        // touching push setup. Polling is the primary message-delivery
+        // mechanism (push is best-effort on top), so it must never wait
+        // on - or be aborted by - push registration. setupPushNotifications
+        // is wrapped in try/catch as a second line of defence: even if a
+        // synchronous error somehow escapes from inside (opaque origin,
+        // unexpected DOM state, etc.) it cannot stop init() from finishing.
         loadConversations(true).then(startPolling);
+        try {
+            setupPushNotifications();
+        } catch (pushSetupError) {
+            logError('push.setup', pushSetupError);
+        }
     }
 
     onReady(init);
