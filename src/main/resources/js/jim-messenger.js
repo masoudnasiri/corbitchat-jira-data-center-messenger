@@ -2965,6 +2965,13 @@
         renderPinnedBanner();
         updateComposerState();
 
+        // Auto-focus the composer after the click handler completes so the
+        // browser's natural focus into the clicked sidebar button doesn't
+        // override us. focusMessageInput() already guards against read-only
+        // / system / license-blocked conversations, so this is a no-op when
+        // the composer is intentionally inactive.
+        window.setTimeout(focusMessageInput, 0);
+
         loadMessages(conversationId, true, true);
         loadPinned(conversationId);
         markRead(conversationId).then(function () {
