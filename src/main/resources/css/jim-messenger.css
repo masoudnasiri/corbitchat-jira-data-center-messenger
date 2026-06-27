@@ -77,6 +77,16 @@
     background: var(--jim-bg);
 }
 
+/* Lock the chat shell to LTR layout so bubble positions and composer button
+   order stay stable even when Jira's UI is set to a Persian/Arabic/Hebrew
+   locale (which would otherwise make <html dir="rtl"> flip every flex
+   container in here and move own messages to the left). Text-bearing inner
+   elements still carry dir="auto" which overrides this for their own
+   content, so Persian text inside bubbles still flows right-to-left. */
+#jim-messenger-app {
+    direction: ltr;
+}
+
 /* Auto-linked URLs inside message bubbles. */
 #jim-messenger-app .jim-message-text .jim-link {
     color: inherit;
@@ -1273,15 +1283,10 @@
     border: 0;
 }
 
-[dir="rtl"] #jim-messenger-app .jim-sidebar {
-    border-inline-end: 0;
-    border-inline-start: 1px solid var(--jim-border);
-}
-
-[dir="rtl"] #jim-messenger-app .jim-system-card {
-    border-inline-start: 0;
-    border-inline-end: 4px solid var(--jim-brand);
-}
+/* (Removed legacy [dir="rtl"] overrides for sidebar/system-card; the chat
+   shell is now locked to LTR layout at the top of this file, so RTL flips
+   would only create inconsistency. Per-message text still flows RTL when
+   appropriate via dir="auto".) */
 
 #jim-messenger-app .jim-composer-icon-button {
     flex: 0 0 36px;
