@@ -189,7 +189,7 @@
                                 <textarea id="jim-message-input"
                                           class="jim-composer-input"
                                           rows="1"
-                                          maxlength="4000"
+                                          maxlength="25000"
                                           dir="auto"
                                           aria-label="$i18n.getText('jim.composer.label')"
                                           placeholder="$i18n.getText('jim.composer.placeholder')"></textarea>

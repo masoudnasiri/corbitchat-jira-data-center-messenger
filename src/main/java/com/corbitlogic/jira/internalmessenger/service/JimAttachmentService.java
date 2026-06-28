@@ -139,7 +139,7 @@ public class JimAttachmentService {
             attachment.setCreatedAt(now);
             attachment.setDeleted(0);
             attachment.save();
-            this.conversationService.touchConversation(conversationId, preview);
+            this.conversationService.touchConversation(conversationId, preview, senderUserKey);
             log.info("event=attachment stage=create outcome=success conversationId={} messageId={} attachmentId={} fileKind={}", new Object[]{conversationId, message.getID(), attachment.getID(), storedFile.getFileKind()});
             return new UploadResult(message, attachment);
         });

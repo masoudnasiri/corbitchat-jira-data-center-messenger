@@ -90,6 +90,12 @@ public class JimRestJsonMapper {
         item.put("type", conversation.getConversationType());
         item.put("lastMessagePreview", JimSanitizer.sanitizeText(conversation.getLastMessagePreview()));
         item.put("lastMessageAt", conversation.getLastMessageAt());
+        // Sender of the most recent message so the sidebar can colour-code
+        // the preview by ownership. Null on legacy rows (pre-migration) and
+        // on system messages; the client renders the neutral style then.
+        item.put("lastMessageSenderUserKey", conversation.getLastMessageSenderUserKey());
+        item.put("lastMessageOwn", currentUserKey != null
+                && currentUserKey.equals(conversation.getLastMessageSenderUserKey()));
         item.put("unreadCount", unreadCount);
         JimConversationType type = this.permissionService.toConversationType(conversation);
         boolean isSystem = type == JimConversationType.SYSTEM;

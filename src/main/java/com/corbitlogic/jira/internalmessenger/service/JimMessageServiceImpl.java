@@ -115,7 +115,7 @@ implements JimMessageService {
                 message.setReplyToMessageId(replyToMessageId);
             }
             message.save();
-            this.conversationService.touchConversation(conversationId, normalizedBody);
+            this.conversationService.touchConversation(conversationId, normalizedBody, senderUserKey);
             return message;
         });
         this.notifyGroupMentionsSafely(conversationId, senderUserKey, normalizedBody, created.getID());
@@ -243,7 +243,7 @@ implements JimMessageService {
             message.setEdited(0);
             message.setDeleted(0);
             message.save();
-            this.conversationService.touchConversation(conversationId, previewText);
+            this.conversationService.touchConversation(conversationId, previewText, senderUserKey);
             return message;
         });
         this.notifyGroupMentionsSafely(conversationId, senderUserKey, storedBody, created.getID());
@@ -510,7 +510,9 @@ implements JimMessageService {
         if (latestMessageId != messageId) {
             return;
         }
-        this.conversationService.touchConversation(conversationId, this.resolveLatestPreview(conversationId));
+        JimMessage[] latest = (JimMessage[])this.activeObjects.find(JimMessage.class, Query.select().where("CONVERSATION_ID = ?", new Object[]{conversationId}).order("ID DESC").limit(1));
+        String latestSender = latest.length > 0 ? latest[0].getSenderUserKey() : null;
+        this.conversationService.touchConversation(conversationId, this.resolveLatestPreview(conversationId), latestSender);
     }
 
     private String resolveLatestPreview(int conversationId) {

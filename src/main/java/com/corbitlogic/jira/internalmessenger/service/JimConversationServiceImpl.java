@@ -123,12 +123,18 @@ implements JimConversationService {
 
     @Override
     public JimConversation touchConversation(int conversationId, String preview) {
+        return this.touchConversation(conversationId, preview, null);
+    }
+
+    @Override
+    public JimConversation touchConversation(int conversationId, String preview, String senderUserKey) {
         this.validateTouchRequest(conversationId, preview);
         JimConversation conversation = this.getConversation(conversationId);
         long now = System.currentTimeMillis();
         conversation.setUpdatedAt(now);
         conversation.setLastMessageAt(now);
         conversation.setLastMessagePreview(JimValidation.truncatePreview(preview));
+        conversation.setLastMessageSenderUserKey(senderUserKey);
         conversation.save();
         return conversation;
     }
@@ -168,7 +174,11 @@ implements JimConversationService {
 
     void validateTouchRequest(int conversationId, String preview) {
         JimValidation.requirePositiveId(conversationId, "conversationId");
-        JimValidation.requireMaxLength(preview, 500, "preview");
+        // The 500-char ceiling is enforced by JimValidation.truncatePreview()
+        // at the storage call site, so we let any preview length through
+        // here. Previously, this used requireMaxLength which prevented long
+        // messages (>500 chars body) from being sent at all because the
+        // message body itself was passed as the preview.
     }
 }
 

@@ -12,7 +12,12 @@
     var FOCUS_REFRESH_DEBOUNCE_MS = 250;
     var SEARCH_DEBOUNCE_MS = 300;
     var MIN_SEARCH_LENGTH = 2;
-    var MAX_MESSAGE_LENGTH = 4000;
+    // Per-message length cap (matches server-side JimValidation). Longer
+    // user input is split client-side into ordered chunks each <= this size.
+    var MAX_MESSAGE_LENGTH = 5000;
+    // Textarea hard cap (input attribute). Much larger than per-message
+    // cap so the user can keep typing freely; we split on send.
+    var MAX_TEXTAREA_LENGTH = 25000;
     var MAX_UPLOAD_SIZE_BYTES = 200 * 1024 * 1024;
     var DELETE_WINDOW_MS = 10 * 60 * 1000;
     var EDIT_WINDOW_MS = 30 * 60 * 1000;
@@ -76,6 +81,10 @@
         selectedConversationId: null,
         selectedConversation: null,
         messages: [],
+        // Drafts per conversation: maps conversationId -> raw textarea value.
+        // Saved when leaving a conversation and restored when returning, so
+        // typed text never bleeds into a different chat. Cleared on send.
+        drafts: {},
         currentUserKey: null,
         searchTimer: null,
         messagePollTimer: null,
@@ -1586,6 +1595,32 @@
         return attrs;
     }
 
+    /**
+     * Renders the bottom-row preview text for a sidebar conversation.
+     * Three visual states (controlled by class):
+     *   - draft   : 'Draft' label + the unsent text the user typed
+     *   - own     : light blue background, last message was sent by me
+     *   - other   : light gray background, last message was someone else's
+     * Drafts are local-only client state and take priority over server-side
+     * last-message metadata, so the user always sees the unsent text first.
+     */
+    function renderConversationPreview(conversation) {
+        if (hasDraftFor(conversation.id)) {
+            var draftText = state.drafts[conversation.id].trim();
+            return '<span class="jim-conversation-preview jim-conversation-preview-draft" dir="auto">' +
+                '<span class="jim-conversation-preview-draft-label">Draft</span>' +
+                escapeHtml(draftText) + '</span>';
+        }
+        var className = 'jim-conversation-preview';
+        if (conversation.lastMessageOwn) {
+            className += ' jim-conversation-preview-own';
+        } else if (conversation.lastMessagePreview) {
+            className += ' jim-conversation-preview-other';
+        }
+        return '<span class="' + className + '" dir="auto">' +
+            escapeHtml(conversation.lastMessagePreview || '') + '</span>';
+    }
+
     function renderConversationItem(conversation) {
         var selected = conversation.id === state.selectedConversationId;
 
@@ -1606,7 +1641,7 @@
             renderConversationMetaRight(formatTime(conversation.lastMessageAt), conversation.unreadCount) +
             '    </div>' +
             '    <div class="jim-conversation-item-bottom">' +
-            '      <span class="jim-conversation-preview" dir="auto">' + escapeHtml(conversation.lastMessagePreview || '') + '</span>' +
+            renderConversationPreview(conversation) +
             '    </div>' +
             '  </div>' +
             '</button>';
@@ -1634,7 +1669,7 @@
             '      <span class="jim-assistant-badge">BOT</span>' +
             '    </div>' +
             '    <div class="jim-conversation-item-bottom">' +
-            '      <span class="jim-conversation-preview" dir="auto">' + escapeHtml(conversation.lastMessagePreview || '') + '</span>' +
+            renderConversationPreview(conversation) +
             renderConversationMetaRight(formatTime(conversation.lastMessageAt), conversation.unreadCount) +
             '    </div>' +
             '  </div>' +
@@ -2707,12 +2742,25 @@
             ? '<span class="jim-message-edited">(edited)</span>'
             : '';
 
+        // Every bubble carries its own exact send/receive time so users
+        // can see when each individual message was sent, not just the
+        // group header. Hidden for deleted bubbles and while editing.
+        var bubbleTime = !message.deleted && !isEditing
+            ? '<span class="jim-message-bubble-time" title="' +
+              escapeHtml(formatTime(message.createdAt)) + '">' +
+              escapeHtml(formatExactTime(message.createdAt)) + '</span>'
+            : '';
+
+        var metaHtml = (bubbleTime || editedLabel)
+            ? '<div class="jim-message-meta">' + editedLabel + bubbleTime + '</div>'
+            : '';
+
         return '' +
             '<div class="jim-message-bubble-wrapper" data-message-id="' + message.id + '">' +
             '  <div class="' + bubbleClass + '">' +
             (!message.deleted && !isEditing ? renderReplyPreview(message) : '') +
             contentHtml +
-            (editedLabel ? '<div class="jim-message-meta">' + editedLabel + '</div>' : '') +
+            metaHtml +
             '  </div>' +
             (!isEditing ? renderReactions(message) : '') +
             (!isEditing ? renderMessageActions(message) : '') +
@@ -3423,11 +3471,63 @@
         markRead(conversationId);
     }
 
+    /**
+     * Persists whatever the user has typed in the composer for the
+     * currently selected conversation, so switching chats does not move
+     * the text into another chat. Called before the conversation switch
+     * itself in selectConversation().
+     *
+     * The draft is keyed by conversationId. Edits to an existing message
+     * are tracked separately via state.editingMessageId and are NOT
+     * stored as a draft (the edit form has its own textarea).
+     */
+    function saveCurrentDraft() {
+        if (!els.messageInput || state.editingMessageId) {
+            return;
+        }
+        var fromId = state.selectedConversationId;
+        if (!fromId) {
+            return;
+        }
+        var raw = els.messageInput.value || '';
+        if (raw.length === 0) {
+            // Empty input means the user actively cleared the draft -
+            // remember that instead of leaving the old draft hanging.
+            delete state.drafts[fromId];
+        } else {
+            state.drafts[fromId] = raw;
+        }
+    }
+
+    function restoreDraftFor(conversationId) {
+        if (!els.messageInput) {
+            return;
+        }
+        var draft = (conversationId && state.drafts && state.drafts[conversationId]) || '';
+        els.messageInput.value = draft;
+    }
+
+    function clearDraftFor(conversationId) {
+        if (conversationId && state.drafts) {
+            delete state.drafts[conversationId];
+        }
+    }
+
+    function hasDraftFor(conversationId) {
+        return !!(conversationId && state.drafts && state.drafts[conversationId]
+                && state.drafts[conversationId].trim().length > 0);
+    }
+
     function selectConversation(conversationId) {
         var conversation = findConversationById(conversationId);
         if (!conversation) {
             return;
         }
+
+        // Save the draft for the conversation we're leaving BEFORE we
+        // overwrite state.selectedConversationId, and restore the draft
+        // for the conversation we're switching INTO afterwards.
+        saveCurrentDraft();
 
         state.selectedConversationId = conversationId;
         state.selectedConversation = conversation;
@@ -3460,6 +3560,10 @@
         renderChatHeader(conversation);
         renderMembersPanel();
         renderPinnedBanner();
+        // Restore the per-conversation draft (or clear the input when the
+        // new conversation has none). Must happen before updateComposerState
+        // so the send-button enabled state reflects the restored text.
+        restoreDraftFor(conversationId);
         updateComposerState();
 
         // Auto-focus the composer after the click handler completes so the
@@ -3675,15 +3779,26 @@
             showComposerError('Add a message or choose a file to send.');
             return;
         }
-        if (body.length > MAX_MESSAGE_LENGTH) {
-            showComposerError('Message exceeds the maximum length of ' + MAX_MESSAGE_LENGTH + ' characters.');
-            return;
-        }
 
         showComposerError(null);
 
         if (hasSelectedFiles()) {
+            // Attachments still cap their caption at one message-length;
+            // the user can split very long text manually before attaching.
+            if (body.length > MAX_MESSAGE_LENGTH) {
+                showComposerError('When sending a file, the caption must be at most ' +
+                    MAX_MESSAGE_LENGTH + ' characters. Send the long text first, then the file.');
+                return;
+            }
             uploadSelectedFilesQueued(body);
+            return;
+        }
+
+        // Plain text path: if the body exceeds the per-message cap, split
+        // it into ordered chunks of <= MAX_MESSAGE_LENGTH and send them
+        // sequentially so nothing the user typed is lost.
+        if (body.length > MAX_MESSAGE_LENGTH && !state.selectedIssue) {
+            sendChunkedTextMessage(body, state.replyToMessage ? state.replyToMessage.id : null);
             return;
         }
 
@@ -3692,6 +3807,7 @@
             updateComposerState();
             JimApi.sendIssueLink(state.selectedConversationId, state.selectedIssue.key, body || null).then(function () {
                 els.messageInput.value = '';
+                clearDraftFor(state.selectedConversationId);
                 clearSelectedIssue();
                 clearReplyTarget();
                 state.shouldAutoScroll = true;
@@ -3721,6 +3837,7 @@
         JimApi.sendMessage(state.selectedConversationId, body, replyToMessageId).then(function () {
             try { console.log('[CorbitChat send] POST ok in', Date.now() - sendStart, 'ms'); } catch (e) {}
             els.messageInput.value = '';
+            clearDraftFor(state.selectedConversationId);
             clearReplyTarget();
             updateComposerState();
             state.shouldAutoScroll = true;
@@ -3745,6 +3862,112 @@
      * stand-alone attachments). Each upload is awaited so a failure on one
      * file is reported but does not block subsequent files.
      */
+    /**
+     * Splits a long text body into ordered chunks each <= MAX_MESSAGE_LENGTH.
+     * Prefers cutting on paragraph boundaries ("\n\n"), then line breaks,
+     * then sentence boundaries (". ", "! ", "? "), then word boundaries
+     * (whitespace). Falls back to a hard cut at MAX_MESSAGE_LENGTH so no
+     * input is ever dropped.
+     */
+    function splitTextIntoChunks(body) {
+        var chunks = [];
+        var remaining = String(body || '');
+        while (remaining.length > MAX_MESSAGE_LENGTH) {
+            var window = remaining.substring(0, MAX_MESSAGE_LENGTH);
+            var cut = -1;
+            // 1. paragraph break
+            cut = window.lastIndexOf('\n\n');
+            // 2. line break (only if not too close to start)
+            if (cut < MAX_MESSAGE_LENGTH / 2) {
+                var line = window.lastIndexOf('\n');
+                if (line > cut) cut = line;
+            }
+            // 3. sentence boundary
+            if (cut < MAX_MESSAGE_LENGTH / 2) {
+                var sent = Math.max(
+                    window.lastIndexOf('. '),
+                    window.lastIndexOf('! '),
+                    window.lastIndexOf('? ')
+                );
+                if (sent > cut) cut = sent + 1;
+            }
+            // 4. word boundary
+            if (cut < MAX_MESSAGE_LENGTH / 2) {
+                var word = window.search(/\s\S+\s*$/);
+                if (word > cut) cut = word;
+            }
+            // 5. hard cut as last resort
+            if (cut <= 0) {
+                cut = MAX_MESSAGE_LENGTH;
+            }
+            chunks.push(remaining.substring(0, cut).trim());
+            remaining = remaining.substring(cut).replace(/^\s+/, '');
+        }
+        if (remaining.length > 0) {
+            chunks.push(remaining);
+        }
+        return chunks;
+    }
+
+    /**
+     * Sends a long text message as multiple ordered chunks. Each chunk
+     * is a separate /messages POST and the chain is awaited so messages
+     * appear in the recipient's chat in the same order the user typed
+     * them. A small footer like "[1/3]" is added so the recipient (and
+     * sender) can tell at a glance that the text was split.
+     */
+    function sendChunkedTextMessage(body, replyToMessageId) {
+        var convId = state.selectedConversationId;
+        var chunks = splitTextIntoChunks(body);
+        state.sending = true;
+        updateComposerState();
+        showComposerError('Long message - sending as ' + chunks.length + ' parts...');
+
+        var anyFailed = false;
+        var chain = Promise.resolve();
+        chunks.forEach(function (chunk, idx) {
+            chain = chain.then(function () {
+                var marker = '\n\n[' + (idx + 1) + '/' + chunks.length + ']';
+                // Reply target only on the first chunk; subsequent chunks
+                // are continuations and shouldn't all reply to the same
+                // earlier message.
+                var thisReplyTo = idx === 0 ? replyToMessageId : null;
+                var thisBody = chunk + marker;
+                // Defensive: chunk + marker could still exceed cap if the
+                // user's text was right at the boundary. Trim if needed.
+                if (thisBody.length > MAX_MESSAGE_LENGTH) {
+                    thisBody = chunk.substring(0, MAX_MESSAGE_LENGTH - marker.length) + marker;
+                }
+                return JimApi.sendMessage(convId, thisBody, thisReplyTo).catch(function (error) {
+                    logError('sendMessage.chunk', error);
+                    anyFailed = true;
+                });
+            });
+        });
+
+        chain
+            .then(function () {
+                els.messageInput.value = '';
+                clearDraftFor(convId);
+                clearReplyTarget();
+                state.shouldAutoScroll = true;
+                return loadMessages(convId, false, true);
+            })
+            .then(function () {
+                return loadConversations(false);
+            })
+            .then(function () {
+                state.sending = false;
+                updateComposerState();
+                focusMessageInput();
+                if (anyFailed) {
+                    showComposerError('One or more parts failed to send. Check the message list.');
+                } else {
+                    showComposerError(null);
+                }
+            });
+    }
+
     function uploadSelectedFilesQueued(body) {
         var convId = state.selectedConversationId;
         var files = state.selectedFiles.slice();
@@ -3769,6 +3992,7 @@
         chain
             .then(function () {
                 els.messageInput.value = '';
+                clearDraftFor(convId);
                 clearSelectedFile();
                 clearReplyTarget();
                 state.shouldAutoScroll = true;

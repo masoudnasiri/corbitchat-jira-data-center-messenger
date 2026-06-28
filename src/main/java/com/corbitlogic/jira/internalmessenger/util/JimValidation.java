@@ -8,7 +8,7 @@ import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 import com.corbitlogic.jira.internalmessenger.util.JimSanitizer;
 
 public final class JimValidation {
-    public static final int MAX_MESSAGE_BODY_LENGTH = 4000;
+    public static final int MAX_MESSAGE_BODY_LENGTH = 5000;
     public static final int MAX_LIST_LIMIT = 100;
     public static final int DEFAULT_LIST_LIMIT = 50;
 
@@ -49,7 +49,7 @@ public final class JimValidation {
         if (normalized.isEmpty()) {
             throw new JimMessengerException("body is required");
         }
-        JimValidation.requireMaxLength(normalized, 4000, "body");
+        JimValidation.requireMaxLength(normalized, MAX_MESSAGE_BODY_LENGTH, "body");
         return normalized;
     }
 

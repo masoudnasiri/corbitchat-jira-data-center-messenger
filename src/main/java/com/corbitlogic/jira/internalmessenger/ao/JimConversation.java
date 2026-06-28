@@ -66,6 +66,20 @@ extends Entity {
 
     public void setLastMessagePreview(String var1);
 
+    /**
+     * Sender user key of the most recent non-system message in this
+     * conversation. Used by the sidebar to colour the last-message
+     * preview by ownership (light blue for the current user, light gray
+     * for others). Nullable on legacy rows that pre-date this column;
+     * the client renders the neutral style in that case.
+     */
+    @StringLength(value=255)
+    @Accessor(value="LAST_MESSAGE_SENDER_USER_KEY")
+    public String getLastMessageSenderUserKey();
+
+    @Mutator(value="LAST_MESSAGE_SENDER_USER_KEY")
+    public void setLastMessageSenderUserKey(String var1);
+
     @StringLength(value=255)
     @Accessor(value="GROUP_NAME")
     public String getGroupName();
