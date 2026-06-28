@@ -8,10 +8,10 @@
 
     <groupId>com.corbitlogic</groupId>
     <artifactId>corbitchat-jira-dc</artifactId>
-    <version>1.0.0-internal</version>
+    <version>1.0.0-internal-boards</version>
     <packaging>atlassian-plugin</packaging>
 
-    <name>CorbitChat — Team Messenger for Jira (Internal Build)</name>
+    <name>CorbitChat — Team Messenger for Jira (Internal Build + Board Gallery)</name>
     <description>Internal on-prem distribution of CorbitChat — Slack-style team messaging for Jira Data Center with direct messages, project/team conversations, mentions, attachments, push notifications, and Jira-native collaboration controls. Marketplace licensing is intentionally disabled in this build.</description>
 
     <properties>

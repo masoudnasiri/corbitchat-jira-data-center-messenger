@@ -1,0 +1,70 @@
+$webResourceManager.requireResource("com.corbitlogic.corbitchat.jira.dc:jim-board-gallery-resources")
+
+<html>
+<head>
+    <title>Board Gallery</title>
+    <meta name="admin.active.section" content="none"/>
+    <meta name="decorator" content="atl.general"/>
+</head>
+<body>
+<div id="jim-board-gallery"
+     class="jim-board-gallery-page"
+     data-user-key="$!currentUserKey">
+
+    <header class="jim-board-gallery-header">
+        <div class="jim-board-gallery-title-row">
+            <h1 class="jim-board-gallery-title">Board Gallery</h1>
+            <span id="jim-board-gallery-count" class="jim-board-gallery-count" aria-live="polite"></span>
+        </div>
+        <p class="jim-board-gallery-subtitle">
+            All Jira boards you have access to, shown as cards. Click a card to open the board.
+        </p>
+        <div class="jim-board-gallery-controls">
+            <label for="jim-board-gallery-search" class="jim-board-gallery-visually-hidden">Search boards</label>
+            <input id="jim-board-gallery-search"
+                   class="jim-board-gallery-search"
+                   type="search"
+                   autocomplete="off"
+                   placeholder="Search boards by name or project"/>
+            <div class="jim-board-gallery-filter" role="tablist" aria-label="Board type filter">
+                <button type="button" class="jim-board-gallery-tab is-active" data-filter="all">All</button>
+                <button type="button" class="jim-board-gallery-tab" data-filter="scrum">Scrum</button>
+                <button type="button" class="jim-board-gallery-tab" data-filter="kanban">Kanban</button>
+                <button type="button" class="jim-board-gallery-tab" data-filter="simple">Simple</button>
+            </div>
+        </div>
+    </header>
+
+    <div id="jim-board-gallery-status" class="jim-board-gallery-status" role="status">
+        Loading boards&hellip;
+    </div>
+
+    <div id="jim-board-gallery-grid"
+         class="jim-board-gallery-grid"
+         role="list"
+         aria-label="Accessible Jira boards"></div>
+
+    <template id="jim-board-gallery-empty-template">
+        <div class="jim-board-gallery-empty">
+            <div class="jim-board-gallery-empty-icon" aria-hidden="true">&#128209;</div>
+            <h2 class="jim-board-gallery-empty-title">No boards to show</h2>
+            <p class="jim-board-gallery-empty-text">
+                You don't have access to any Jira boards yet. Once a project administrator adds you to a board,
+                it will appear here automatically.
+            </p>
+        </div>
+    </template>
+
+    <template id="jim-board-gallery-error-template">
+        <div class="jim-board-gallery-error">
+            <div class="jim-board-gallery-empty-icon" aria-hidden="true">&#9888;</div>
+            <h2 class="jim-board-gallery-empty-title">Could not load boards</h2>
+            <p class="jim-board-gallery-empty-text" data-board-error-detail>
+                Jira's board API returned an error. Please try again.
+            </p>
+            <button type="button" class="aui-button" data-board-error-retry>Retry</button>
+        </div>
+    </template>
+</div>
+</body>
+</html>

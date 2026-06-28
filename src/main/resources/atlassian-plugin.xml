@@ -268,6 +268,36 @@
         <url-pattern>/jim/admin</url-pattern>
     </servlet>
 
+    <component key="jimBoardGalleryServlet"
+               class="com.corbitlogic.jira.internalmessenger.web.JimBoardGalleryServlet">
+        <description>Board gallery page servlet (visual directory of Jira boards)</description>
+    </component>
+
+    <servlet key="jim-board-gallery-servlet"
+             name="CorbitChat Board Gallery"
+             class="com.corbitlogic.jira.internalmessenger.web.JimBoardGalleryServlet">
+        <url-pattern>/jim/boards</url-pattern>
+    </servlet>
+
+    <web-resource key="jim-board-gallery-resources" name="CorbitChat Board Gallery Resources">
+        <dependency>com.atlassian.auiplugin:ajs</dependency>
+        <resource type="download" name="jim-board-gallery.css" location="/css/jim-board-gallery.css"/>
+        <resource type="download" name="jim-board-gallery.js" location="/js/jim-board-gallery.js"/>
+    </web-resource>
+
+    <!-- Top-navigation entry for the board gallery, sitting next to the
+         existing Chat link. We deliberately keep this as a top-level entry
+         rather than nesting it inside Jira's "Boards" dropdown to avoid
+         clashing with native Jira board navigation. -->
+    <web-item key="jim-nav-board-gallery"
+              name="Board Gallery"
+              section="system.top.navigation.bar"
+              weight="65">
+        <label>Board Gallery</label>
+        <link linkId="jim-board-gallery">/plugins/servlet/jim/boards</link>
+        <condition class="com.atlassian.jira.plugin.webfragment.conditions.UserLoggedInCondition"/>
+    </web-item>
+
     <web-resource key="jim-admin-resources" name="CorbitChat Admin Console Resources">
         <dependency>com.atlassian.auiplugin:ajs</dependency>
         <resource type="download" name="jim-admin.css" location="/css/jim-admin.css"/>
