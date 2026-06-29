@@ -78,6 +78,30 @@
         return contextPath() + '/secure/RapidBoard.jspa?rapidView=' + encodeURIComponent(board.id);
     }
 
+    /**
+     * Jira returns project avatar URLs as absolute, based on the
+     * configured jira.baseurl. When the user accesses Jira via a
+     * different host (proxy, IP, local DNS, etc.) the absolute URL
+     * points to the wrong origin and the image either 404s, fails CORS
+     * or hits a mixed-content block. We strip the URL down to
+     * pathname + search so the browser resolves it against the actual
+     * page origin and the session cookie is sent automatically.
+     *
+     * Pass-through for any URL we can't parse (e.g. data: URIs) and
+     * for already-relative URLs.
+     */
+    function toSameOriginUrl(absUrl) {
+        if (!absUrl) {
+            return null;
+        }
+        try {
+            var u = new URL(absUrl, window.location.origin);
+            return u.pathname + (u.search || '');
+        } catch (e) {
+            return absUrl;
+        }
+    }
+
     function projectUrl(projectKey) {
         return contextPath() + '/browse/' + encodeURIComponent(projectKey);
     }
@@ -265,7 +289,7 @@
                 // it renders crisp at our 44x44 card slot. avatarUrls is
                 // a {sizeString: url} map (e.g. '48x48': 'https://...').
                 var avatarUrls = project.avatarUrls || {};
-                var avatarUrl = avatarUrls['48x48']
+                var rawAvatar = avatarUrls['48x48']
                     || avatarUrls['32x32']
                     || avatarUrls['24x24']
                     || avatarUrls['16x16']
@@ -274,7 +298,7 @@
                     name: project.name || key,
                     leadDisplay: lead.displayName || null,
                     leadKey: lead.key || null,
-                    avatarUrl: avatarUrl
+                    avatarUrl: toSameOriginUrl(rawAvatar)
                 };
             }).catch(function () {
                 // best effort: leave key unset

@@ -148,6 +148,28 @@ public class JimMessageResource {
     }
 
     @POST
+    @Path(value="/{messageId}/action")
+    public Response markActioned(@PathParam(value="messageId") int messageId) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimMessage message = this.messageService.markActioned(messageId, currentUserKey);
+            JimConversation conversation = this.conversationService.getConversationForUser(message.getConversationId(), currentUserKey);
+            return JimRestResponses.okJson(this.restJsonMapper.toMessageMap(message, viewer, conversation, currentUserKey));
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST /rest/jim/1.0/messages/" + messageId + "/action", userKey, ex, "internal_error", "An internal error occurred while marking the message as actioned.");
+        }
+    }
+
+    @POST
     @Path(value="/{messageId}/reactions")
     @Consumes(value={"application/json"})
     public Response toggleReaction(@PathParam(value="messageId") int messageId, ReactionRequestDto request) {

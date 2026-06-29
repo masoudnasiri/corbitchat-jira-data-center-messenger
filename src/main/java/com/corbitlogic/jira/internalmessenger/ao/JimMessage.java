@@ -126,5 +126,26 @@ extends Entity {
 
     @Mutator(value="PINNED")
     public void setPinned(Integer var1);
+
+    /**
+     * 1 when the recipient of a Jira Assistant / system message has
+     * acknowledged or acted on it (clicked the issue link, clicked
+     * 'Mark as seen', etc.), otherwise 0/null. Used only for system
+     * messages, which are 1:1 per user (each user has their own system
+     * conversation), so storing this on the message row is effectively
+     * per-user. Auto-migrated as nullable; legacy rows render in the
+     * default (not-actioned) state.
+     */
+    @Accessor(value="ACTIONED")
+    public Integer getActioned();
+
+    @Mutator(value="ACTIONED")
+    public void setActioned(Integer var1);
+
+    @Accessor(value="ACTIONED_AT")
+    public Long getActionedAt();
+
+    @Mutator(value="ACTIONED_AT")
+    public void setActionedAt(Long var1);
 }
 

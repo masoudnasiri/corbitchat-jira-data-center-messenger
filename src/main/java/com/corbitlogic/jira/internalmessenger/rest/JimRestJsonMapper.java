@@ -172,6 +172,12 @@ public class JimRestJsonMapper {
         item.put("deleted", deleted);
         item.put("deletedAt", deleted ? message.getDeletedAt() : null);
         item.put("pinned", !deleted && this.isPinned(message));
+        // Actioned/acknowledged state for Jira Assistant / system messages.
+        // The field exists on every JimMessage row, but the client only
+        // renders it for system messages.
+        Integer actionedFlag = message.getActioned();
+        item.put("actioned", actionedFlag != null && actionedFlag != 0);
+        item.put("actionedAt", actionedFlag != null && actionedFlag != 0 ? message.getActionedAt() : null);
         if (message.getSenderUserKey() != null && (sender = this.userManager.getUserByKey(message.getSenderUserKey())) != null) {
             item.put("senderDisplayName", sender.getDisplayName());
         }

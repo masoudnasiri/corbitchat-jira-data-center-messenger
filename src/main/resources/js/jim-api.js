@@ -133,6 +133,10 @@
             return request('DELETE', '/messages/' + messageId + '/pin');
         },
 
+        markMessageActioned: function (messageId) {
+            return request('POST', '/messages/' + messageId + '/action');
+        },
+
         getPinnedMessage: function (conversationId) {
             return request('GET', '/conversations/' + conversationId + '/pinned');
         },

@@ -33,5 +33,14 @@ public interface JimMessageService {
     public JimMessage setPinned(int var1, String var2, boolean var3);
 
     public JimMessage getPinnedMessage(int var1, String var2);
+
+    /**
+     * Marks a Jira Assistant / system message as acknowledged or acted-on
+     * by the given user. Idempotent: if the message is already actioned,
+     * the existing actionedAt timestamp is preserved. Permission is
+     * verified via {@link #getMessageForParticipant} so users cannot mark
+     * messages from a conversation they do not participate in.
+     */
+    public JimMessage markActioned(int var1, String var2);
 }
 

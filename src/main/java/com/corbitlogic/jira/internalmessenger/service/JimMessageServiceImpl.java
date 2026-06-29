@@ -425,6 +425,31 @@ implements JimMessageService {
     }
 
     @Override
+    public JimMessage markActioned(int messageId, String userKey) {
+        JimValidation.requirePositiveId(messageId, "messageId");
+        JimValidation.requireNonBlank(userKey, "userKey");
+        String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
+        this.permissionService.requireSameUser(authenticatedUserKey, userKey);
+        JimMessage message = this.getMessageForParticipant(messageId, userKey);
+        if (JimMessageFlags.isDeleted(message)) {
+            throw JimMessengerException.badRequest("Deleted messages cannot be marked as actioned");
+        }
+        Integer current = message.getActioned();
+        if (current != null && current != 0) {
+            // Already actioned; preserve the original timestamp so the
+            // operation is idempotent.
+            return message;
+        }
+        long now = System.currentTimeMillis();
+        return (JimMessage)this.activeObjects.executeInTransaction(() -> {
+            message.setActioned(1);
+            message.setActionedAt(now);
+            message.save();
+            return message;
+        });
+    }
+
+    @Override
     public JimMessage getPinnedMessage(int conversationId, String userKey) {
         JimValidation.requirePositiveId(conversationId, "conversationId");
         JimValidation.requireNonBlank(userKey, "userKey");

@@ -2799,24 +2799,44 @@
         var titleText = config.title(message);
         var bodyText = systemCardBodyText(message, titleText);
         var issueUrl = resolveIssueUrl(message.issueUrl);
-        var issueLink = '';
+        var actioned = !!message.actioned;
 
+        // Issue link counts as an action: clicking it marks the card as
+        // acknowledged. data-action="ack-system" is delegated through the
+        // existing message-list click handler. The link still navigates
+        // normally (target=_blank) so the user reaches the issue.
+        var issueLink = '';
         if (issueUrl) {
-            issueLink = '<a class="jim-system-card-link jim-issue-link-button aui-button aui-button-link" href="' +
-                escapeHtml(issueUrl) + '" target="_blank" rel="noopener noreferrer">Open issue</a>';
+            issueLink = '<a class="jim-system-card-link jim-issue-link-button aui-button aui-button-link" ' +
+                'href="' + escapeHtml(issueUrl) + '" target="_blank" rel="noopener noreferrer" ' +
+                'data-action="ack-system" data-message-id="' + message.id + '">Open issue</a>';
         }
+
+        // Manual acknowledge button. Present for every assistant message
+        // (link or not) so the user can always confirm "I saw this".
+        // Hidden once actioned (the Acknowledged pill takes its place).
+        var ackButton = !actioned
+            ? '<button type="button" class="jim-system-card-ack-btn aui-button aui-button-link" ' +
+              'data-action="ack-system" data-message-id="' + message.id + '">' +
+              '<span aria-hidden="true">&#10003;</span> Mark as seen</button>'
+            : '<span class="jim-system-card-actioned-pill" title="You marked this as seen">' +
+              '<span aria-hidden="true">&#10003;</span> Acknowledged</span>';
 
         var eventType = normalizeEventType(message) || 'system';
         var isUnread = !!(message.id && state.initiallyUnreadIds[message.id]);
-        var unreadBadge = isUnread
+        var unreadBadge = isUnread && !actioned
             ? '<span class="jim-system-card-new-badge">NEW</span>'
             : '';
 
+        var cardClass = 'jim-system-card jim-issue-card' +
+            ' jim-system-card-tone-' + escapeHtml(config.tone) +
+            ' jim-system-card-event-' + escapeHtml(eventType.toLowerCase()) +
+            (isUnread && !actioned ? ' jim-system-card-new' : '') +
+            (actioned ? ' jim-system-card-actioned' : '');
+
         return '' +
             '<div class="jim-message-row jim-message-row-system">' +
-            '  <article class="jim-system-card jim-issue-card jim-system-card-tone-' + escapeHtml(config.tone) +
-            ' jim-system-card-event-' + escapeHtml(eventType.toLowerCase()) +
-            (isUnread ? ' jim-system-card-new' : '') + '">' +
+            '  <article class="' + cardClass + '" data-message-id="' + message.id + '">' +
             '    <header class="jim-system-card-header">' +
             '      <span class="jim-system-card-lozenge jim-system-card-lozenge-' + escapeHtml(config.tone) + '">' +
             escapeHtml(config.label) + '</span>' +
@@ -2829,9 +2849,44 @@
             (message.issueSummary ? '<div class="jim-system-card-summary">' + escapeHtml(message.issueSummary) + '</div>' : '') +
             (bodyText ? '<div class="jim-system-card-text">' + escapeHtml(bodyText) + '</div>' : '') +
             '    </div>' +
-            (issueLink ? '<footer class="jim-system-card-actions">' + issueLink + '</footer>' : '') +
+            '    <footer class="jim-system-card-actions">' +
+            issueLink +
+            ackButton +
+            '    </footer>' +
             '  </article>' +
             '</div>';
+    }
+
+    /**
+     * Marks a Jira Assistant / system message as actioned for the current
+     * user. Used by:
+     *   - clicking the issue link inside the card (data-action="ack-system")
+     *   - clicking the manual "Mark as seen" button
+     * The local message state is updated optimistically so the actioned
+     * style appears immediately; on REST failure we roll back.
+     */
+    function markSystemMessageActioned(messageId) {
+        if (!messageId) {
+            return;
+        }
+        var message = findMessageById(messageId);
+        if (!message || message.actioned) {
+            return;
+        }
+        // Optimistic update.
+        message.actioned = true;
+        state.renderedMessagesHtml = null;
+        renderMessages();
+        JimApi.markMessageActioned(messageId).catch(function (error) {
+            logError('markMessageActioned', error);
+            // Rollback the optimistic flag on failure.
+            message.actioned = false;
+            state.renderedMessagesHtml = null;
+            renderMessages();
+            showError(error && error.message
+                ? error.message
+                : 'Could not mark the message as seen.');
+        });
     }
 
     function renderMessageGroups(messages) {
@@ -3077,6 +3132,22 @@
             if (action === 'load-older') {
                 event.preventDefault();
                 loadOlderMessages();
+                return;
+            }
+
+            // Jira Assistant message acknowledgement. The click can come
+            // from either the manual 'Mark as seen' button OR the issue
+            // link; in the issue-link case we DO NOT preventDefault so the
+            // link still navigates to the issue, we just fire the action
+            // call alongside.
+            if (action === 'ack-system') {
+                var ackId = parseInt(actionEl.getAttribute('data-message-id'), 10);
+                if (!isNaN(ackId)) {
+                    markSystemMessageActioned(ackId);
+                }
+                if (actionEl.tagName === 'BUTTON') {
+                    event.preventDefault();
+                }
                 return;
             }
 
