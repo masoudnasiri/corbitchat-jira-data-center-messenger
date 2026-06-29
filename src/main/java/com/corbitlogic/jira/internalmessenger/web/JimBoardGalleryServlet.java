@@ -56,6 +56,7 @@ public class JimBoardGalleryServlet extends HttpServlet {
         HashMap<String, Object> context = new HashMap<String, Object>();
         context.put("currentUserKey", user.getKey());
         context.put("currentUserDisplayName", user.getDisplayName());
+        context.put("contextPath", request.getContextPath() == null ? "" : request.getContextPath());
         context.put("webResourceManager", this.webResourceManager);
         context.put("i18n", this.authenticationContext.getI18nHelper());
 

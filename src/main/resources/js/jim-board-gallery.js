@@ -82,6 +82,12 @@
         return contextPath() + '/browse/' + encodeURIComponent(projectKey);
     }
 
+    /** Opens CorbitChat's project chat page for the given project. */
+    function projectChatUrl(projectKey) {
+        return contextPath() + '/plugins/servlet/jim/project-chat?projectKey=' +
+            encodeURIComponent(projectKey);
+    }
+
     /**
      * Builds the Jira issue-list URL for "tasks assigned to me", scoped
      * to the board's own filter query so we open the same set of issues
@@ -94,6 +100,20 @@
             baseJql = 'assignee = currentUser()';
         } else {
             baseJql = '(' + baseJql + ') AND assignee = currentUser()';
+        }
+        return contextPath() + '/issues/?jql=' + encodeURIComponent(baseJql);
+    }
+
+    /**
+     * Issue navigator filtered to all tasks in the board's project(s).
+     * Uses the board's own JQL (minus ORDER BY) so it matches the scope
+     * the board actually displays, including any custom filter the
+     * board's owner has applied.
+     */
+    function allTasksUrl(boardJql) {
+        var baseJql = (boardJql || '').replace(/\s+ORDER\s+BY.*/i, '').trim();
+        if (!baseJql) {
+            return contextPath() + '/issues/';
         }
         return contextPath() + '/issues/?jql=' + encodeURIComponent(baseJql);
     }
@@ -241,10 +261,20 @@
                     return;
                 }
                 var lead = project.lead || {};
+                // Prefer the largest pre-rendered avatar Jira returns so
+                // it renders crisp at our 44x44 card slot. avatarUrls is
+                // a {sizeString: url} map (e.g. '48x48': 'https://...').
+                var avatarUrls = project.avatarUrls || {};
+                var avatarUrl = avatarUrls['48x48']
+                    || avatarUrls['32x32']
+                    || avatarUrls['24x24']
+                    || avatarUrls['16x16']
+                    || null;
                 map[key] = {
                     name: project.name || key,
                     leadDisplay: lead.displayName || null,
-                    leadKey: lead.key || null
+                    leadKey: lead.key || null,
+                    avatarUrl: avatarUrl
                 };
             }).catch(function () {
                 // best effort: leave key unset
@@ -358,6 +388,60 @@
             '</a>';
     }
 
+    /**
+     * Renders the "All project tasks" pill, which opens Jira's native
+     * issue navigator with the board's JQL (no assignee filter). Hidden
+     * when we couldn't parse a JQL for the board.
+     */
+    function renderAllTasksLine(board) {
+        var jql = (board.boardJql || '').replace(/\s+ORDER\s+BY.*/i, '').trim();
+        if (!jql) {
+            return '';
+        }
+        return '<a class="jim-board-card-tasks jim-board-card-tasks-all" ' +
+            'href="' + escapeHtml(allTasksUrl(jql)) + '" ' +
+            'title="Open all issues in this board" data-stop>' +
+            '<span class="jim-board-card-tasks-label">All tasks</span>' +
+            '</a>';
+    }
+
+    /**
+     * Project chat link - opens CorbitChat's project chat for the
+     * primary project. Hidden for multi-project boards (we can't pick
+     * one safely) and for boards where we couldn't resolve a project.
+     */
+    function renderProjectChatLine(board) {
+        if (board.multipleProjects || !board.primaryProjectKey) {
+            return '';
+        }
+        return '<a class="jim-board-card-chat" ' +
+            'href="' + escapeHtml(projectChatUrl(board.primaryProjectKey)) + '" ' +
+            'title="Open project chat in CorbitChat" data-stop>' +
+            '<span class="jim-board-card-chat-icon" aria-hidden="true">&#128172;</span>' +
+            '<span class="jim-board-card-chat-label">Project chat</span>' +
+            '</a>';
+    }
+
+    /**
+     * Project avatar. If the project lookup returned a Jira avatar URL
+     * we render an <img> on top of the coloured-initials block; if the
+     * image fails to load, onerror removes it and the initials remain
+     * visible underneath. No broken images.
+     */
+    function renderAvatarBlock(board, initials, colour) {
+        var info = board.projectInfo || {};
+        var imgHtml = '';
+        if (info.avatarUrl) {
+            imgHtml = '<img class="jim-board-card-avatar-img" alt="" loading="lazy" ' +
+                'src="' + escapeHtml(info.avatarUrl) + '" ' +
+                'onerror="this.parentNode.removeChild(this);"/>';
+        }
+        return '<div class="jim-board-card-avatar" style="background:' + colour + ';">' +
+               '<span class="jim-board-card-initials" aria-hidden="true">' + escapeHtml(initials) + '</span>' +
+               imgHtml +
+               '</div>';
+    }
+
     function renderBoardCard(board) {
         var name = board.name || 'Untitled board';
         var type = typeLabel(board.type);
@@ -377,9 +461,7 @@
             'data-board-type="' + escapeHtml(String(board.type || '').toLowerCase()) + '">' +
             '  <a href="' + escapeHtml(url) + '" class="jim-board-card-open" ' +
             'aria-label="Open board ' + escapeHtml(name) + '">' +
-            '    <div class="jim-board-card-avatar" style="background:' + colour + ';">' +
-            '      <span class="jim-board-card-initials" aria-hidden="true">' + escapeHtml(initials) + '</span>' +
-            '    </div>' +
+            renderAvatarBlock(board, initials, colour) +
             '    <div class="jim-board-card-name" dir="auto" title="' + escapeHtml(name) + '">' +
             escapeHtml(name) + '</div>' +
             '  </a>' +
@@ -387,7 +469,11 @@
             '  <div class="jim-board-card-meta">' +
             renderProjectLine(board) +
             renderLeadLine(board) +
+            '  <div class="jim-board-card-actions">' +
+            renderAllTasksLine(board) +
             renderTasksLine(board) +
+            renderProjectChatLine(board) +
+            '  </div>' +
             '  </div>' +
             '</div>';
     }

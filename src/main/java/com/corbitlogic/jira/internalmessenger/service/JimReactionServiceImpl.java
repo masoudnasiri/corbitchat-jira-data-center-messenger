@@ -49,7 +49,8 @@ implements JimReactionService {
             "\uD83C\uDF89", // 🎉
             "\uD83D\uDCA1", // 💡
             "\uD83D\uDE80", // 🚀
-            "\uD83E\uDD14"  // 🤔
+            "\uD83E\uDD14", // 🤔
+            "\uD83C\uDF31"  // 🌱
     ));
     private final ActiveObjects activeObjects;
     private final JimMessageService messageService;

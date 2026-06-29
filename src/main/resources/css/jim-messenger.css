@@ -87,6 +87,37 @@
     direction: ltr;
 }
 
+/* Lazy-load older messages button. Sits at the top of the message list
+   when the server might still have older history we haven't fetched. */
+#jim-messenger-app .jim-load-older-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0 12px;
+}
+#jim-messenger-app .jim-load-older-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--jim-border-subtle);
+    background: #ffffff;
+    color: var(--jim-text-secondary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+#jim-messenger-app .jim-load-older-btn:hover:not(:disabled) {
+    background: var(--jim-hover);
+    color: var(--jim-text);
+    border-color: var(--jim-border);
+}
+#jim-messenger-app .jim-load-older-btn:disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
 /* Forward message modal */
 #jim-messenger-app .jim-forward-modal {
     max-width: 480px;

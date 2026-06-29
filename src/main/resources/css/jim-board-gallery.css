@@ -46,6 +46,32 @@
     font-size: 13px;
 }
 
+/* Quick link to the main CorbitChat page from the board gallery
+   header. Sits inline with the title row, pushed to the right. */
+#jim-board-gallery .jim-board-gallery-open-chat {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: #ffffff;
+    border: 1px solid #0c66e4;
+    border-radius: 6px;
+    color: #0c66e4;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+#jim-board-gallery .jim-board-gallery-open-chat:hover {
+    background: #0c66e4;
+    color: #ffffff;
+}
+#jim-board-gallery .jim-board-gallery-open-chat-icon {
+    font-size: 14px;
+    line-height: 1;
+}
+
 #jim-board-gallery .jim-board-gallery-subtitle {
     margin: 4px 0 16px;
     color: #5e6c84;
@@ -162,6 +188,7 @@
 }
 
 #jim-board-gallery .jim-board-card-avatar {
+    position: relative;
     flex: 0 0 44px;
     width: 44px;
     height: 44px;
@@ -174,6 +201,21 @@
     font-size: 17px;
     letter-spacing: -0.02em;
     text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+}
+
+/* Real Jira project avatar laid on top of the initials block. If the
+   image fails to load (onerror removes the element) the underlying
+   initials remain visible - no broken-image icon ever shows. */
+#jim-board-gallery .jim-board-card-avatar-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 10px;
+    background: #ffffff;
+    display: block;
 }
 
 #jim-board-gallery .jim-board-card-name {
@@ -291,14 +333,20 @@
     color: #5e6c84;
 }
 
-/* "My tasks: N" badge - clickable, opens /issues/?jql=... */
+/* Action pills row at the bottom of the card. Wraps when narrow. */
+#jim-board-gallery .jim-board-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+/* "My tasks: N" / "All tasks" / "Project chat" - clickable pills. */
 #jim-board-gallery .jim-board-card-tasks {
     display: inline-flex;
     align-items: center;
-    align-self: flex-start;
     gap: 6px;
     padding: 3px 10px;
-    margin-top: 2px;
     border-radius: 999px;
     background: #deebff;
     color: #0747a6;
@@ -320,11 +368,46 @@
 #jim-board-gallery .jim-board-card-tasks-empty:hover {
     background: #ebecf0;
 }
+#jim-board-gallery .jim-board-card-tasks-all {
+    background: #f4f5f7;
+    color: #5e6c84;
+}
+#jim-board-gallery .jim-board-card-tasks-all:hover {
+    background: #ebecf0;
+    color: #172b4d;
+}
 #jim-board-gallery .jim-board-card-tasks-label {
     font-weight: 500;
 }
 #jim-board-gallery .jim-board-card-tasks-count {
     font-weight: 700;
+}
+
+/* Project chat link pill. Distinct purple tone so it doesn't blend
+   into the issue-list pills. */
+#jim-board-gallery .jim-board-card-chat {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: #eae6ff;
+    color: #403294;
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.12s ease, transform 0.05s ease;
+}
+#jim-board-gallery .jim-board-card-chat:hover {
+    background: #c0b6f2;
+    color: #2d2474;
+}
+#jim-board-gallery .jim-board-card-chat:active {
+    transform: scale(0.96);
+}
+#jim-board-gallery .jim-board-card-chat-icon {
+    font-size: 13px;
+    line-height: 1;
 }
 
 /* Empty + error states */

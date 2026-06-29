@@ -15,6 +15,11 @@ $webResourceManager.requireResource("com.corbitlogic.corbitchat.jira.dc:jim-boar
         <div class="jim-board-gallery-title-row">
             <h1 class="jim-board-gallery-title">Board Gallery</h1>
             <span id="jim-board-gallery-count" class="jim-board-gallery-count" aria-live="polite"></span>
+            <a class="jim-board-gallery-open-chat" href="$!contextPath/plugins/servlet/jim/chat"
+               title="Open CorbitChat - team messenger">
+                <span class="jim-board-gallery-open-chat-icon" aria-hidden="true">&#128172;</span>
+                <span class="jim-board-gallery-open-chat-label">Open CorbitChat</span>
+            </a>
         </div>
         <p class="jim-board-gallery-subtitle">
             All Jira boards you have access to, shown as cards. Click a card to open the board.

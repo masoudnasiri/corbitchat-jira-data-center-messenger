@@ -141,7 +141,8 @@
         '\uD83C\uDF89', // 🎉 Celebrate
         '\uD83D\uDCA1', // 💡 Idea
         '\uD83D\uDE80', // 🚀 Rocket
-        '\uD83E\uDD14'  // 🤔 Thinking
+        '\uD83E\uDD14', // 🤔 Thinking
+        '\uD83C\uDF31'  // 🌱 Seedling
     ];
 
     var els = {};
@@ -261,7 +262,8 @@
         '\uD83C\uDF89', // 🎉
         '\uD83D\uDCA1', // 💡
         '\uD83D\uDE80', // 🚀
-        '\u2728'        // ✨
+        '\u2728',       // ✨
+        '\uD83C\uDF31'  // 🌱
     ];
 
     function renderEmojiPalette() {
@@ -3069,6 +3071,15 @@
             }
             var action = actionEl.getAttribute('data-action');
 
+            // Lazy-load older messages. Uses data-action delegation so the
+            // button can be re-rendered freely by renderMessages without
+            // losing its handler.
+            if (action === 'load-older') {
+                event.preventDefault();
+                loadOlderMessages();
+                return;
+            }
+
             var messageId = parseInt(actionEl.getAttribute('data-message-id'), 10);
             if (!messageId) {
                 return;
@@ -3271,7 +3282,17 @@
             return;
         }
 
-        var html = '<div class="jim-message-list-inner">' + renderMessageGroups(state.messages) + '</div>';
+        // Lazy-load older trigger: visible whenever the server might have
+        // older messages we haven't fetched yet. Removed by loadOlderMessages
+        // once an empty / short page comes back.
+        var loadOlderHtml = state.hasMoreOlder
+            ? '<div class="jim-load-older-wrap">' +
+              '<button id="jim-load-older-btn" class="jim-load-older-btn" type="button" data-action="load-older">' +
+              'Load older messages' +
+              '</button>' +
+              '</div>'
+            : '';
+        var html = '<div class="jim-message-list-inner">' + loadOlderHtml + renderMessageGroups(state.messages) + '</div>';
         if (html !== state.renderedMessagesHtml) {
             var savedAudio = captureAudioPlayback();
             els.messageList.innerHTML = html;
@@ -3385,6 +3406,49 @@
         return null;
     }
 
+    // Page sizes for the lazy-load strategy. INITIAL_MESSAGES_LIMIT controls
+    // both the initial open (so the chat shows quickly) and every poll
+    // refresh (so we never re-stream the full backlog). OLDER_PAGE_SIZE is
+    // used when the user explicitly requests older messages via the
+    // 'Load older messages' button or by scrolling to the top.
+    var INITIAL_MESSAGES_LIMIT = 30;
+    var OLDER_PAGE_SIZE = 50;
+
+    /**
+     * Merges existing messages with a newly-fetched batch by id.
+     * Returned array is sorted ascending by id (= chronological), which is
+     * what renderMessageGroups expects. Newer data on the same id wins so
+     * server-side mutations (edits, reactions, deletions, read state) are
+     * picked up on each poll.
+     */
+    function mergeMessages(existing, fresh) {
+        if (!existing || !existing.length) {
+            return (fresh || []).slice();
+        }
+        if (!fresh || !fresh.length) {
+            return existing;
+        }
+        var byId = {};
+        for (var i = 0; i < existing.length; i++) {
+            if (existing[i] && existing[i].id) {
+                byId[existing[i].id] = existing[i];
+            }
+        }
+        for (var j = 0; j < fresh.length; j++) {
+            if (fresh[j] && fresh[j].id) {
+                byId[fresh[j].id] = fresh[j];
+            }
+        }
+        var merged = [];
+        for (var k in byId) {
+            if (Object.prototype.hasOwnProperty.call(byId, k)) {
+                merged.push(byId[k]);
+            }
+        }
+        merged.sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
+        return merged;
+    }
+
     function loadMessages(conversationId, showLoading, autoScroll) {
         if (autoScroll) {
             state.shouldAutoScroll = true;
@@ -3395,12 +3459,20 @@
             renderLoadingState(els.messageList, 'Loading messages...');
         }
 
-        return JimApi.listMessages(conversationId, 50, null).then(function (response) {
+        return JimApi.listMessages(conversationId, INITIAL_MESSAGES_LIMIT, null).then(function (response) {
             if (state.selectedConversationId !== conversationId) {
                 return;
             }
-            state.messages = response.messages || [];
+            var fresh = response.messages || [];
+            // First-load / poll-refresh: MERGE so any older messages the
+            // user has already lazy-loaded stay on screen across polls.
+            state.messages = mergeMessages(state.messages, fresh);
+            // If the very first server response is short of a full page,
+            // there are no older messages to fetch - hide the Load older
+            // button.
             if (state.unreadSnapshotConversationId !== conversationId) {
+                state.hasMoreOlder = fresh.length >= INITIAL_MESSAGES_LIMIT;
+                state.loadingOlder = false;
                 // Snapshot which messages were unread when the conversation was opened,
                 // so "NEW" markers stay visible after the read state syncs.
                 state.unreadSnapshotConversationId = conversationId;
@@ -3434,6 +3506,77 @@
                 });
             }
             showError(error && error.message ? error.message : 'Unable to load messages.');
+        });
+    }
+
+    /**
+     * Fetches the next older page of messages and prepends them to
+     * state.messages while preserving the user's scroll position (so the
+     * messages they were looking at stay under their cursor). Triggered
+     * by the 'Load older messages' button or by scrolling to the top of
+     * the chat. No-op when already loading or when the server has
+     * indicated there is nothing older.
+     */
+    function loadOlderMessages() {
+        var convId = state.selectedConversationId;
+        if (!convId || state.loadingOlder || state.hasMoreOlder === false || !els.messageList) {
+            return;
+        }
+        var smallestId = null;
+        for (var i = 0; i < state.messages.length; i++) {
+            var m = state.messages[i];
+            if (m && m.id && (smallestId === null || m.id < smallestId)) {
+                smallestId = m.id;
+            }
+        }
+        if (!smallestId) {
+            return;
+        }
+        state.loadingOlder = true;
+        // Refresh the button label without disturbing the rest of the DOM.
+        var btn = document.getElementById('jim-load-older-btn');
+        if (btn) {
+            btn.textContent = 'Loading older messages\u2026';
+            btn.disabled = true;
+        }
+        var scrollTopBefore = els.messageList.scrollTop;
+        var scrollHeightBefore = els.messageList.scrollHeight;
+        JimApi.listMessages(convId, OLDER_PAGE_SIZE, smallestId).then(function (response) {
+            if (state.selectedConversationId !== convId) {
+                return;
+            }
+            var batch = response.messages || [];
+            if (batch.length < OLDER_PAGE_SIZE) {
+                state.hasMoreOlder = false;
+            }
+            if (batch.length > 0) {
+                state.messages = mergeMessages(state.messages, batch);
+                state.renderedMessagesHtml = null;
+                // Prevent renderMessages from snapping to the bottom; we
+                // want to keep the user looking at the same content.
+                var wasAutoScroll = state.shouldAutoScroll;
+                state.shouldAutoScroll = false;
+                renderMessages();
+                state.shouldAutoScroll = wasAutoScroll;
+                // Keep the previously-visible message at the same screen
+                // position by translating scrollTop by the delta in
+                // scrollHeight introduced by the prepended history.
+                var scrollHeightAfter = els.messageList.scrollHeight;
+                els.messageList.scrollTop = scrollHeightAfter - scrollHeightBefore + scrollTopBefore;
+            }
+        }).catch(function (error) {
+            logError('loadOlderMessages', error);
+        }).then(function () {
+            state.loadingOlder = false;
+            var btnAfter = document.getElementById('jim-load-older-btn');
+            if (btnAfter) {
+                if (state.hasMoreOlder === false) {
+                    btnAfter.parentNode.removeChild(btnAfter);
+                } else {
+                    btnAfter.textContent = 'Load older messages';
+                    btnAfter.disabled = false;
+                }
+            }
         });
     }
 
@@ -3533,6 +3676,12 @@
         state.selectedConversation = conversation;
         state.messages = [];
         state.renderedMessagesHtml = null;
+        // Lazy-load state resets per conversation. Until the first response
+        // comes back we assume there MAY be older messages, so the 'Load
+        // older' button can appear immediately when warranted.
+        state.hasMoreOlder = true;
+        state.loadingOlder = false;
+        state.unreadSnapshotConversationId = null;
         cancelVoiceRecording();
         clearSelectedFile();
         clearSelectedIssue();
@@ -4272,6 +4421,26 @@
         }
         if (els.sendButton) {
             els.sendButton.addEventListener('click', sendMessage);
+        }
+        // Scroll-to-top auto-loads the next older page so users who scroll
+        // up don't have to click the button explicitly. Debounced via
+        // requestAnimationFrame so a fast scroll only fires once.
+        if (els.messageList) {
+            var olderScrollPending = false;
+            els.messageList.addEventListener('scroll', function () {
+                if (olderScrollPending) {
+                    return;
+                }
+                olderScrollPending = true;
+                window.requestAnimationFrame(function () {
+                    olderScrollPending = false;
+                    if (els.messageList.scrollTop < 80
+                            && state.hasMoreOlder !== false
+                            && !state.loadingOlder) {
+                        loadOlderMessages();
+                    }
+                });
+            }, { passive: true });
         }
         if (els.attachButton && els.fileInput) {
             els.attachButton.addEventListener('click', function () {
