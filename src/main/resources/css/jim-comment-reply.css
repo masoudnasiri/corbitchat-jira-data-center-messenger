@@ -113,12 +113,111 @@ a.jim-comment-reply-btn.jim-comment-reply-btn--disabled {
 .jim-comment-reply-composer-status--ok    { color: #006644; }
 .jim-comment-reply-composer-actions {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
     gap: 8px;
     margin-top: 10px;
 }
 .jim-comment-reply-composer-actions .aui-button {
     min-width: 80px;
+}
+/* Attach button on the left side; cancel + send pushed to the right. */
+.jim-comment-reply-composer-attach {
+    min-width: 0 !important;
+    padding: 4px 8px !important;
+    display: inline-flex;
+    align-items: center;
+    color: #5e6c84;
+    font-weight: 500;
+}
+.jim-comment-reply-composer-attach:hover {
+    color: #172b4d;
+    text-decoration: none;
+}
+.jim-comment-reply-composer-attach + .jim-comment-reply-composer-cancel {
+    margin-left: auto;          /* gap between attach and the right-side buttons */
+}
+
+/* Hidden file input (clicked programmatically by the Attach button). */
+.jim-comment-reply-composer-file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+/* Strip of attachment chips above the status / action row. Hidden
+   until at least one file has been chosen. */
+.jim-comment-reply-composer-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0 0;
+}
+.jim-comment-reply-composer-attachments[hidden] {
+    display: none;
+}
+.jim-comment-reply-composer-attachment-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: #f4f5f7;
+    border: 1px solid #dfe1e6;
+    border-radius: 14px;
+    font-size: 12.5px;
+    color: #172b4d;
+    max-width: 100%;
+}
+.jim-comment-reply-composer-attachment-chip-uploading {
+    background: #deebff;
+    border-color: #b3d4ff;
+    color: #0747a6;
+}
+.jim-comment-reply-composer-attachment-chip-error {
+    background: #ffebe6;
+    border-color: #ffbdad;
+    color: #bf2600;
+    flex-wrap: wrap;
+}
+.jim-comment-reply-composer-attachment-icon {
+    flex: 0 0 auto;
+    font-size: 13px;
+    line-height: 1;
+}
+.jim-comment-reply-composer-attachment-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 220px;
+}
+.jim-comment-reply-composer-attachment-remove {
+    background: transparent;
+    border: 0;
+    color: #6b778c;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+    border-radius: 3px;
+}
+.jim-comment-reply-composer-attachment-remove:hover {
+    background: #ebecf0;
+    color: #172b4d;
+}
+.jim-comment-reply-composer-attachment-error {
+    flex-basis: 100%;
+    font-size: 11px;
+    color: #bf2600;
+    margin-top: 2px;
+}
+
+/* Visual cue while a file is being dragged over the composer. */
+.jim-comment-reply-composer.jim-comment-reply-composer-drag-active {
+    background: #deebff;
+    border-left-color: #0747a6;
+    box-shadow: 0 0 0 2px rgba(11, 92, 255, 0.22) inset;
 }
 
 /* ----- Briefly highlight a freshly-inserted reply so the user

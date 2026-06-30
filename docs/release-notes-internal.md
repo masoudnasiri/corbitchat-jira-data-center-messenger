@@ -6,6 +6,143 @@ see `docs/marketplace/release-notes.md`.
 
 ---
 
+## 1.0.0-internal-reply-attach — 2026-06-30 (reply composer + attachments)
+
+User report: the inline reply composer on Jira issue comments had a
+plain textarea only, no way to attach files. Native Jira comments
+have a full toolbar (Style / Bold / link / **attachment** / list /
+emoji / Visual/Text toggle). The user explicitly asked for
+attachment support; the other native toolbar features were not
+requested and would be expensive to replicate (driving Jira's wiki
+editor was the original v1 problem that pushed us to the custom
+composer in the first place).
+
+### What changed
+
+The reply composer now supports **file attachments** with the same
+ergonomics as our main chat composer:
+
+* **Attach button** (paperclip icon) on the left of the action row.
+  Clicking it opens the native file picker (multiple files allowed).
+* **Drag and drop** anywhere onto the composer panel adds the files.
+  The composer panel highlights with a blue tint while a drag is in
+  flight.
+* Each selected file is uploaded **immediately and individually** to
+  the issue via Jira's standard
+  `POST /rest/api/2/issue/<keyOrId>/attachments` endpoint, so the
+  user sees per-file success / failure before they hit Send.
+* The composer shows one chip per staged attachment with:
+    * an icon (image vs generic file),
+    * the filename,
+    * a "(uploading…)" suffix while the upload is in flight,
+    * a red "Upload failed (xxx): <detail>" line on failure,
+    * a ✕ button to remove it (which also DELETEs the attachment
+      from the issue so we never leak orphan files).
+* The Send Reply button is **gated**: it refuses to submit while
+  any attachment is still uploading, and it also accepts
+  attachment-only replies (a reply with no text but at least one
+  attachment is valid).
+* On Send Reply, the assembled comment body becomes:
+
+      [~author]
+      
+      {quote}<excerpt>{quote}
+      
+      <user-typed text, if any>
+      
+      <wiki markup for each attached file>
+
+  where each file is referenced by its wiki token:
+    * `!filename.png|thumbnail!` for images — Jira renders these as
+      inline thumbnails,
+    * `[^filename.ext]` for other files — Jira renders these as
+      clickable attachment links inside the comment.
+  Both are native Jira wiki tokens, so the attachments appear
+  rendered identically to anything posted via Jira's own comment
+  editor.
+
+### Lifecycle
+
+* **Success**: `injectRenderedComment()` removes the composer
+  directly without going through `closeAnyOpenComposer()`, so the
+  staged attachments are KEPT (the saved comment references them).
+* **Cancel / Escape / ✕ button / opening a different composer**:
+  `closeAnyOpenComposer()` calls `cleanupStagedAttachments()` which
+  fire-and-forget DELETEs each uploaded file from the issue, so
+  cancelled replies don't leave orphans behind.
+* **Remove chip**: the file is DELETEd from the issue right away.
+
+### Files
+
+* `src/main/resources/js/jim-comment-reply.js` — new helpers
+  `uploadAttachmentForReply()`, `wikiForAttachment()`,
+  `isImageAttachment()`, `renderAttachmentChips()`,
+  `removeStagedAttachment()`, `cleanupStagedAttachments()`. The
+  composer DOM now also contains an Attach button, hidden file
+  input, chip strip, and drag/drop handlers. `submitReply()` waits
+  for in-flight uploads and appends the wiki markup.
+* `src/main/resources/css/jim-comment-reply.css` — styles for the
+  Attach button, file input (visually-hidden), chip strip, chip
+  variants (uploading / error), drag-active state.
+* `pom.xml` — version bumped to `1.0.0-internal-reply-attach`.
+
+### Live verification
+
+* Built, deployed, plugin REST health 200, diagnostics reports
+  `pluginVersion = 1.0.0-internal-reply-attach`. Previous artifact
+  (`chat-edit2`) preserved in `/root/jira-dev/releases/`.
+* Minified JS parses cleanly (21423 bytes). Key strings preserved
+  after minification: `/attachments`, `thumbnail`,
+  `composer-attachments`, `composer-attachment-chip`,
+  `composer-attach`, `composer-drag-active`,
+  `composer-attachment-remove`.
+* Full end-to-end pipeline simulated against the test Jira:
+  1. Uploaded a Persian-named file `سند_پاسخ.pdf` via
+     `POST /rest/api/2/issue/TEB-1/attachments` → returned
+     attachment id `10000` with the filename preserved in UTF-8.
+  2. POSTed a reply comment with the body
+     `[~m.zeynali]\n\n{quote}…{quote}\n\nReply with an attachment.\n\n[^سند_پاسخ.pdf]`
+     → returned comment id `12001`.
+  3. Fetched the comment with `expand=renderedBody` — Jira's wiki
+     renderer expanded `[^سند_پاسخ.pdf]` into:
+     ```html
+     <a href="https://.../secure/attachment/10000/10000_%D8%B3%D9%86%D8%AF_%D9%BE%D8%A7%D8%B3%D8%AE.pdf"
+        title="سند_پاسخ.pdf attached to TEB-1">سند_پاسخ.pdf</a>
+     ```
+     i.e. a clickable native Jira attachment link with the original
+     Persian filename preserved.
+  4. Cleaned up: both comments and the attachment deleted (HTTP 204).
+
+### How to use it
+
+1. Open any Jira issue and click **Reply** on an existing comment.
+2. The inline reply composer opens below the comment. Click the
+   new **Attach** button on the left of the action row (or drag a
+   file onto the composer).
+3. A chip appears with the filename and "(uploading…)" while the
+   upload is in flight. Image files show a 🖼 icon; other files
+   show a 📎 icon.
+4. Add more files if you want. Type your reply. Remove any chip
+   with the ✕ if you change your mind.
+5. Click **Send Reply** (or Ctrl/Cmd + Enter). The composer is
+   replaced in place by the new comment. Inside the comment:
+     * images render inline as Jira native thumbnails,
+     * other files render as clickable attachment links.
+6. Cancel / Escape / closing the composer cleans up any uploaded
+   files that didn't end up in a saved comment.
+
+### Known limits
+
+* Other native toolbar features (bold / italic / link / list /
+  emoji / Visual/Text toggle) are NOT replicated. Wiki syntax
+  works as a fallback if you type it directly (`*bold*`, `_em_`,
+  `[link|http://…]`).
+* No client-side size pre-check; Jira itself enforces the
+  attachment size + extension allowlist and any rejection surfaces
+  as an inline chip error.
+
+---
+
 ## 1.0.0-internal-chat-edit2 — 2026-06-30 (fix: group/project chat avatars)
 
 User report: in group chats every message bubble was showing a

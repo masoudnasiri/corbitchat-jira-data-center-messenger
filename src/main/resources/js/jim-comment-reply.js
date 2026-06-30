@@ -341,14 +341,224 @@
     // -----------------------------------------------------------------
     function closeAnyOpenComposer() {
         var existing = document.querySelector('.' + COMPOSER_CLASS);
-        if (existing && existing.parentNode) {
-            existing.parentNode.removeChild(existing);
+        if (existing) {
+            // Drop any staged attachments that were uploaded but never
+            // referenced from a saved comment. We delete them from the
+            // issue so we don't leave orphan attachments behind when
+            // the user cancels the reply.
+            cleanupStagedAttachments(existing, /*reason=*/'composer-closed');
+            if (existing.parentNode) {
+                existing.parentNode.removeChild(existing);
+            }
         }
         // Re-enable all Reply buttons.
         var btns = document.querySelectorAll('.' + BTN_CLASS);
         for (var i = 0; i < btns.length; i++) {
             btns[i].classList.remove(BTN_CLASS + '--disabled');
             btns[i].removeAttribute('aria-disabled');
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Reply-composer attachment support.
+    //
+    // Each open composer maintains a list of "staged" attachments on
+    // composer._stagedAttachments. An attachment is uploaded straight
+    // to the issue via Jira's standard
+    // `POST /rest/api/2/issue/<keyOrId>/attachments` endpoint as soon
+    // as the user selects it (so the user sees per-file success /
+    // failure before they hit Send). On submit we prepend the
+    // appropriate wiki markup to the comment body so Jira's renderer
+    // shows the attachments inline (images become thumbnails; other
+    // files become clickable links). If the user removes a chip OR
+    // cancels the composer we DELETE the orphaned attachments so we
+    // do not leave stray files on the issue.
+    // -----------------------------------------------------------------
+    var IMAGE_TYPE_RE = /^image\/(png|jpe?g|gif|webp|bmp|svg\+xml|tiff?)$/i;
+    var IMAGE_EXT_RE  = /\.(png|jpe?g|gif|webp|bmp|svg|tif|tiff)$/i;
+
+    function isImageAttachment(att) {
+        if (!att) return false;
+        var mime = att.mimeType || '';
+        var name = att.filename || '';
+        return IMAGE_TYPE_RE.test(mime) || IMAGE_EXT_RE.test(name);
+    }
+
+    /**
+     * Wiki markup token for an attachment as a Jira renderer will
+     * resolve it inside the comment body. Images become inline
+     * thumbnails so the user sees them rendered; other files become
+     * clickable attachment links.
+     */
+    function wikiForAttachment(att) {
+        if (!att || !att.filename) return '';
+        var safeName = att.filename.replace(/[!\[\]\|\\]/g, '_');
+        return isImageAttachment(att)
+            ? '!' + safeName + '|thumbnail!'
+            : '[^' + safeName + ']';
+    }
+
+    /**
+     * Synchronously DELETEs each staged attachment from the issue.
+     * Best-effort: failures are logged but never block the close /
+     * cancel flow. We do not await; the request is fire-and-forget.
+     */
+    function cleanupStagedAttachments(composer, reason) {
+        var list = composer && composer._stagedAttachments;
+        if (!list || !list.length) return;
+        for (var i = 0; i < list.length; i++) {
+            var att = list[i];
+            if (!att || !att.id) continue;
+            var url = contextPath() + '/rest/api/2/attachment/' + encodeURIComponent(att.id);
+            try {
+                var xhr = new XMLHttpRequest();
+                xhr.open('DELETE', url, true);
+                xhr.setRequestHeader('X-Atlassian-Token', 'no-check');
+                xhr.withCredentials = true;
+                xhr.send();
+                log('cleanup attachment', att.id, 'reason=' + reason);
+            } catch (e) { /* swallow */ }
+        }
+        composer._stagedAttachments = [];
+    }
+
+    /**
+     * Renders the chip strip for currently-staged attachments. Called
+     * after every add / remove. Each chip shows the filename and a
+     * small (×) button that removes the attachment and DELETEs it
+     * from the issue.
+     */
+    function renderAttachmentChips(composer) {
+        var strip = composer.querySelector('.' + COMPOSER_CLASS + '-attachments');
+        if (!strip) return;
+        strip.innerHTML = '';
+        var list = composer._stagedAttachments || [];
+        if (!list.length) {
+            strip.setAttribute('hidden', 'hidden');
+            return;
+        }
+        strip.removeAttribute('hidden');
+        for (var i = 0; i < list.length; i++) {
+            (function (att) {
+                var chip = document.createElement('span');
+                chip.className = COMPOSER_CLASS + '-attachment-chip';
+                if (att.uploading) {
+                    chip.classList.add(COMPOSER_CLASS + '-attachment-chip-uploading');
+                }
+                if (att.error) {
+                    chip.classList.add(COMPOSER_CLASS + '-attachment-chip-error');
+                }
+                var icon = document.createElement('span');
+                icon.className = COMPOSER_CLASS + '-attachment-icon';
+                icon.setAttribute('aria-hidden', 'true');
+                icon.textContent = isImageAttachment(att) ? '\uD83D\uDDBC' : '\uD83D\uDCCE';
+                var name = document.createElement('span');
+                name.className = COMPOSER_CLASS + '-attachment-name';
+                name.textContent = att.filename + (att.uploading ? ' (uploading\u2026)' : '');
+                var remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = COMPOSER_CLASS + '-attachment-remove';
+                remove.setAttribute('aria-label', 'Remove attachment');
+                remove.innerHTML = '\u00D7';
+                remove.addEventListener('click', function () {
+                    removeStagedAttachment(composer, att);
+                });
+                chip.appendChild(icon);
+                chip.appendChild(name);
+                chip.appendChild(remove);
+                if (att.error) {
+                    var errSpan = document.createElement('span');
+                    errSpan.className = COMPOSER_CLASS + '-attachment-error';
+                    errSpan.textContent = att.error;
+                    chip.appendChild(errSpan);
+                }
+                strip.appendChild(chip);
+            })(list[i]);
+        }
+    }
+
+    function removeStagedAttachment(composer, att) {
+        var list = composer._stagedAttachments || [];
+        var idx = list.indexOf(att);
+        if (idx >= 0) list.splice(idx, 1);
+        renderAttachmentChips(composer);
+        if (att && att.id) {
+            // DELETE the file from the issue so we don't leak it.
+            var url = contextPath() + '/rest/api/2/attachment/' + encodeURIComponent(att.id);
+            try {
+                var xhr = new XMLHttpRequest();
+                xhr.open('DELETE', url, true);
+                xhr.setRequestHeader('X-Atlassian-Token', 'no-check');
+                xhr.withCredentials = true;
+                xhr.send();
+            } catch (e) { /* swallow */ }
+        }
+    }
+
+    function uploadAttachmentForReply(composer, file, commentEl) {
+        if (!file) return;
+        var ref = issueRefForComment(commentEl);
+        var keyOrId = ref ? (ref.key || ref.id || '') : '';
+        if (!keyOrId) {
+            setStatus(composer.querySelector('.' + COMPOSER_CLASS + '-status'),
+                'Cannot detect this issue\u2019s key for the upload.', 'error');
+            return;
+        }
+        composer._stagedAttachments = composer._stagedAttachments || [];
+        var staged = {
+            id: null,
+            filename: file.name,
+            mimeType: file.type || '',
+            uploading: true,
+            error: null
+        };
+        composer._stagedAttachments.push(staged);
+        renderAttachmentChips(composer);
+
+        var form = new FormData();
+        form.append('file', file, file.name);
+        var url = contextPath() + '/rest/api/2/issue/' + encodeURIComponent(keyOrId) + '/attachments';
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', url, true);
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.setRequestHeader('X-Atlassian-Token', 'no-check');
+        xhr.withCredentials = true;
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState !== 4) return;
+            staged.uploading = false;
+            if (xhr.status === 200 || xhr.status === 201) {
+                try {
+                    var resp = JSON.parse(xhr.responseText);
+                    var att = Array.isArray(resp) && resp.length ? resp[0] : resp;
+                    if (att && att.id) {
+                        staged.id = att.id;
+                        // Server may have normalized the filename.
+                        staged.filename = att.filename || staged.filename;
+                        staged.mimeType = att.mimeType || staged.mimeType;
+                    } else {
+                        staged.error = 'Upload failed';
+                    }
+                } catch (e) {
+                    staged.error = 'Upload failed: invalid response';
+                }
+            } else {
+                var detail = '';
+                try {
+                    var err = JSON.parse(xhr.responseText);
+                    if (err && err.errorMessages && err.errorMessages.length) {
+                        detail = err.errorMessages.join(' ');
+                    }
+                } catch (e) { /* ignore */ }
+                staged.error = 'Upload failed (' + xhr.status + ')'
+                    + (detail ? ': ' + detail : '');
+            }
+            renderAttachmentChips(composer);
+        };
+        try { xhr.send(form); }
+        catch (e) {
+            staged.uploading = false;
+            staged.error = 'Could not start upload: ' + (e && e.message ? e.message : 'unknown');
+            renderAttachmentChips(composer);
         }
     }
 
@@ -392,8 +602,49 @@
         status.className = COMPOSER_CLASS + '-status';
         status.setAttribute('aria-live', 'polite');
 
+        // Attachment strip (hidden until the user adds at least one
+        // file). Renders one chip per staged attachment with a (×)
+        // button to remove it; uploads happen as soon as the file is
+        // chosen so the user sees per-file success / failure.
+        var attachmentsStrip = document.createElement('div');
+        attachmentsStrip.className = COMPOSER_CLASS + '-attachments';
+        attachmentsStrip.setAttribute('hidden', 'hidden');
+
+        var fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.multiple = true;
+        fileInput.className = COMPOSER_CLASS + '-file-input';
+        fileInput.setAttribute('aria-hidden', 'true');
+        fileInput.tabIndex = -1;
+        fileInput.addEventListener('change', function () {
+            if (!fileInput.files || !fileInput.files.length) return;
+            for (var i = 0; i < fileInput.files.length; i++) {
+                uploadAttachmentForReply(composer, fileInput.files[i], commentEl);
+            }
+            // Reset so re-selecting the same file later still fires.
+            fileInput.value = '';
+        });
+
         var actions = document.createElement('div');
         actions.className = COMPOSER_CLASS + '-actions';
+
+        // Attach button on the left side of the action row so the user
+        // can pick files without leaving the reply composer.
+        var attachBtn = document.createElement('button');
+        attachBtn.type = 'button';
+        attachBtn.className = 'aui-button aui-button-link ' + COMPOSER_CLASS + '-attach';
+        attachBtn.setAttribute('title', 'Attach file');
+        // SVG paperclip icon - matches the visual weight of the AUI
+        // toolbar icons used in Jira's native comment editor.
+        attachBtn.innerHTML =
+            '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" style="vertical-align:-2px;margin-right:4px">' +
+            '<path fill="currentColor" d="M16.5 6v10.5a4.5 4.5 0 1 1-9 0V5a3 3 0 1 1 6 0v10.5a1.5 1.5 0 1 1-3 0V6h1.5v9.5a.5.5 0 1 0 1 0V5a2 2 0 1 0-4 0v11.5a3.5 3.5 0 1 0 7 0V6z"/>' +
+            '</svg>' +
+            'Attach';
+        attachBtn.addEventListener('click', function () {
+            fileInput.click();
+        });
+
         var cancelBtn = document.createElement('button');
         cancelBtn.type = 'button';
         cancelBtn.className = 'aui-button ' + COMPOSER_CLASS + '-cancel';
@@ -413,18 +664,62 @@
                 textarea: textarea,
                 sendBtn: sendBtn,
                 cancelBtn: cancelBtn,
-                status: status
+                status: status,
+                composer: composer
             });
         });
 
+        // attachBtn aligned left; cancel / send on the right side via
+        // CSS (margin-left:auto on cancel).
+        actions.appendChild(attachBtn);
         actions.appendChild(cancelBtn);
         actions.appendChild(sendBtn);
 
         composer.appendChild(header);
         composer.appendChild(quote);
         composer.appendChild(textarea);
+        composer.appendChild(attachmentsStrip);
+        composer.appendChild(fileInput);
         composer.appendChild(status);
         composer.appendChild(actions);
+
+        // Drag-and-drop file support over the entire composer panel.
+        // We intercept on the panel root so dropping a file anywhere
+        // inside the chip strip / textarea / etc. all add it.
+        var dragCounter = 0;
+        function setDragActive(active) {
+            composer.classList.toggle(COMPOSER_CLASS + '-drag-active', !!active);
+        }
+        composer.addEventListener('dragenter', function (e) {
+            if (!e.dataTransfer || !Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0) return;
+            e.preventDefault();
+            dragCounter++;
+            setDragActive(true);
+        });
+        composer.addEventListener('dragover', function (e) {
+            if (e.dataTransfer && e.dataTransfer.types && Array.prototype.indexOf.call(e.dataTransfer.types, 'Files') !== -1) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+            }
+        });
+        composer.addEventListener('dragleave', function () {
+            dragCounter = Math.max(0, dragCounter - 1);
+            if (dragCounter === 0) setDragActive(false);
+        });
+        composer.addEventListener('drop', function (e) {
+            if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+            e.preventDefault();
+            dragCounter = 0;
+            setDragActive(false);
+            var files = e.dataTransfer.files;
+            for (var i = 0; i < files.length; i++) {
+                uploadAttachmentForReply(composer, files[i], commentEl);
+            }
+        });
+
+        // Track the staged-attachments list on the composer element so
+        // closeAnyOpenComposer() and submitReply() can both find it.
+        composer._stagedAttachments = [];
 
         // Insert immediately after the parent comment block.
         commentEl.parentNode.insertBefore(composer, commentEl.nextSibling);
@@ -462,8 +757,20 @@
 
     function submitReply(ctx) {
         var userText = (ctx.textarea.value || '').trim();
-        if (!userText) {
-            setStatus(ctx.status, 'Please enter a reply before sending.', 'error');
+        var stagedAttachments = (ctx.composer && ctx.composer._stagedAttachments) || [];
+        var goodAttachments = [];
+        var hasUploading = false;
+        for (var i = 0; i < stagedAttachments.length; i++) {
+            var a = stagedAttachments[i];
+            if (a.uploading) hasUploading = true;
+            if (!a.error && a.id) goodAttachments.push(a);
+        }
+        if (hasUploading) {
+            setStatus(ctx.status, 'Please wait for the attachment upload to finish.', 'error');
+            return;
+        }
+        if (!userText && !goodAttachments.length) {
+            setStatus(ctx.status, 'Please enter a reply or attach a file before sending.', 'error');
             ctx.textarea.focus();
             return;
         }
@@ -481,7 +788,22 @@
             : '';
         var excerpt = trimTo(ctx.parentExcerpt, EXCERPT_MAX);
         var quoted = excerpt ? '{quote}' + excerpt + '{quote}\n\n' : '';
-        var body = mention + quoted + userText;
+        // Attachment wiki markup is appended AFTER the user's reply
+        // text so the text remains the first thing the reader sees;
+        // images become inline thumbnails, other files become
+        // clickable attachment links rendered by Jira itself.
+        var attachmentLines = '';
+        if (goodAttachments.length) {
+            var parts = [];
+            for (var k = 0; k < goodAttachments.length; k++) {
+                var token = wikiForAttachment(goodAttachments[k]);
+                if (token) parts.push(token);
+            }
+            if (parts.length) {
+                attachmentLines = '\n\n' + parts.join('\n');
+            }
+        }
+        var body = mention + quoted + (userText || '') + attachmentLines;
 
         ctx.sendBtn.disabled = true;
         ctx.cancelBtn.disabled = true;
