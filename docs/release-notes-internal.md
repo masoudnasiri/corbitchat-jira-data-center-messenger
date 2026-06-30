@@ -6,6 +6,104 @@ see `docs/marketplace/release-notes.md`.
 
 ---
 
+## 1.0.0-internal-replies — 2026-06-30
+
+Standalone Jira-platform feature: a **Reply to Jira comment** action on
+every issue page. Built on the existing CorbitChat mention listener, so
+no Jira-core change, no schema change, no new REST endpoint.
+
+### What changed
+
+- A small "Reply" link appears in the action toolbar of every comment on
+  every issue page.
+- Clicking it opens Jira's native add-comment editor and pre-fills it
+  with:
+  - A real Jira `[~username]` mention of the parent comment's author
+  - A wiki `{quote}…{quote}` excerpt of the parent comment (max 200 chars)
+- The user types their reply BELOW the quote and submits through Jira's
+  normal "Save" button. The resulting comment is a standard Jira
+  comment — same permissions, same editing rules, same visibility.
+- Because the saved comment contains a real `[~username]` mention,
+  **Jira's built-in mention notification fires automatically** for the
+  parent comment author. We don't duplicate that pipeline.
+- The plugin's existing `CommentCreatedEvent` listener
+  (`JimPluginBootstrap` → `JimMentionParser` → `JimIssueEventHandlerImpl`)
+  picks the same comment up, and a Jira Assistant entry lands in the
+  mentioned user's bot conversation — including issue key, actor name,
+  preview, and a link back to the issue.
+- Every rendered comment whose body starts with our `[~name] {quote}…`
+  pattern gets a small "↳ In reply to <name>" badge injected above the
+  comment body so the reply relationship is visible at a glance.
+
+### Edge cases handled
+
+- **Self-reply** to your own comment: the `[~mention]` is suppressed (no
+  notification to yourself), but the quote is still inserted.
+- **Inactive / deleted** parent author: handled at the listener level —
+  the existing `JimMentionParser` skips unresolved or inactive users.
+- **Restricted comments**: native Jira permissions apply to both the
+  reply (Jira's own permission checks) and the Assistant entry (the
+  existing mention listener already filters on user visibility).
+- **Duplicate triggers** (e.g. comment edited / replayed): the existing
+  `JimEventLog` fingerprint deduplication prevents double Assistant
+  entries.
+
+### Why this approach
+
+The cleanest and safest plugin pattern: ship a single web-resource
+attached to the `jira.view.issue` context, prefill Jira's own editor,
+and let Jira do the persistence, the permission check, and the
+notification — exactly the way the Reply button on email clients works.
+No Jira-core file is touched, no new REST endpoint is added, and the
+reply relationship lives inside the comment body in a Jira-native form,
+so it persists across page refresh, page reopen, mobile, activity
+export, etc.
+
+### Files
+
+- `src/main/resources/js/jim-comment-reply.js` (new)
+- `src/main/resources/css/jim-comment-reply.css` (new)
+- `src/main/resources/atlassian-plugin.xml` (registered new web-resource
+  with `<context>jira.view.issue</context>`)
+- `pom.xml` (version bumped to `1.0.0-internal-replies`)
+
+### Verification
+
+- Web-resource is bundled into the `jira.view.issue` context batch (proven
+  by inspecting the contextbatch JS served on `/browse/<key>` — it
+  contains both the `jim-comment-reply` key and the
+  `__jimCommentReplyLoaded` marker).
+- Live test: reply comment id `11501` containing `[~m.zeynali]` produced
+  EventLog row #71 (`MENTION`, target `JIRAUSER10100`, issue `TEB-1`)
+  and JimMessage row #344 in conversation 3 (m.zeynali's Jira Assistant)
+  with body "masoud nasiri mentioned you in TEB-1…".
+- Jira's built-in mention notification is dispatched by Jira itself
+  (no custom code in this branch touches it).
+
+### Branch and artifact
+
+- Branch: `feature/jira-comment-replies-with-notifications` (off
+  `feature/board-gallery-page`).
+- New JAR: `corbitchat-jira-dc-1.0.0-internal-replies.jar`.
+- Previous artifact `corbitchat-jira-dc-1.0.0-internal-boards4.jar` is
+  preserved in `/root/jira-dev/releases/` for rollback.
+
+### How to test from the Jira UI
+
+1. Open any issue (e.g. `/browse/TEB-1`).
+2. Scroll to an existing comment authored by another user. A small
+   "Reply" link is now present alongside Edit / Delete.
+3. Click "Reply" → Jira's add-comment editor opens and is pre-filled
+   with `[~author] {quote}<excerpt>{quote}`.
+4. Type your reply under the quote and click "Save".
+5. The new comment is persisted normally and shows a "↳ In reply to
+   <author>" badge above its body.
+6. The mentioned user (a) receives Jira's standard mention email /
+   in-app notification and (b) sees a Jira Assistant message in their
+   CorbitChat bot conversation linking back to the issue.
+
+---
+
 ## 1.0.0-internal — 2026-06-28
 
 Quality / stability batch covering seven follow-up requests after the

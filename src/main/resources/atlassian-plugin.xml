@@ -298,6 +298,25 @@
         <condition class="com.atlassian.jira.plugin.webfragment.conditions.UserLoggedInCondition"/>
     </web-item>
 
+    <!-- Issue-view "Reply to comment" enhancement. Injects a Reply
+         link into each comment's action toolbar and, on click,
+         pre-fills Jira's native add-comment editor with a real Jira
+         [~username] mention plus a {quote}...{quote} excerpt of the
+         parent comment. The resulting comment is a regular Jira
+         comment, so:
+           * Jira's native mention notification fires automatically
+             for the mentioned user.
+           * CorbitChat's existing CommentCreatedEvent listener picks
+             up the mention and posts a Jira Assistant entry for the
+             mentioned user.
+         No new REST endpoint, AO column or backend listener is needed. -->
+    <web-resource key="jim-comment-reply-resources" name="CorbitChat Comment Reply Resources">
+        <dependency>com.atlassian.auiplugin:ajs</dependency>
+        <context>jira.view.issue</context>
+        <resource type="download" name="jim-comment-reply.css" location="/css/jim-comment-reply.css"/>
+        <resource type="download" name="jim-comment-reply.js" location="/js/jim-comment-reply.js"/>
+    </web-resource>
+
     <web-resource key="jim-admin-resources" name="CorbitChat Admin Console Resources">
         <dependency>com.atlassian.auiplugin:ajs</dependency>
         <resource type="download" name="jim-admin.css" location="/css/jim-admin.css"/>
