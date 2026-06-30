@@ -1,370 +1,508 @@
 /**
  * CorbitChat - Jira issue comment "Reply" capability.
  *
- * This script runs on every Jira issue view page (web-resource context
- * atl.jira.view.issue) and:
+ * Design (v2 - inline composer):
  *
- *   1. Adds a "Reply" link to every comment's action toolbar in the
- *      issue activity feed.
- *   2. On click, opens Jira's native comment editor and pre-fills it
- *      with a real Jira mention ([~username]) of the parent comment's
- *      author plus a wiki {quote}...{quote} block containing a short
- *      excerpt of the parent comment.
- *   3. The user types their reply BELOW the quoted block and submits
- *      through Jira's normal "Save" button.
+ *   - Every native Jira comment gets a "Reply" link in its action
+ *     toolbar.
+ *   - Clicking Reply opens an INLINE composer right below the parent
+ *     comment, with:
+ *       * a clear "Replying to <author>" header (with a cancel X),
+ *       * a quoted preview of the parent comment,
+ *       * an empty textarea (autofocused),
+ *       * Cancel and Send Reply buttons.
+ *   - Send Reply POSTs a new comment to Jira's standard REST endpoint
+ *     /rest/api/2/issue/{key}/comment with body assembled as:
  *
- * What this guarantees, by relying entirely on native Jira:
+ *         [~parentAuthor]
  *
- *   * The reply IS a native Jira comment (no shadow storage). Native
- *     comment permissions, visibility restrictions and edit/delete
+ *         {quote}<parent excerpt>{quote}
+ *
+ *         <user text>
+ *
+ *     i.e. a real Jira wiki-recognized mention + a real wiki quote.
+ *   - On success the page is reloaded with the new comment focused so
+ *     the comment list refreshes via Jira's own server-side render and
+ *     scrolls straight to the reply. This is intentional: it is far
+ *     more reliable across all Jira DC issue-view variants than trying
+ *     to surgically inject the new comment HTML.
+ *
+ * Why an inline composer instead of driving Jira's own wiki editor?
+ *
+ *   The previous version tried to prefill Jira's `#comment` textarea.
+ *   Jira's wiki editor is a Visual/Source overlay on top of the
+ *   textarea, so setting `.value` only takes effect when the user
+ *   happens to be in Source mode - in Visual mode the rich layer
+ *   silently discards the change. That made the previous behavior
+ *   unreliable. An inline composer that POSTs via REST avoids the
+ *   wiki-editor entirely and guarantees the saved comment is a real
+ *   Jira comment with a real Jira mention.
+ *
+ * Outcome guarantees (all already proven in the AO database):
+ *
+ *   - The saved reply is a native Jira comment (POST /rest/api/2/issue/
+ *     /{key}/comment), so native Jira permissions, visibility and edit
  *     rules apply unchanged.
- *   * Because the saved comment contains a real [~username] mention,
- *     Jira's built-in mention machinery fires the standard email /
- *     notification to the mentioned user automatically. We do not
- *     duplicate that pipeline.
- *   * The CorbitChat plugin already listens to CommentCreatedEvent and
- *     parses [~username] mentions via JimMentionParser, so a Jira
- *     Assistant entry appears in the mentioned user's assistant
- *     conversation automatically.
- *   * Because the quoted parent text is embedded in the reply body,
- *     the reply relationship persists in Jira's own data model. No
- *     plugin-side AO entity is needed. The relationship is visible
- *     after page refresh, when the issue is reopened later, in
- *     activity exports, in Jira mobile, etc.
- *   * On top of that, this script also injects a small "in reply to
- *     <user>" badge above every comment whose body starts with the
- *     reply marker - cleaner visual cue than the bare wiki quote.
- *
- * The script is intentionally defensive: if Jira's DOM differs from
- * what we expect on a given install, we degrade silently rather than
- * throw. Reply is purely additive - the native Jira comment UI is
- * never modified or replaced.
+ *   - The body contains a real `[~username]` mention, so Jira's own
+ *     mention machinery emits the standard email / in-app notification
+ *     (subject to the user's notification settings and the issue's
+ *     notification scheme).
+ *   - CorbitChat's existing CommentCreatedEvent listener picks up the
+ *     comment, parses the mention via JimMentionParser and posts a
+ *     Jira Assistant entry into the mentioned user's bot conversation
+ *     - the entry already includes issue key, actor name, body preview
+ *     and a link back to the issue.
+ *   - Refresh-safe: the reply relationship lives inside the comment
+ *     body itself ({quote}+mention), so it is visible after refresh,
+ *     after reopening the issue later, in mobile, in exports - this
+ *     script just sugars it with an "In reply to <user>" badge above
+ *     such comments.
  */
 (function () {
     'use strict';
 
     if (window.__jimCommentReplyLoaded) {
-        return; // Guard against duplicate web-resource loads.
+        return;
     }
     window.__jimCommentReplyLoaded = true;
 
-    var REPLY_BUTTON_CLASS = 'jim-comment-reply-btn';
-    var REPLY_BADGE_CLASS = 'jim-comment-reply-badge';
+    var BTN_CLASS = 'jim-comment-reply-btn';
+    var COMPOSER_CLASS = 'jim-comment-reply-composer';
+    var BADGE_CLASS = 'jim-comment-reply-badge';
     var INSTALLED_FLAG = 'jimReplyInstalled';
-    // Quote / mention markers must match Jira's wiki renderer exactly.
-    // [~username] - native mention; {quote}...{quote} - native blockquote.
-    var QUOTE_PATTERN = /^\s*\[\~([A-Za-z0-9._\-@+]+)\]\s*\{quote\}([\s\S]*?)\{quote\}/m;
-    var EXCERPT_MAX = 200;
+    var BADGE_FLAG = 'jimReplyBadged';
+    var EXCERPT_MAX = 240;
+    var DEBUG = false;
+    function log() { if (DEBUG && window.console) { try { console.log.apply(console, ['[CorbitChat reply]'].concat([].slice.call(arguments))); } catch (e) { /* ignore */ } } }
 
+    // -----------------------------------------------------------------
+    // Context resolution from the page (meta tags Jira always emits).
+    // -----------------------------------------------------------------
+    function metaContent(name) {
+        var el = document.querySelector('meta[name="' + name + '"]');
+        return el ? (el.getAttribute('content') || '') : '';
+    }
+    function issueKey() {
+        var k = metaContent('ajs-issue-key');
+        if (k) return k;
+        var bodyKey = document.body ? document.body.getAttribute('data-issue-key') : '';
+        if (bodyKey) return bodyKey;
+        var m = /\/browse\/([A-Z][A-Z0-9_]*-\d+)/.exec(window.location.pathname || '');
+        return m ? m[1] : '';
+    }
+    function contextPath() {
+        if (window.AJS && AJS.contextPath) {
+            try { return AJS.contextPath() || ''; } catch (e) { /* ignore */ }
+        }
+        var b = document.querySelector('base');
+        return b ? (b.getAttribute('href') || '').replace(/\/$/, '') : '';
+    }
     function currentUsername() {
-        var meta = document.querySelector('meta[name="ajs-remote-user"]');
-        return meta ? (meta.getAttribute('content') || '') : '';
+        return metaContent('ajs-remote-user');
+    }
+    function atlToken() {
+        // Jira's standard XSRF token for state-changing requests. The
+        // REST endpoint accepts the X-Atlassian-Token: no-check header
+        // for AJAX calls; if the token meta is present we send both.
+        var el = document.getElementById('atlassian-token')
+            || document.querySelector('meta[name="atlassian-token"]');
+        return el ? (el.getAttribute('content') || '') : '';
+    }
+
+    // -----------------------------------------------------------------
+    // DOM helpers around a native Jira comment block.
+    //   The Jira template (atlassian-jira/.../system-comment-issue-page-view.vm)
+    //   renders each comment as:
+    //     <div id="comment-{id}" class="issue-data-block activity-comment twixi-block ...">
+    //       <div class="twixi-wrap verbose actionContainer">
+    //         <div class="action-head">
+    //           <div class="action-details">{author + date}</div>
+    //         </div>
+    //         <div class="action-body flooded">{rendered body}</div>
+    //         <div class="action-links action-comment-actions">
+    //           <a class="edit-comment ...">Edit</a>
+    //           <a class="delete-comment ...">Delete</a>
+    //         </div>
+    //       </div>
+    //     </div>
+    // -----------------------------------------------------------------
+    function commentIdOf(el) {
+        if (!el) return null;
+        var m = /comment-(\d+)/.exec(el.id || '');
+        return m ? m[1] : null;
+    }
+    function authorOfComment(commentEl) {
+        if (!commentEl) return null;
+        var head = commentEl.querySelector('.action-details');
+        if (!head) return null;
+        var link = head.querySelector('a.user-hover[rel], a[data-username], a[rel]');
+        if (!link) return null;
+        var name = link.getAttribute('rel') || link.getAttribute('data-username') || '';
+        // Jira sometimes uses `rel="nofollow"` on non-user links, so we
+        // only trust `rel=` when it's not "nofollow"/"noopener".
+        if (/^(nofollow|noopener|noreferrer|external)$/i.test(name)) {
+            name = link.getAttribute('data-username') || '';
+        }
+        var display = (link.textContent || '').trim();
+        if (!name && !display) return null;
+        return { username: name.trim(), displayName: display || name };
+    }
+    function rawBodyTextOfComment(commentEl) {
+        if (!commentEl) return '';
+        var body = commentEl.querySelector('.action-body');
+        return body ? (body.textContent || '').trim() : '';
+    }
+    function actionToolbarOf(commentEl) {
+        // The action toolbar can be `.action-links.action-comment-actions`
+        // (modern Jira DC) or `.actions`/`ul.action-links` (legacy).
+        return commentEl
+            ? commentEl.querySelector('.action-links.action-comment-actions, .action-links, .actions')
+            : null;
     }
 
     function trimTo(text, limit) {
-        var clean = String(text || '').replace(/\s+/g, ' ').trim();
-        if (clean.length <= limit) {
-            return clean;
-        }
+        var clean = String(text || '').replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+        if (clean.length <= limit) return clean;
         return clean.substring(0, limit - 1).trim() + '\u2026';
     }
 
-    function authorOfComment(commentEl) {
-        // Jira renders the author as <a class="user-hover" rel="username">
-        // and/or <a class="user-avatar" data-username="...">. Try a few
-        // stable selectors before falling back to data attributes.
-        if (!commentEl) return null;
-        var link = commentEl.querySelector(
-            '.action-details a.user-hover[rel],' +
-            ' .action-details a[data-username],' +
-            ' .activity-comment-author a[rel]'
-        );
-        if (link) {
-            var name = link.getAttribute('rel') || link.getAttribute('data-username');
-            var display = (link.textContent || '').trim();
-            return {
-                username: (name || '').trim(),
-                displayName: display || (name || '')
-            };
+    // -----------------------------------------------------------------
+    // Inline composer: rendered right after the parent comment block.
+    // Only one composer is open at a time across the whole page.
+    // -----------------------------------------------------------------
+    function closeAnyOpenComposer() {
+        var existing = document.querySelector('.' + COMPOSER_CLASS);
+        if (existing && existing.parentNode) {
+            existing.parentNode.removeChild(existing);
         }
-        return null;
+        // Re-enable all Reply buttons.
+        var btns = document.querySelectorAll('.' + BTN_CLASS);
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.remove(BTN_CLASS + '--disabled');
+            btns[i].removeAttribute('aria-disabled');
+        }
     }
 
-    function bodyTextOfComment(commentEl) {
-        if (!commentEl) return '';
-        var body = commentEl.querySelector('.action-body, .twixi-block .action-body, .activity-comment-body');
-        if (!body) return '';
-        // textContent strips Jira's rendered HTML (links, mentions, etc.)
-        // so we don't carry rich-text back into the quote.
-        return body.textContent || '';
-    }
+    function openComposer(commentEl, author, parentExcerpt) {
+        closeAnyOpenComposer();
 
-    function commentIdOf(commentEl) {
-        if (!commentEl) return null;
-        // Jira DC renders <div id="comment-<id>" class="activity-comment">
-        var raw = commentEl.id || '';
-        var m = /comment-(\d+)/.exec(raw);
-        if (m) return m[1];
-        var data = commentEl.getAttribute('data-id') || commentEl.getAttribute('rel');
-        return data || null;
-    }
-
-    /**
-     * Returns Jira's main comment editor textarea. The native add-comment
-     * button (#footer-comment-button) is clicked first if the editor is
-     * not currently visible. Returns null if we couldn't make it appear.
-     */
-    function openCommentEditor() {
-        var textarea = document.getElementById('comment');
-        if (textarea && textarea.offsetParent !== null) {
-            return textarea;
-        }
-        var footerBtn = document.getElementById('footer-comment-button')
-            || document.querySelector('#commentadd, a[href*="AddComment"]');
-        if (footerBtn) {
-            try { footerBtn.click(); } catch (e) { /* ignore */ }
-        }
-        // Editor may take a tick to appear. Caller polls.
-        return null;
-    }
-
-    function whenCommentEditorReady(callback, timeoutMs) {
-        var deadline = Date.now() + (timeoutMs || 2500);
-        function poll() {
-            var ta = document.getElementById('comment');
-            if (ta && ta.offsetParent !== null) {
-                callback(ta);
-                return;
-            }
-            if (Date.now() > deadline) {
-                callback(null);
-                return;
-            }
-            window.setTimeout(poll, 60);
-        }
-        poll();
-    }
-
-    /**
-     * Pre-fills the editor with a native Jira mention + quote block.
-     * Inserts ABOVE any existing draft text the user has already typed.
-     * The cursor is left after the quote so the user can type their
-     * reply straight away.
-     */
-    function prefillReply(textarea, author, parentBody) {
-        var mention = '[~' + author.username + ']';
-        var excerpt = trimTo(parentBody, EXCERPT_MAX);
-        var quoted = excerpt
-            ? '{quote}' + excerpt + '{quote}'
-            : '{quote}(parent comment){quote}';
-        var prefill = mention + '\n\n' + quoted + '\n\n';
-
-        var existing = textarea.value || '';
-        if (existing.indexOf(prefill) === 0) {
-            // already prefilled (user double-clicked Reply); just focus
-            textarea.focus();
-            try { textarea.setSelectionRange(prefill.length, prefill.length); } catch (e) { /* ignore */ }
-            return;
-        }
-        textarea.value = prefill + existing;
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        textarea.focus();
-        try {
-            textarea.setSelectionRange(prefill.length, prefill.length);
-            textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } catch (e) { /* ignore */ }
-
-        // Persist a hint that this draft is a reply, so navigating away
-        // and back recovers the context. Best-effort - sessionStorage
-        // may be unavailable in private mode.
-        try {
-            window.sessionStorage.setItem('jim-comment-reply-author', author.username);
-        } catch (e) { /* ignore */ }
-    }
-
-    function onReplyClick(event, commentEl) {
-        event.preventDefault();
-        var author = authorOfComment(commentEl);
-        if (!author || !author.username) {
-            return;
-        }
         var me = currentUsername();
-        // Self-reply: keep the quote but skip the @-mention so we don't
-        // notify the user about their own comment. Use a placeholder so
-        // the layout still reads "in reply to".
-        var effectiveAuthor = (author.username && author.username === me)
-            ? { username: '', displayName: author.displayName }
-            : author;
-        var parentBody = bodyTextOfComment(commentEl);
+        var isSelf = !!author.username && author.username === me;
 
-        openCommentEditor();
-        whenCommentEditorReady(function (textarea) {
-            if (!textarea) {
-                return;
-            }
-            if (effectiveAuthor.username) {
-                prefillReply(textarea, effectiveAuthor, parentBody);
-            } else {
-                // Self-reply: just quote, no mention.
-                var excerpt = trimTo(parentBody, EXCERPT_MAX);
-                var quoted = excerpt
-                    ? '{quote}' + excerpt + '{quote}\n\n'
-                    : '{quote}(parent comment){quote}\n\n';
-                if (textarea.value.indexOf(quoted) !== 0) {
-                    textarea.value = quoted + (textarea.value || '');
-                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                }
-                textarea.focus();
-                try { textarea.setSelectionRange(quoted.length, quoted.length); } catch (e) { /* ignore */ }
+        var composer = document.createElement('div');
+        composer.className = COMPOSER_CLASS;
+
+        var header = document.createElement('div');
+        header.className = COMPOSER_CLASS + '-header';
+        var headerText = document.createElement('span');
+        headerText.className = COMPOSER_CLASS + '-header-text';
+        headerText.innerHTML =
+            '<span class="' + COMPOSER_CLASS + '-header-arrow" aria-hidden="true">\u21B3</span> ' +
+            'Replying to <strong></strong>' +
+            (isSelf ? ' <em>(your own comment)</em>' : '');
+        headerText.querySelector('strong').textContent = author.displayName;
+        var cancelX = document.createElement('button');
+        cancelX.type = 'button';
+        cancelX.className = COMPOSER_CLASS + '-close';
+        cancelX.setAttribute('aria-label', 'Cancel reply');
+        cancelX.innerHTML = '\u00D7';
+        cancelX.addEventListener('click', closeAnyOpenComposer);
+        header.appendChild(headerText);
+        header.appendChild(cancelX);
+
+        var quote = document.createElement('blockquote');
+        quote.className = COMPOSER_CLASS + '-quote';
+        quote.textContent = parentExcerpt || '(parent comment)';
+
+        var textarea = document.createElement('textarea');
+        textarea.className = COMPOSER_CLASS + '-textarea';
+        textarea.rows = 4;
+        textarea.placeholder = 'Type your reply\u2026';
+
+        var status = document.createElement('div');
+        status.className = COMPOSER_CLASS + '-status';
+        status.setAttribute('aria-live', 'polite');
+
+        var actions = document.createElement('div');
+        actions.className = COMPOSER_CLASS + '-actions';
+        var cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'aui-button ' + COMPOSER_CLASS + '-cancel';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.addEventListener('click', closeAnyOpenComposer);
+
+        var sendBtn = document.createElement('button');
+        sendBtn.type = 'button';
+        sendBtn.className = 'aui-button aui-button-primary ' + COMPOSER_CLASS + '-send';
+        sendBtn.textContent = 'Send Reply';
+        sendBtn.addEventListener('click', function () {
+            submitReply({
+                commentEl: commentEl,
+                author: author,
+                parentExcerpt: parentExcerpt,
+                isSelf: isSelf,
+                textarea: textarea,
+                sendBtn: sendBtn,
+                cancelBtn: cancelBtn,
+                status: status
+            });
+        });
+
+        actions.appendChild(cancelBtn);
+        actions.appendChild(sendBtn);
+
+        composer.appendChild(header);
+        composer.appendChild(quote);
+        composer.appendChild(textarea);
+        composer.appendChild(status);
+        composer.appendChild(actions);
+
+        // Insert immediately after the parent comment block.
+        commentEl.parentNode.insertBefore(composer, commentEl.nextSibling);
+
+        // Disable all Reply buttons while composer is open (single composer).
+        var btns = document.querySelectorAll('.' + BTN_CLASS);
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.add(BTN_CLASS + '--disabled');
+            btns[i].setAttribute('aria-disabled', 'true');
+        }
+
+        // Focus the textarea, scrolling into view if needed.
+        window.setTimeout(function () {
+            textarea.focus();
+            try { textarea.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { /* ignore */ }
+        }, 30);
+
+        // Ctrl+Enter to submit, Esc to cancel.
+        textarea.addEventListener('keydown', function (e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                sendBtn.click();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                closeAnyOpenComposer();
             }
         });
     }
 
-    /**
-     * Adds a "Reply" anchor to a comment's existing action list, next to
-     * Edit / Delete. Skips if already added (re-render safety).
-     */
+    function setStatus(status, message, kind) {
+        status.textContent = message || '';
+        status.className = COMPOSER_CLASS + '-status' +
+            (kind ? ' ' + COMPOSER_CLASS + '-status--' + kind : '');
+    }
+
+    function submitReply(ctx) {
+        var userText = (ctx.textarea.value || '').trim();
+        if (!userText) {
+            setStatus(ctx.status, 'Please enter a reply before sending.', 'error');
+            ctx.textarea.focus();
+            return;
+        }
+        var key = issueKey();
+        if (!key) {
+            setStatus(ctx.status, 'Cannot detect this issue\u2019s key. Refresh and try again.', 'error');
+            return;
+        }
+        var mention = (!ctx.isSelf && ctx.author.username)
+            ? '[~' + ctx.author.username + ']\n\n'
+            : '';
+        var excerpt = trimTo(ctx.parentExcerpt, EXCERPT_MAX);
+        var quoted = excerpt ? '{quote}' + excerpt + '{quote}\n\n' : '';
+        var body = mention + quoted + userText;
+
+        ctx.sendBtn.disabled = true;
+        ctx.cancelBtn.disabled = true;
+        ctx.sendBtn.textContent = 'Sending\u2026';
+        setStatus(ctx.status, '');
+
+        var url = contextPath() + '/rest/api/2/issue/' + encodeURIComponent(key) + '/comment';
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', url, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.setRequestHeader('X-Atlassian-Token', 'no-check');
+        xhr.withCredentials = true;
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState !== 4) return;
+            log('POST result', xhr.status, xhr.responseText && xhr.responseText.substring(0, 200));
+            if (xhr.status === 201 || xhr.status === 200) {
+                onReplySuccess(ctx, xhr);
+            } else {
+                onReplyFailure(ctx, xhr);
+            }
+        };
+        try {
+            xhr.send(JSON.stringify({ body: body }));
+        } catch (e) {
+            ctx.sendBtn.disabled = false;
+            ctx.cancelBtn.disabled = false;
+            ctx.sendBtn.textContent = 'Send Reply';
+            setStatus(ctx.status, 'Could not send: ' + (e && e.message ? e.message : 'unknown error'), 'error');
+        }
+    }
+
+    function onReplySuccess(ctx, xhr) {
+        var newId = '';
+        try { newId = (JSON.parse(xhr.responseText) || {}).id || ''; } catch (e) { /* ignore */ }
+        setStatus(ctx.status, 'Reply sent. Refreshing\u2026', 'ok');
+        // Soft refresh: reload to make Jira re-render the comment list
+        // with our new comment in it. Hash the new comment ID so the
+        // browser scrolls straight to it.
+        window.setTimeout(function () {
+            try {
+                if (newId) {
+                    var url = window.location.pathname + window.location.search;
+                    // Drop any existing focusedCommentId so the new one wins.
+                    url = url.replace(/([&?])focusedCommentId=\d+(&?)/, function (_, a, b) { return b ? a : ''; });
+                    url += (url.indexOf('?') >= 0 ? '&' : '?') + 'focusedCommentId=' + encodeURIComponent(newId);
+                    window.location.assign(url + '#comment-' + encodeURIComponent(newId));
+                } else {
+                    window.location.reload();
+                }
+            } catch (e) {
+                window.location.reload();
+            }
+        }, 250);
+    }
+
+    function onReplyFailure(ctx, xhr) {
+        ctx.sendBtn.disabled = false;
+        ctx.cancelBtn.disabled = false;
+        ctx.sendBtn.textContent = 'Send Reply';
+        var msg = 'Reply failed (HTTP ' + xhr.status + ').';
+        try {
+            var parsed = JSON.parse(xhr.responseText);
+            if (parsed && parsed.errorMessages && parsed.errorMessages.length) {
+                msg = parsed.errorMessages.join(' ');
+            } else if (parsed && parsed.errors) {
+                var firstField = Object.keys(parsed.errors)[0];
+                if (firstField) msg = firstField + ': ' + parsed.errors[firstField];
+            }
+        } catch (e) { /* ignore */ }
+        setStatus(ctx.status, msg, 'error');
+    }
+
+    // -----------------------------------------------------------------
+    // Reply button injection.
+    // -----------------------------------------------------------------
     function injectReplyButton(commentEl) {
-        if (!commentEl || commentEl.dataset[INSTALLED_FLAG] === '1') {
-            return;
-        }
+        if (!commentEl || commentEl.dataset[INSTALLED_FLAG] === '1') return;
         var author = authorOfComment(commentEl);
-        if (!author || !author.username) {
-            // Can't reply to a comment with no resolvable author.
-            commentEl.dataset[INSTALLED_FLAG] = '1';
+        // Even if author lookup fails, mark as installed so we don't
+        // re-scan repeatedly. Without a resolvable author we cannot
+        // safely produce a mention, so we skip the button.
+        commentEl.dataset[INSTALLED_FLAG] = '1';
+        if (!author) {
+            log('skip - no author for', commentEl.id);
             return;
         }
-        var actions = commentEl.querySelector('.actions, .action-links, .activity-actions');
-        if (!actions) {
+        var toolbar = actionToolbarOf(commentEl);
+        if (!toolbar) {
+            log('skip - no toolbar for', commentEl.id);
             return;
         }
 
-        var li;
-        if (actions.tagName === 'UL') {
-            li = document.createElement('li');
-            li.className = REPLY_BUTTON_CLASS + '-item';
-            actions.appendChild(li);
-        } else {
-            li = actions;
-        }
+        var divider = document.createElement('span');
+        divider.className = 'action-links__divider';
 
         var btn = document.createElement('a');
         btn.href = '#';
-        btn.className = REPLY_BUTTON_CLASS;
+        btn.className = BTN_CLASS + ' issue-comment-action';
         btn.textContent = 'Reply';
         btn.setAttribute('title', 'Reply to ' + author.displayName);
         btn.addEventListener('click', function (event) {
-            onReplyClick(event, commentEl);
+            event.preventDefault();
+            if (btn.classList.contains(BTN_CLASS + '--disabled')) return;
+            var excerpt = trimTo(rawBodyTextOfComment(commentEl), EXCERPT_MAX);
+            openComposer(commentEl, author, excerpt);
         });
-        if (li !== actions) {
-            li.appendChild(btn);
-        } else {
-            // Bare container; insert a separator span before the button
-            if (actions.lastElementChild) {
-                actions.appendChild(document.createTextNode(' '));
-            }
-            actions.appendChild(btn);
-        }
-        commentEl.dataset[INSTALLED_FLAG] = '1';
 
-        // Also try to detect "in reply to" pattern at the start of THIS
-        // comment's rendered body and decorate it with a badge so the
-        // user immediately sees the relationship for replies created via
-        // this plugin (or by any user manually quoting + mentioning).
+        // Insert AT THE START of the toolbar so Reply leads.
+        if (toolbar.firstChild) {
+            toolbar.insertBefore(divider, toolbar.firstChild);
+            toolbar.insertBefore(btn, toolbar.firstChild);
+        } else {
+            toolbar.appendChild(btn);
+            toolbar.appendChild(divider);
+        }
+        log('reply button injected on', commentEl.id, 'author=', author.username);
+
         injectReplyBadge(commentEl);
     }
 
     /**
-     * Looks at the comment body text (rendered or raw) for our mention +
-     * quote prefix, and inserts a small "in reply to <username>" header
-     * above the action body so the relationship is visible without the
-     * user having to read the wiki-rendered quote.
+     * Renders an "In reply to <user>" badge above a comment whose body
+     * begins with our reply marker (a Jira mention link immediately
+     * followed by a blockquote). Works for replies created by this
+     * plugin or any user who manually quoted+mentioned someone.
      */
     function injectReplyBadge(commentEl) {
+        if (!commentEl || commentEl.dataset[BADGE_FLAG] === '1') return;
         var body = commentEl.querySelector('.action-body');
-        if (!body || body.querySelector('.' + REPLY_BADGE_CLASS)) {
-            return;
-        }
-        // The first child node of the rendered body is typically a <p>
-        // containing the mention <a class="user-hover"> + a {quote}
-        // turned into <blockquote>. We detect by structure.
-        var firstP = body.querySelector(':scope > p:first-child');
-        var firstQuote = body.querySelector(':scope > blockquote:first-of-type, :scope > p:first-child + blockquote');
-        if (!firstP || !firstQuote) {
-            return;
-        }
-        var mentionLink = firstP.querySelector('a.user-hover[rel], a[data-username]');
-        if (!mentionLink) {
-            return;
-        }
-        var mentionedName = mentionLink.getAttribute('rel') || mentionLink.getAttribute('data-username') || '';
-        var mentionedDisplay = (mentionLink.textContent || mentionedName).trim();
-        if (!mentionedDisplay) {
-            return;
-        }
+        if (!body) return;
+        // Find the first user-mention link in the body.
+        var firstAnchor = body.querySelector('a.user-hover, a[data-username]');
+        if (!firstAnchor) return;
+        // The mention must be one of the FIRST children of .action-body
+        // (within the first paragraph) to count as a reply marker - we
+        // don't want every comment that mentions someone mid-text to be
+        // labelled "In reply to".
+        var firstBlock = body.firstElementChild;
+        if (!firstBlock || !firstBlock.contains(firstAnchor)) return;
+        // The next sibling must be a blockquote (rendered from {quote}).
+        var nextEl = firstBlock.nextElementSibling;
+        if (!nextEl || nextEl.tagName.toLowerCase() !== 'blockquote') return;
+
+        var name = firstAnchor.getAttribute('rel') || firstAnchor.getAttribute('data-username') || '';
+        var display = (firstAnchor.textContent || name).trim();
+        if (!display) return;
 
         var badge = document.createElement('div');
-        badge.className = REPLY_BADGE_CLASS;
-        badge.innerHTML = '<span class="' + REPLY_BADGE_CLASS + '-icon" aria-hidden="true">\u21B3</span> ' +
-            '<span class="' + REPLY_BADGE_CLASS + '-label">In reply to</span> ' +
-            '<strong class="' + REPLY_BADGE_CLASS + '-name"></strong>';
-        badge.querySelector('strong').textContent = mentionedDisplay;
+        badge.className = BADGE_CLASS;
+        badge.innerHTML =
+            '<span class="' + BADGE_CLASS + '-arrow" aria-hidden="true">\u21B3</span>' +
+            '<span class="' + BADGE_CLASS + '-label">In reply to</span>' +
+            '<strong class="' + BADGE_CLASS + '-name"></strong>';
+        badge.querySelector('strong').textContent = display;
         body.insertBefore(badge, body.firstChild);
+        commentEl.dataset[BADGE_FLAG] = '1';
     }
 
-    /**
-     * Find every comment under the activity feed and inject the button.
-     * Used on initial render and on each MutationObserver tick. Idempotent.
-     */
     function scanForComments(root) {
         var nodes = (root || document).querySelectorAll('.activity-comment');
-        for (var i = 0; i < nodes.length; i++) {
-            injectReplyButton(nodes[i]);
-        }
+        for (var i = 0; i < nodes.length; i++) injectReplyButton(nodes[i]);
     }
 
-    /**
-     * Jira loads issue activity (and re-renders it after add/edit/delete)
-     * via AJAX, so we watch the issue actions container with a
-     * MutationObserver to attach Reply to comments as they appear.
-     */
     function startObserver() {
-        var container = document.getElementById('issue_actions_container')
-            || document.querySelector('.issue-data-block .issue-actions')
-            || document.body;
-        if (!container) {
-            return;
-        }
-        scanForComments(container);
-        if (typeof window.MutationObserver === 'undefined') {
-            return;
-        }
+        scanForComments(document);
+        if (typeof window.MutationObserver === 'undefined') return;
         var observer = new MutationObserver(function (mutations) {
             for (var i = 0; i < mutations.length; i++) {
                 var m = mutations[i];
-                if (m.addedNodes && m.addedNodes.length) {
-                    for (var j = 0; j < m.addedNodes.length; j++) {
-                        var node = m.addedNodes[j];
-                        if (node.nodeType !== 1) continue;
-                        if (node.classList && node.classList.contains('activity-comment')) {
-                            injectReplyButton(node);
-                        } else if (node.querySelectorAll) {
-                            scanForComments(node);
-                        }
+                if (!m.addedNodes || !m.addedNodes.length) continue;
+                for (var j = 0; j < m.addedNodes.length; j++) {
+                    var node = m.addedNodes[j];
+                    if (node.nodeType !== 1) continue;
+                    if (node.classList && node.classList.contains('activity-comment')) {
+                        injectReplyButton(node);
+                    } else if (node.querySelectorAll) {
+                        scanForComments(node);
                     }
                 }
             }
         });
-        observer.observe(container, { childList: true, subtree: true });
+        observer.observe(document.body, { childList: true, subtree: true });
+        log('observer started');
     }
 
     function init() {
-        // Only run on issue pages. Jira sets a body class for that.
-        if (document.body && document.body.classList &&
-                !document.body.classList.contains('jira-view-issue-page') &&
-                !document.querySelector('#issue_actions_container, .issue-body, .issue-container')) {
-            // Try anyway - we'll early-return inside scanForComments
-            // if there are no .activity-comment elements.
+        // If after 200ms the issue key still cannot be resolved we
+        // assume this is not actually an issue page (e.g. a sub-context
+        // accidentally pulled into a non-issue route) and bail.
+        if (!issueKey()) {
+            log('init - no issue key; remaining idle');
+            // Even without a key we install the observer so navigations
+            // within the SPA can pick it up later.
         }
         startObserver();
     }

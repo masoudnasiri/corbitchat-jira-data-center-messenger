@@ -1,33 +1,130 @@
 /* CorbitChat Jira-comment Reply action.
-   Scoped to elements we inject; we never restyle Jira's own comment DOM
-   beyond adding our own links/badges. */
+   Scoped to elements we inject so we never restyle Jira's own DOM. */
 
+/* ----- Reply link in the comment action toolbar ----- */
 a.jim-comment-reply-btn {
     color: #0c66e4;
     font-size: 12px;
     font-weight: 500;
     text-decoration: none;
-    margin-left: 6px;
 }
-a.jim-comment-reply-btn:hover {
+a.jim-comment-reply-btn:hover,
+a.jim-comment-reply-btn:focus {
     color: #0747a6;
     text-decoration: underline;
-}
-a.jim-comment-reply-btn:focus {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
-    border-radius: 3px;
 }
-li.jim-comment-reply-btn-item {
-    display: inline;
-    margin: 0;
+a.jim-comment-reply-btn.jim-comment-reply-btn--disabled {
+    color: #97a0af;
+    cursor: not-allowed;
+    pointer-events: none;
+    text-decoration: none;
 }
 
-/* "In reply to <user>" badge injected at the top of any rendered comment
-   whose body starts with a mention + {quote} block. Subtle so it never
-   competes with Jira's own comment chrome. */
-.jim-comment-reply-badge {
+/* ----- Inline reply composer (one per page at a time) ----- */
+.jim-comment-reply-composer {
+    margin: 8px 0 16px 24px;
+    padding: 12px 14px 14px;
+    background: #f4f5f7;
+    border: 1px solid #dfe1e6;
+    border-left: 3px solid #0c66e4;
+    border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(9, 30, 66, 0.08);
+    font-size: 14px;
+    color: #172b4d;
+}
+.jim-comment-reply-composer-header {
     display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    color: #5e6c84;
+    font-size: 12.5px;
+    line-height: 1.4;
+}
+.jim-comment-reply-composer-header-text strong {
+    color: #172b4d;
+    font-weight: 600;
+}
+.jim-comment-reply-composer-header-text em {
+    color: #97a0af;
+    font-style: italic;
+    margin-left: 4px;
+}
+.jim-comment-reply-composer-header-arrow {
+    color: #97a0af;
+    font-weight: 700;
+    margin-right: 4px;
+}
+.jim-comment-reply-composer-close {
+    background: transparent;
+    border: 0;
+    color: #6b778c;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+.jim-comment-reply-composer-close:hover {
+    background: #ebecf0;
+    color: #172b4d;
+}
+.jim-comment-reply-composer-quote {
+    margin: 0 0 10px 0;
+    padding: 8px 12px;
+    background: #ffffff;
+    border-left: 3px solid #c1c7d0;
+    color: #42526e;
+    font-style: italic;
+    font-size: 13px;
+    line-height: 1.5;
+    border-radius: 0 3px 3px 0;
+    max-height: 6.5em;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.jim-comment-reply-composer-textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 8px 10px;
+    border: 1px solid #c1c7d0;
+    border-radius: 3px;
+    background: #fff;
+    font-family: inherit;
+    font-size: 14px;
+    color: #172b4d;
+    resize: vertical;
+    box-sizing: border-box;
+}
+.jim-comment-reply-composer-textarea:focus {
+    border-color: #4c9aff;
+    box-shadow: 0 0 0 1px #4c9aff;
+    outline: none;
+}
+.jim-comment-reply-composer-status {
+    margin-top: 8px;
+    font-size: 12.5px;
+    color: #6b778c;
+    min-height: 1.2em;
+}
+.jim-comment-reply-composer-status--error { color: #de350b; }
+.jim-comment-reply-composer-status--ok    { color: #006644; }
+.jim-comment-reply-composer-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 10px;
+}
+.jim-comment-reply-composer-actions .aui-button {
+    min-width: 80px;
+}
+
+/* ----- "In reply to <user>" badge injected above the comment body
+        for any comment that begins with a mention + blockquote. ----- */
+.jim-comment-reply-badge {
+    display: inline-flex;
     align-items: center;
     gap: 4px;
     margin: 0 0 8px;
@@ -35,13 +132,12 @@ li.jim-comment-reply-btn-item {
     background: #f4f5f7;
     border-left: 3px solid #c1c7d0;
     border-radius: 0 3px 3px 0;
-    font-size: 11px;
+    font-size: 11.5px;
     color: #5e6c84;
     line-height: 1.4;
-    width: fit-content;
     max-width: 100%;
 }
-.jim-comment-reply-badge-icon {
+.jim-comment-reply-badge-arrow {
     color: #97a0af;
     font-weight: 700;
 }

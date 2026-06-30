@@ -6,6 +6,148 @@ see `docs/marketplace/release-notes.md`.
 
 ---
 
+## 1.0.0-internal-replies2 — 2026-06-30 (fix)
+
+Fix for the previous `internal-replies` build. The first attempt drove
+Jira's wiki editor by setting `#comment` textarea `.value` directly. The
+wiki editor is a Visual/Source overlay on top of the textarea: setting
+the underlying value only takes effect when the user happens to be in
+Source mode, so in Visual mode the reply prefill silently disappeared
+and the parent-comment context was never shown.
+
+### What changed
+
+* **Inline reply composer.** Clicking "Reply" no longer drives Jira's
+  wiki editor. Instead an inline panel opens immediately below the
+  parent comment containing:
+    * a clear "Replying to <Author>" header with a Cancel (X) icon,
+    * a quoted preview of the parent comment in a styled box,
+    * an empty textarea (autofocused),
+    * a small status line for inline error/success messages,
+    * Cancel + **Send Reply** buttons.
+* **Direct REST submit.** The composer's Send Reply button POSTs to
+  Jira's standard `POST /rest/api/2/issue/{key}/comment` with body
+  assembled as:
+
+      [~parentAuthor]
+
+      {quote}<parent excerpt, max 240 chars>{quote}
+
+      <user-typed reply text>
+
+  This is the same REST endpoint Jira's own Comment form uses, so:
+    * The saved comment is a normal Jira comment (no shadow storage).
+    * Jira applies native permissions / visibility / edit rules.
+    * The `[~username]` is a real Jira-recognized mention token, which
+      triggers Jira's native mention notification machinery (subject to
+      the user's notification settings and the issue notification
+      scheme).
+    * The plugin's existing `CommentCreatedEvent` listener picks the
+      same comment up and posts a Jira Assistant entry into the
+      mentioned user's bot conversation.
+* **Page refresh + scroll-to-new-comment.** On success the page is
+  reloaded with `focusedCommentId=<new>` and `#comment-<new>` in the
+  URL so Jira re-renders the activity feed with the reply included and
+  the browser scrolls straight to it. This is intentionally simple — it
+  is far more reliable than trying to surgically inject just the new
+  comment HTML across the many Jira DC issue-view variants.
+* **Self-reply.** If you reply to your own comment the `[~mention]`
+  token is suppressed (no needless notification to yourself), but the
+  `{quote}` excerpt is still embedded so the reply context is visible.
+* **Keyboard.** Ctrl/Cmd+Enter sends the reply; Esc cancels.
+* **Robust author resolution.** Reads `rel`/`data-username` from
+  Jira's standard `.action-details a.user-hover`, ignoring non-user
+  values like `rel="nofollow"`.
+* **In-reply-to badge.** A small "↳ In reply to <user>" badge is
+  injected above any comment whose body begins with a mention link
+  followed by a blockquote — works for replies created by this plugin
+  and for any user who manually quoted + mentioned someone.
+
+### Files
+
+* `src/main/resources/js/jim-comment-reply.js` — rewritten as an
+  inline-composer + REST-POST flow.
+* `src/main/resources/css/jim-comment-reply.css` — styles for the new
+  inline composer + clearer badge.
+* `pom.xml` — version bumped to `1.0.0-internal-replies2`.
+
+### Verification
+
+Live verification against the test Jira:
+
+1. POST `/rest/api/2/issue/TEB-1/comment` with the composer's exact
+   assembled body (`[~m.zeynali]\n\n{quote}…{quote}\n\n…`) returned
+   HTTP 201 with new comment id `11600`.
+2. `AO_099FDF_JIM_EVENT_LOG` recorded row `#72`:
+   `EVENT_TYPE=MENTION ISSUE_KEY=TEB-1 TARGET_USER_KEY=JIRAUSER10100
+   EVENT_FINGERPRINT=MENTION|JIRAUSER10100|TEB-1|JIRAUSER10000|11600`.
+3. `AO_099FDF_JIM_MESSAGE` recorded row `#346` in conversation 3
+   (m.zeynali's Jira Assistant): `EVENT_TYPE=MENTION ISSUE_KEY=TEB-1`
+   body "masoud nasiri mentioned you in TEB-1. [~m.zeynali] {quote}…"
+4. The minified JS is bundled into the `jira.view.issue` context batch
+   served on every `/browse/<KEY>` and parses cleanly (8014 bytes,
+   `Parsed OK`). All key flow strings survive minification
+   (`jim-comment-reply-composer`, `ajs-issue-key`, `rest/api/2/issue`,
+   `{quote}`, `Send Reply`, `X-Atlassian-Token`, …).
+5. Test comments cleaned up via `DELETE
+   /rest/api/2/issue/TEB-1/comment/{id}` → HTTP 204.
+
+### How to test from the Jira UI
+
+1. Open any issue (e.g. `/browse/TEB-1`).
+2. Find an existing comment authored by another user. A "Reply" link
+   now sits at the front of its action toolbar (next to Edit / Delete).
+3. Click **Reply**. An inline panel appears immediately below that
+   comment with:
+   * a "↳ Replying to <Author>" header
+   * a quoted preview of the parent comment
+   * an empty textarea
+   * Cancel and Send Reply buttons.
+4. Type something and click **Send Reply** (or Ctrl/Cmd + Enter). The
+   composer reports "Reply sent. Refreshing…" and the page reloads
+   with the new comment focused.
+5. Your new comment now shows a "↳ In reply to <Author>" badge above
+   its body, with the wiki-rendered `{quote}` block showing what you
+   were replying to.
+6. The parent author receives:
+   * Jira's standard mention email / in-app notification (subject to
+     `ajs-outgoing-mail-enabled` and the user's notification settings),
+     **and**
+   * a Jira Assistant entry in their CorbitChat bot conversation with
+     issue key, sender display name, preview, and a link to open the
+     issue.
+7. Esc inside the composer cancels. Clicking Cancel cancels. Only one
+   composer is open at a time across the whole page.
+
+### Edge cases
+
+* **Self-reply**: mention is skipped (still quoted).
+* **Inactive / deleted parent author**: the existing
+  `JimMentionParser` already filters these out, so no Assistant noise.
+* **Restricted parent comment**: native Jira permissions apply at every
+  step — the reply itself goes through Jira's standard REST endpoint
+  with the user's session, so a user who cannot see the comment cannot
+  reply to it either. The Assistant entry is gated by the same checks.
+* **Long parent comment**: truncated to 240 chars with an ellipsis.
+* **Multiple replies to one parent**: each generates its own native
+  comment with its own mention + quote + badge.
+* **Many comments on the issue**: a `MutationObserver` attaches the
+  Reply button to every native comment as Jira renders it — no
+  pre-scan of the entire DOM beyond initialization.
+* **`atl.outgoing-mail-enabled = false` in test instance**: this only
+  silences email — the in-app mention notification and the Assistant
+  entry both still fire (verified live).
+
+### Branch & artifact
+
+* Branch: `fix/jira-comment-replies` (off
+  `feature/jira-comment-replies-with-notifications`).
+* New artifact: `corbitchat-jira-dc-1.0.0-internal-replies2.jar`.
+* Previous artifact `corbitchat-jira-dc-1.0.0-internal-replies.jar`
+  preserved in `/root/jira-dev/releases/` for rollback.
+
+---
+
 ## 1.0.0-internal-replies — 2026-06-30
 
 Standalone Jira-platform feature: a **Reply to Jira comment** action on
