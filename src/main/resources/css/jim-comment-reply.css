@@ -121,6 +121,22 @@ a.jim-comment-reply-btn.jim-comment-reply-btn--disabled {
     min-width: 80px;
 }
 
+/* ----- Briefly highlight a freshly-inserted reply so the user
+        immediately sees where it appeared. The class is added by
+        buildCommentDom() and removed by injectRenderedComment()
+        after ~2.2s. ----- */
+.activity-comment.jim-comment-reply-just-added {
+    animation: jimReplyFadeIn 2.2s ease-out;
+    background: rgba(76, 154, 255, 0.08);
+    border-radius: 4px;
+    transition: background 1s ease-out;
+}
+@keyframes jimReplyFadeIn {
+    0%   { background: rgba(76, 154, 255, 0.28); }
+    60%  { background: rgba(76, 154, 255, 0.18); }
+    100% { background: rgba(76, 154, 255, 0.0);  }
+}
+
 /* ----- "In reply to <user>" badge injected above the comment body
         for any comment that begins with a mention + blockquote. ----- */
 .jim-comment-reply-badge {

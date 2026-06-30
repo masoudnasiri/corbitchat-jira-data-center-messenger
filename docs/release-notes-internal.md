@@ -6,6 +6,118 @@ see `docs/marketplace/release-notes.md`.
 
 ---
 
+## 1.0.0-internal-replies4 — 2026-06-30 (fix, follow-up #2)
+
+UX fix to `internal-replies3`: every successful reply was triggering
+a full page reload. That is jarring, loses scroll position, and is
+unnecessary - Jira's standard REST API can return the new comment's
+fully rendered HTML, so we can drop it into the activity feed in
+place without touching the rest of the page.
+
+### What changed
+
+After `POST /rest/api/2/issue/{key}/comment` succeeds, the JS now:
+
+1. Reads `id` from the POST response.
+2. Calls `GET /rest/api/2/issue/{key}/comment/{id}?expand=renderedBody`
+   to fetch the new comment's metadata + Jira's wiki-rendered HTML
+   body (the same HTML Jira would produce on a page refresh).
+3. Builds an `activity-comment` DOM block that mirrors enough of
+   Jira's own `system-comment-issue-page-view.vm` template that the
+   inserted block visually matches a native comment:
+     * `<div id="comment-{id}" class="issue-data-block activity-comment
+       twixi-block expanded">`
+     * `.action-head > .action-details` with author avatar, user-hover
+       link and a `<time class="livestamp" datetime="...">` stamp.
+     * `.action-body` containing the server-rendered HTML.
+     * `.action-links.action-comment-actions` with real Edit / Delete
+       links (real Jira URLs built from the issue id parsed out of the
+       comment's `self` URL - so they work immediately).
+4. Replaces the open composer in-place with that block (so the reply
+   appears exactly where the user typed it, the most spatially
+   intuitive position).
+5. Briefly highlights the new comment with a fading blue background
+   (`@keyframes jimReplyFadeIn`, ~2.2s) and scrolls it into view.
+6. The MutationObserver that's already running picks the inserted
+   block up and injects our "Reply" link + "↳ In reply to <user>"
+   badge - synchronously to avoid any one-tick flicker.
+
+### What we deliberately do not replicate in the inserted DOM
+
+The native template contains two custom elements wired up by other
+plugins at page load:
+
+* `<jira-comment-pins>` (pin / unpin)
+* `<jira-comment-reactions>` (emoji reactions)
+
+These are progressive enhancements; their JS is not designed to be
+re-invoked on dynamically inserted elements. We intentionally omit
+them so the inserted block doesn't render broken/half-initialized
+controls. Pin and Reactions return on the next natural page refresh,
+which is fine because they are non-essential. Reply / Edit / Delete
+all work immediately.
+
+### Hard fallback
+
+If anything in the GET-rendered-body pipeline fails (network, plugin
+disabled, unexpected JSON shape), we fall back to a soft page reload.
+The user never sees a broken state.
+
+### Files
+
+* `src/main/resources/js/jim-comment-reply.js` - replaced the
+  `window.location.reload()` success handler with a fetch-then-inject
+  flow. New helpers: `buildCommentDom`, `injectRenderedComment`,
+  `softReloadFallback`.
+* `src/main/resources/css/jim-comment-reply.css` - added the
+  `jim-comment-reply-just-added` highlight + `jimReplyFadeIn`
+  keyframe animation.
+* `pom.xml` - version bumped to `1.0.0-internal-replies4`.
+
+### Verification
+
+Live in test Jira:
+
+* Plugin health 200, diagnostics reports `pluginVersion =
+  1.0.0-internal-replies4`.
+* Minified JS parses cleanly (12178 bytes, `Parsed OK`). Key strings
+  after minification: `renderedBody` (twice - URL query and JSON
+  field access), `jim-comment-reply-just-added` (twice - DOM class
+  + animation), `/issue/` (URL template), `/comment/` (URL template).
+  Note: the `?expand=renderedBody` query string is hex-encoded by the
+  minifier as `expand\x3drenderedBody`, which is the same literal at
+  runtime.
+* Backend trace unchanged: POST `/rest/api/2/issue/TEB-1/comment` with
+  `[~m.zeynali] + {quote}` body produced comment id `11801`,
+  `JimEventLog` row `#74` (MENTION TEB-1 -> JIRAUSER10100), and
+  Assistant entry in m.zeynali's bot conversation as before.
+* GET `/rest/api/2/issue/TEB-1/comment/11801?expand=renderedBody`
+  returned the rendered HTML containing `<a class="user-hover"
+  rel="m.zeynali">Masoud Zeynali</a>` followed by `<blockquote><p>
+  Parent for replies4 verification</p></blockquote>` followed by the
+  user-typed reply - exactly the shape `injectReplyBadge()` detects,
+  so the "↳ In reply to <user>" badge will render on the inserted
+  block immediately.
+* Previous artifacts (`internal-replies`, `internal-replies2`,
+  `internal-replies3`) preserved in `/root/jira-dev/releases/`.
+
+### How it feels now
+
+1. Click "Reply" on a comment - composer slides in below it.
+2. Type and click Send Reply (or Ctrl/Cmd + Enter).
+3. Composer shows "Reply sent."
+4. The composer is replaced in place by the new comment, which fades
+   in with a brief blue highlight and is auto-scrolled into view.
+5. No page flash, no scroll-position loss, no reload.
+6. Other comments untouched; sort order / page state preserved.
+
+If the user reloads later, Jira re-renders the activity feed from
+scratch and the new comment appears with all its native progressive
+enhancements (pin / reactions) attached. Reply / Edit / Delete work
+from the moment the comment appears.
+
+---
+
 ## 1.0.0-internal-replies3 — 2026-06-30 (fix, follow-up)
 
 UX follow-up to `internal-replies2`. The inline composer rendered

@@ -429,27 +429,260 @@
     }
 
     function onReplySuccess(ctx, xhr) {
-        var newId = '';
-        try { newId = (JSON.parse(xhr.responseText) || {}).id || ''; } catch (e) { /* ignore */ }
-        setStatus(ctx.status, 'Reply sent. Refreshing\u2026', 'ok');
-        // Soft refresh: reload to make Jira re-render the comment list
-        // with our new comment in it. Hash the new comment ID so the
-        // browser scrolls straight to it.
-        window.setTimeout(function () {
-            try {
-                if (newId) {
-                    var url = window.location.pathname + window.location.search;
-                    // Drop any existing focusedCommentId so the new one wins.
-                    url = url.replace(/([&?])focusedCommentId=\d+(&?)/, function (_, a, b) { return b ? a : ''; });
-                    url += (url.indexOf('?') >= 0 ? '&' : '?') + 'focusedCommentId=' + encodeURIComponent(newId);
-                    window.location.assign(url + '#comment-' + encodeURIComponent(newId));
-                } else {
-                    window.location.reload();
-                }
-            } catch (e) {
-                window.location.reload();
+        var created = null;
+        try { created = JSON.parse(xhr.responseText); } catch (e) { /* ignore */ }
+        var newId = created && created.id ? String(created.id) : '';
+        if (!newId) {
+            // We got a 2xx but no usable body - degrade gracefully.
+            softReloadFallback(ctx);
+            return;
+        }
+        setStatus(ctx.status, 'Reply sent.', 'ok');
+        // Fetch the new comment WITH rendered HTML so we can drop it
+        // into the activity feed without a full page reload.
+        var ref = issueRefForComment(ctx.commentEl);
+        var keyOrId = ref ? (ref.key || ref.id || '') : '';
+        var url = contextPath() + '/rest/api/2/issue/' + encodeURIComponent(keyOrId)
+            + '/comment/' + encodeURIComponent(newId) + '?expand=renderedBody';
+        var fx = new XMLHttpRequest();
+        fx.open('GET', url, true);
+        fx.setRequestHeader('Accept', 'application/json');
+        fx.withCredentials = true;
+        fx.onreadystatechange = function () {
+            if (fx.readyState !== 4) return;
+            var fullComment = null;
+            if (fx.status === 200) {
+                try { fullComment = JSON.parse(fx.responseText); } catch (e) { /* ignore */ }
             }
-        }, 250);
+            if (!fullComment) {
+                // GET failed - synthesize from the POST response so the
+                // user still sees their reply inline. The body will use
+                // raw wiki source since we don't have the rendered HTML,
+                // but it's better than no insertion at all.
+                fullComment = created;
+            }
+            try {
+                injectRenderedComment(fullComment, ctx);
+            } catch (e) {
+                log('inject failed', e && e.message);
+                softReloadFallback(ctx);
+            }
+        };
+        try { fx.send(); }
+        catch (e) {
+            log('GET rendered failed', e && e.message);
+            softReloadFallback(ctx);
+        }
+    }
+
+    /**
+     * Hard fallback if in-place insertion can't proceed: reload with
+     * focus on the new comment. Used only for unexpected failures.
+     */
+    function softReloadFallback(ctx) {
+        setStatus(ctx.status, 'Reply sent. Refreshing\u2026', 'ok');
+        window.setTimeout(function () {
+            try { window.location.reload(); }
+            catch (e) { /* swallow */ }
+        }, 350);
+    }
+
+    function escapeText(s) {
+        return String(s == null ? '' : s);
+    }
+
+    /**
+     * Build a Jira-template-shaped activity-comment block in-memory
+     * from a `/rest/api/2/issue/<>/comment/<>?expand=renderedBody` JSON
+     * payload. This mirrors enough of Jira's own
+     * `system-comment-issue-page-view.vm` template that the inserted
+     * block visually matches a native comment and our own
+     * MutationObserver picks it up to inject the Reply link + the
+     * "In reply to" badge automatically.
+     *
+     * What we deliberately do NOT replicate:
+     *   - <jira-comment-pins>     (pin / unpin custom element)
+     *   - <jira-comment-reactions>(emoji reactions custom element)
+     * Both are progressive enhancements wired up at page-load time by
+     * their own plugins; the user can refresh the page to get them on
+     * the new comment, but Reply / Edit / Delete all work immediately.
+     */
+    function buildCommentDom(comment) {
+        if (!comment || !comment.id) return null;
+
+        var ctxPath = contextPath();
+        var author = comment.author || comment.updateAuthor || {};
+        var aName = author.name || '';
+        var aDisplay = author.displayName || aName || '?';
+        var aAvatar = '';
+        if (author.avatarUrls) {
+            aAvatar = author.avatarUrls['48x48']
+                || author.avatarUrls['32x32']
+                || author.avatarUrls['24x24']
+                || '';
+        }
+
+        // Extract the issue numeric id from the comment's self link
+        // (e.g. ".../rest/api/2/issue/10215/comment/11600") - needed
+        // for the Edit / Delete URLs.
+        var issueId = '';
+        var selfMatch = /\/issue\/(\d+)\/comment\//.exec(comment.self || '');
+        if (selfMatch) issueId = selfMatch[1];
+
+        var renderedBody = comment.renderedBody;
+        if (!renderedBody) {
+            // No rendered HTML available - fall back to a literal
+            // <pre> so we never execute attacker-controlled markup.
+            var pre = document.createElement('pre');
+            pre.textContent = comment.body || '';
+            renderedBody = pre.outerHTML;
+        }
+
+        var commentId = String(comment.id);
+
+        var block = document.createElement('div');
+        block.id = 'comment-' + commentId;
+        block.className = 'issue-data-block activity-comment twixi-block expanded jim-comment-reply-just-added';
+
+        var verbose = document.createElement('div');
+        verbose.className = 'twixi-wrap verbose actionContainer';
+
+        var head = document.createElement('div');
+        head.className = 'action-head';
+        var details = document.createElement('div');
+        details.className = 'action-details';
+
+        if (aAvatar) {
+            var img = document.createElement('img');
+            img.className = 'user-avatar';
+            img.alt = '';
+            img.src = aAvatar;
+            img.width = 24;
+            img.height = 24;
+            details.appendChild(img);
+            details.appendChild(document.createTextNode(' '));
+        }
+
+        var userLink = document.createElement('a');
+        userLink.className = 'user-hover';
+        if (aName) {
+            userLink.setAttribute('rel', aName);
+            userLink.setAttribute('data-username', aName);
+            userLink.href = ctxPath + '/secure/ViewProfile.jspa?name=' + encodeURIComponent(aName);
+        } else {
+            userLink.href = '#';
+        }
+        userLink.textContent = aDisplay;
+        details.appendChild(userLink);
+        details.appendChild(document.createTextNode(' added a comment - '));
+
+        var time = document.createElement('time');
+        time.className = 'livestamp';
+        var iso = comment.created || comment.updated || '';
+        if (iso) {
+            time.setAttribute('datetime', iso);
+            // Show a humane snapshot in case Jira's livestamp script
+            // doesn't pick the new element up.
+            try { time.textContent = new Date(iso).toLocaleString(); }
+            catch (e) { time.textContent = iso; }
+        } else {
+            time.textContent = 'just now';
+        }
+        details.appendChild(time);
+        head.appendChild(details);
+        verbose.appendChild(head);
+
+        var body = document.createElement('div');
+        body.className = 'action-body flooded';
+        // renderedBody is HTML produced by Jira's wiki renderer; it is
+        // server-side sanitized (the same content is shown on the next
+        // page refresh anyway), so we can inject it as HTML.
+        body.innerHTML = renderedBody;
+        verbose.appendChild(body);
+
+        var links = document.createElement('div');
+        links.className = 'action-links action-comment-actions';
+        if (issueId) {
+            var editA = document.createElement('a');
+            editA.id = 'edit_comment_' + commentId;
+            editA.className = 'edit-comment issue-comment-action';
+            editA.href = ctxPath + '/secure/EditComment!default.jspa?id='
+                + encodeURIComponent(issueId) + '&commentId=' + encodeURIComponent(commentId);
+            editA.title = 'Edit';
+            editA.textContent = 'Edit';
+            links.appendChild(editA);
+
+            var sep1 = document.createElement('span');
+            sep1.className = 'action-links__divider';
+            links.appendChild(sep1);
+
+            var delA = document.createElement('a');
+            delA.id = 'delete_comment_' + commentId;
+            delA.className = 'delete-comment issue-comment-action';
+            delA.href = ctxPath + '/secure/DeleteComment!default.jspa?id='
+                + encodeURIComponent(issueId) + '&commentId=' + encodeURIComponent(commentId);
+            delA.title = 'Delete';
+            delA.textContent = 'Delete';
+            links.appendChild(delA);
+        }
+        verbose.appendChild(links);
+        block.appendChild(verbose);
+
+        return block;
+    }
+
+    /**
+     * Place the new comment block where the composer just sat (i.e.
+     * directly after the parent comment) and tear the composer down.
+     * Inserting next to the parent gives the user immediate, spatial
+     * feedback - their reply appears exactly where they typed it,
+     * matching every other reply-style UX they've seen elsewhere.
+     */
+    function injectRenderedComment(commentJson, ctx) {
+        var block = buildCommentDom(commentJson);
+        if (!block) {
+            softReloadFallback(ctx);
+            return;
+        }
+        var anchor = document.querySelector('.' + COMPOSER_CLASS);
+        var parentEl = ctx.commentEl;
+
+        if (anchor && anchor.parentNode) {
+            anchor.parentNode.insertBefore(block, anchor);
+            anchor.parentNode.removeChild(anchor);
+        } else if (parentEl && parentEl.parentNode) {
+            parentEl.parentNode.insertBefore(block, parentEl.nextSibling);
+        } else {
+            // Last resort: dump the new comment into the activity feed.
+            var feed = document.getElementById('issue_actions_container')
+                || document.querySelector('.issue-data-block')
+                || document.body;
+            feed.appendChild(block);
+        }
+
+        // Re-enable the other Reply buttons that we disabled while the
+        // composer was open.
+        var btns = document.querySelectorAll('.' + BTN_CLASS);
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.remove(BTN_CLASS + '--disabled');
+            btns[i].removeAttribute('aria-disabled');
+        }
+
+        // Bring our own decoration to the freshly-inserted block right
+        // away (the MutationObserver also handles this, but doing it
+        // synchronously avoids a one-tick flicker).
+        try {
+            injectReplyButton(block);
+        } catch (e) { /* ignore */ }
+
+        // Briefly highlight then fade.
+        window.setTimeout(function () {
+            try { block.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+            catch (e) { /* ignore */ }
+        }, 30);
+        window.setTimeout(function () {
+            block.classList.remove('jim-comment-reply-just-added');
+        }, 2200);
     }
 
     function onReplyFailure(ctx, xhr) {
