@@ -6,6 +6,95 @@ see `docs/marketplace/release-notes.md`.
 
 ---
 
+## 1.0.0-internal-chat-edit2 — 2026-06-30 (fix: group/project chat avatars)
+
+User report: in group chats every message bubble was showing a
+coloured-initial circle instead of the sender's real Jira avatar
+(visible in the user's screenshot from the public-announcements
+group: 57 members, every bubble rendered with the same "SV" /
+"M" initials even though the same users had real photo avatars in
+the sidebar).
+
+### Root cause
+
+Two halves of the same bug:
+
+* **Backend**: `JimRestJsonMapper.toMessageMap()` did not include any
+  per-sender avatar field in the message JSON. The only avatar field
+  it shipped was the **conversation**-level `avatarUrl` on the
+  conversation summary (which is meaningful in a 1-on-1 chat only).
+* **Frontend**: the message-list bubble renderer (jim-messenger.js
+  L2958) consequently fell back to using `conversation.avatarUrl` as
+  the avatar source for every bubble. That accidentally looked
+  correct in direct conversations (where the conversation avatar
+  *is* the other participant's avatar), but in group / project
+  chats the conversation has no per-user avatar, so every bubble
+  rendered as coloured initials.
+
+### Fix
+
+* **Backend** (`JimRestJsonMapper.toMessageMap`): when the sender
+  resolves to a Jira `ApplicationUser`, also emit a new
+  `senderAvatarUrl` field, populated via the existing
+  `resolveAvatarUrl(viewer, sender)` helper (same
+  `AvatarService.getAvatarURL(...,Avatar.Size.XXLARGE)` path the
+  conversation summary already uses).
+* **Frontend** (`jim-messenger.js`): the message-list bubble now
+  reads `message.senderAvatarUrl` from the JSON. A last-resort
+  fallback to `conversation.avatarUrl` is kept ONLY for direct
+  conversations (where it's still correct) and ONLY when the new
+  field is missing — so this build remains safe to run alongside
+  pre-existing cached message rows that don't yet carry the new
+  field.
+
+### Verification
+
+Live in test Jira (1.0.0-internal-chat-edit2):
+
+* Plugin REST health 200, diagnostics reports
+  `pluginVersion = 1.0.0-internal-chat-edit2`.
+* `GET /rest/jim/1.0/conversations/7/messages?limit=3` (a group
+  conversation) now returns rows like:
+  ```json
+  {"id":338,"senderUserKey":"JIRAUSER10101","senderDisplayName":"Zana Zarhoon",
+   "senderAvatarUrl":"https://jira.corbitlogic.com/secure/useravatar?size=xxlarge&ownerId=JIRAUSER10101", ...}
+  ```
+* `GET /rest/jim/1.0/conversations/2/messages?limit=2` (a direct
+  conversation) also ships the new field
+  (`senderAvatarUrl=...?avatarId=10335`).
+* Minified JS parses cleanly (90434 bytes) and contains
+  `senderAvatarUrl` after minification.
+* No new lint errors.
+
+### Files
+
+* `src/main/java/com/corbitlogic/jira/internalmessenger/rest/JimRestJsonMapper.java`
+  — added `item.put("senderAvatarUrl", this.resolveAvatarUrl(viewer, sender))`
+  to `toMessageMap`.
+* `src/main/resources/js/jim-messenger.js` — message bubble reads
+  `senderAvatarUrl` from the first message in each grouped run; old
+  conversation-avatar path kept as a fallback for direct chats only.
+* `pom.xml` — `1.0.0-internal-chat-edit2`.
+
+### How to verify in the UI
+
+1. Open any group or project chat with messages from multiple users.
+2. Each message bubble should now show the sender's real Jira
+   profile avatar on the left, matching the avatars Jira shows in
+   the user-profile pop-overs and the sidebar conversation list.
+3. Direct chats look identical to before (the conversation-avatar
+   fallback path still applies if a row is missing the new field).
+
+### Branch & artifact
+
+* Branch: `feature/chat-edit-inline-and-download-filename` (same
+  branch as the chat-edit batch).
+* New artifact: `corbitchat-jira-dc-1.0.0-internal-chat-edit2.jar`.
+* Previous artifact `corbitchat-jira-dc-1.0.0-internal-chat-edit.jar`
+  preserved in `/root/jira-dev/releases/` for rollback.
+
+---
+
 ## 1.0.0-internal-chat-edit — 2026-06-30 (chat UX batch)
 
 Three chat refinements requested by the user.

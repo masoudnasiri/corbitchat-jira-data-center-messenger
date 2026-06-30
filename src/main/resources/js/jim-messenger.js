@@ -2955,9 +2955,24 @@
 
             var avatarHtml = '';
             if (!isOwn) {
-                var avatarUrl = conversation && !isSystemConversation(conversation) ? conversation.avatarUrl : null;
+                // Use the SENDER's avatar (every message JSON includes
+                // senderAvatarUrl now). Falling back to the conversation
+                // avatar would be wrong in group / project chats where
+                // the conversation does not have a per-user avatar - all
+                // bubbles ended up rendering the same initials.
+                var firstMessage = group[0];
+                var senderAvatar = (firstMessage && firstMessage.senderAvatarUrl) || null;
+                // Last-resort fallback for old (pre-this-build) message
+                // rows where senderAvatarUrl wasn't populated by the
+                // server: in a DIRECT conversation we can safely use the
+                // conversation avatar; in any other case we let
+                // renderAvatar() draw the coloured initials.
+                if (!senderAvatar && conversation && !isSystemConversation(conversation)
+                        && !isGroupConversation(conversation) && !conversation.isProjectChat) {
+                    senderAvatar = conversation.avatarUrl || null;
+                }
                 avatarHtml = '<div class="jim-message-avatar">' +
-                    renderAvatar(avatarUrl, senderName, 'jim-avatar-sm') +
+                    renderAvatar(senderAvatar, senderName, 'jim-avatar-sm') +
                     '</div>';
             }
 

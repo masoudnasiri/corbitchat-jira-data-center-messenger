@@ -180,6 +180,13 @@ public class JimRestJsonMapper {
         item.put("actionedAt", actionedFlag != null && actionedFlag != 0 ? message.getActionedAt() : null);
         if (message.getSenderUserKey() != null && (sender = this.userManager.getUserByKey(message.getSenderUserKey())) != null) {
             item.put("senderDisplayName", sender.getDisplayName());
+            // Expose the sender's Jira avatar URL on every message so
+            // the client can show the real face next to each bubble
+            // in group / project chats. Previously the client fell back
+            // to the conversation's own avatar, which is meaningful only
+            // for 1-on-1 chats - in group chats every bubble ended up
+            // rendering identical initials.
+            item.put("senderAvatarUrl", this.resolveAvatarUrl(viewer, sender));
         }
         int currentUserLastRead = this.readStateService.getLastReadMessageId(message.getConversationId(), currentUserKey);
         int otherParticipantLastRead = this.resolveOtherParticipantLastRead(conversation, currentUserKey);
