@@ -107,6 +107,15 @@
                             </div>
                             <button id="jim-composer-reply-cancel" type="button" class="jim-composer-chip-remove" aria-label="Cancel reply">&times;</button>
                         </div>
+                        <div id="jim-composer-editing" class="jim-composer-editing" hidden>
+                            <span class="jim-composer-editing-icon" aria-hidden="true">&#9998;</span>
+                            <div class="jim-composer-editing-content">
+                                <span class="jim-composer-editing-label">Editing message</span>
+                                <span id="jim-composer-editing-preview" class="jim-composer-editing-preview" dir="auto"></span>
+                            </div>
+                            <span class="jim-composer-editing-hint">Esc to cancel</span>
+                            <button id="jim-composer-editing-cancel" type="button" class="jim-composer-chip-remove" aria-label="Cancel edit">&times;</button>
+                        </div>
                         <div id="jim-selected-attachment" class="jim-selected-attachment" hidden></div>
                         <div id="jim-selected-issue" class="jim-selected-issue" hidden>
                             <span class="jim-selected-issue-icon" aria-hidden="true">&#128279;</span>

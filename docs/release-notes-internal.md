@@ -6,6 +6,338 @@ see `docs/marketplace/release-notes.md`.
 
 ---
 
+## 1.0.0-internal-chat-edit — 2026-06-30 (chat UX batch)
+
+Three chat refinements requested by the user.
+
+### 1. Edit message UX moved to the main composer
+
+**Was:** clicking Edit on your own message rendered a small inline
+`<form>` inside the message bubble itself (textarea + Cancel + Save
+buttons). On long bubbles or narrow group-chat columns this looked
+cramped and unfamiliar, and the user didn't visually understand where
+they were typing the edit.
+
+**Now:** Slack/Telegram-style edit-in-composer.
+
+* Click Edit on your own message → the message body loads into the
+  main composer textarea at the bottom of the chat.
+* An amber "Editing message — Esc to cancel" chip appears above the
+  composer with a single-line preview of what's being edited and a
+  ✕ button.
+* The send button label changes to **Save** (and is styled amber) so
+  it's clear that hitting Enter / Send will overwrite the original.
+* The original bubble shows a faint "Editing this message…" italic
+  placeholder so the user can see at a glance which bubble is bound
+  to the composer.
+* `Esc` in the composer cancels the edit and restores whatever
+  draft text the user had typed before they clicked Edit (i.e. edits
+  never destroy your in-progress composer text).
+* Switching conversations, opening a reply, picking a file or an
+  issue link all auto-exit edit mode cleanly (single-mode composer).
+* Server-side 30-minute edit window still enforced unchanged.
+
+### 2. Persian (non-ASCII) filenames preserved on download
+
+**Was:** downloading an attachment whose original filename contained
+Persian, Arabic, CJK, or accented Latin characters often saved the
+file as the literal text `download` (Chrome / Edge) or a row of `?`
+because the server only emitted a plain
+`Content-Disposition: attachment; filename="<raw UTF-8 bytes>"`
+header — which the HTTP spec does not allow to carry non-ASCII data.
+
+**Now:** `JimAttachmentResource` builds the header per RFC 6266 + 5987:
+
+```
+Content-Disposition: attachment;
+    filename="<ASCII fallback>.ext";
+    filename*=UTF-8''<percent-encoded UTF-8 bytes>
+```
+
+When the original filename is pure ASCII the `filename*=` parameter is
+omitted (no extra bytes for the common case). All modern browsers
+(Chrome, Firefox, Edge, Safari) prefer `filename*` and decode UTF-8;
+legacy clients fall back to the ASCII filename.
+
+Verified live: uploading a file named `فایل_تست.txt` to the test
+Jira and downloading it back returned:
+
+```
+Content-Disposition: attachment;
+    filename="________.txt";
+    filename*=UTF-8''%D9%81%D8%A7%DB%8C%D9%84_%D8%AA%D8%B3%D8%AA.txt
+```
+
+The percent-encoded value decodes byte-for-byte to `فایل_تست.txt`.
+
+### 3. Project group chat - parity with main chat
+
+The project chat panel and the main chat page already share **the
+same template** (`templates/messenger-app.vm`), the **same JS**
+(`jim-messenger.js`), and the **same CSS** (`jim-messenger.css`). The
+project-chat panel's `ContextProvider` explicitly calls
+`webResourceManager.requireResource("...:jim-messenger-resources")`,
+so every chat feature lives in exactly one place.
+
+What we verified live for this release:
+
+* Fetched the project chat page
+  (`/projects/<KEY>?selectedItem=...:jim-project-chat-link`) and
+  confirmed the rendered HTML includes:
+    * `jim-messenger.js` web-resource references (×2 — batch + WRM tag)
+    * the new `jim-composer-editing` markup (×7 — chip + nested
+      elements)
+    * `jim-message-input`, `jim-messenger-app`, `data-project-key`
+* Therefore the **edit-in-composer UX, Persian filename downloads,
+  and every prior chat improvement (drafts, lazy-load older messages,
+  per-bubble timestamps, 5000-char split, sender-coloured previews,
+  multi-select mention picker, etc.) are automatically available in
+  project chat**.
+
+If you still see a behaviour difference between the two surfaces in
+the live UI, the most likely cause is a **stale browser cache** on
+that surface (project chat sits at a different URL so its tab can
+hold an older WRM batch). A hard refresh (Ctrl+Shift+R / Cmd+Shift+R)
+on the project chat page is the recommended first step. If the
+difference persists, please send the URL of the page and a screenshot
+of the missing feature and we'll add a specific repro.
+
+### Files
+
+* `src/main/resources/templates/messenger-app.vm` — new
+  `#jim-composer-editing` chip element next to the existing reply
+  chip.
+* `src/main/resources/js/jim-messenger.js` — added
+  `enterEditMode()`, `cancelEditMode()`, `submitComposerEdit()`,
+  `renderComposerEditing()`, `state.savedDraftBeforeEdit` slot;
+  rewired the `edit` action and `sendMessage()` branch; added Esc
+  handler; removed the in-bubble `renderEditForm()`. The bubble now
+  shows a `jim-message-editing-placeholder` while editing.
+* `src/main/resources/css/jim-messenger.css` — styles for the new
+  chip (amber accent), the bubble placeholder, and the amber Save
+  button while in edit mode.
+* `src/main/java/com/corbitlogic/jira/internalmessenger/rest/JimAttachmentResource.java`
+  — `buildContentDispositionHeader()` + `rfc5987Encode()` +
+  `toAsciiFallback()` helpers; download / preview response now emits
+  the RFC 5987 `filename*=UTF-8''…` parameter when the filename
+  contains non-ASCII characters.
+* `pom.xml` — version bumped to `1.0.0-internal-chat-edit`.
+
+### Verification
+
+* Built `corbitchat-jira-dc-1.0.0-internal-chat-edit.jar` (BUILD
+  SUCCESS in 17s), no lint errors, deployed to test Jira, restart
+  confirmed, plugin REST health 200, diagnostics reports
+  `pluginVersion = 1.0.0-internal-chat-edit`.
+* Served JS parses cleanly (90361 bytes). All new strings survive
+  minification: `savedDraftBeforeEdit` (×7), `jim-composer-editing`
+  (×3), `composerEditingCancel` (×3), `Editing this message`,
+  `Edit the message`, `Esc to cancel`,
+  `jim-message-editing-placeholder`.
+* Served CSS contains all new selectors:
+  `.jim-composer-editing` (×6), `.jim-message-editing-placeholder`
+  (×2), `.jim-send-button-editing` (×2).
+* Persian filename round-trip: upload `فایل_تست.txt` via REST
+  multipart → DB stored the correct UTF-8 bytes
+  (`D981D8A7DB8CD9845FD8AAD8B3D8AA2E747874`) → download endpoint
+  returned RFC 5987-compliant Content-Disposition as documented.
+* Project chat page (`/projects/TEB?selectedItem=...`) HTML contains
+  the new editing chip markup — confirming parity is intrinsic via
+  the shared template + JS + CSS.
+
+### Branch & artifact
+
+* Branch: `feature/chat-edit-inline-and-download-filename` (off
+  `fix/jira-comment-replies`).
+* New artifact: `corbitchat-jira-dc-1.0.0-internal-chat-edit.jar`.
+* Previous artifacts (`replies`, `replies2`, `replies3`, `replies4`,
+  `replies5`) preserved in `/root/jira-dev/releases/` for rollback.
+
+### How to test from the UI
+
+**Edit a message**:
+1. In any direct, group, or project chat send a message.
+2. Hover the message you just sent. The message-action menu appears
+   on the bubble.
+3. Click **Edit**.
+4. The message body loads into the main composer at the bottom. An
+   amber "Editing message — Esc to cancel" chip appears above the
+   composer showing a one-line preview of what you're editing. The
+   original bubble fades into a "Editing this message…" placeholder.
+5. Edit the text and press Enter (or click **Save**). The bubble
+   updates with the new body and shows the `(edited)` marker.
+6. Press **Esc** any time during edit, or click the ✕ on the chip,
+   to abandon the edit. Any draft you had typed before clicking Edit
+   is restored to the composer.
+
+**Download a Persian-named file**:
+1. Send any chat message with a file whose name contains Persian
+   (Arabic / CJK / accented Latin) characters.
+2. Click the file's Download link.
+3. Browser saves the file with its original name (e.g.
+   `فایل_تست.txt`), not as `download` or with `?` characters.
+
+**Project chat**:
+1. Open a Jira project: `/projects/<KEY>`.
+2. Click **Chat** in the project's sidebar.
+3. Send / receive messages, edit your own message, attach a file
+   with a Persian filename, scroll up to lazy-load older history,
+   open the mention picker in a group — all exactly the same as
+   in the main chat page.
+
+---
+
+## 1.0.0-internal-replies5 — 2026-06-30 (fix, follow-up #3 — robustness + diagnostics)
+
+Operational follow-up after a customer report: deployed
+`internal-replies4` to their operational Jira and the **Reply** link did
+not appear at all on the issue activity comments. Comments rendered with
+their normal `Edit · Delete · Pin · 🙂` actions, but our Reply link was
+absent.
+
+Without direct access to the customer's server we cannot prove which of
+the three likely root causes hit them — so this build hardens against
+**all three** and adds a built-in self-diagnostic so any future
+deployment can confirm the situation in 5 seconds from the browser
+console.
+
+### Likely root causes (now mitigated)
+
+1. **Author resolver failure** — on some Jira surfaces (Service Desk
+   agent view, custom user-profile plugins, SSO) the `<a>` carrying the
+   comment author has a different attribute shape than the canonical
+   `.user-hover[rel="username"]`. The old build marked the comment as
+   "installed" and skipped the button silently.
+2. **DOM-injection timing** — on some surfaces (KickAss issue view tab
+   switches, Service Desk SLA tab, Tempo timesheets) the activity feed
+   sub-tree is swapped in via mechanisms that don't always surface as
+   mutations our `MutationObserver` catches.
+3. **Browser cache** — when the plugin updates, the WRM context batch
+   gets a fresh hash, but corporate proxies sometimes serve a stale
+   batch.js until a hard refresh.
+
+### What changed
+
+* **Resilient author resolver.** Five fallback strategies, in order:
+  canonical `a.user-hover[rel]` → any `a[data-username]` →
+  `a[href*="ViewProfile.jspa"]` (extract `?name=…`) → any anchor with a
+  non-junk `rel` attribute → last resort: display name only (the
+  composer still opens, just without an auto-mention). `rel="nofollow"`
+  / `noopener` / `noreferrer` / `external` / `tag` / `alternate` are all
+  treated as junk values.
+* **Button always injects when there is a toolbar.** Even when the
+  author cannot be resolved at all, the Reply link still appears.
+  Clicking it opens the composer with no auto-mention but the quote
+  block still works, so the user can manually mention before sending.
+* **Periodic backstop scan.** In addition to the MutationObserver, we
+  now do a tapered re-scan: every 750ms for the first 30s after page
+  load, then every 5s for the next 4.5 minutes, then stop. Each scan
+  that finds no new comments is effectively a no-op (the per-comment
+  `data-jim-reply-installed` flag idempotently skips already-installed
+  blocks). This catches Service-Desk-style activity-feed swaps.
+* **AJS / Jira event hooks.** When `AJS.$` is available we hook
+  `ajaxStop` to rescan after every Jira AJAX call. When `JIRA.bind` and
+  `JIRA.Events.NEW_CONTENT_ADDED` are available we bind that too. Both
+  are best-effort and silently skipped if absent.
+* **Activity-tab click rescan.** Clicking any activity tab header
+  triggers a 250ms-delayed rescan to catch comments newly revealed.
+* **Always-on startup banner.** Once the JS loads on a page it logs
+  one concise line to the console at INFO level:
+  `[CorbitChat reply 1.0.0-internal-replies5] script loaded; url=/browse/…`
+  so an operator can confirm the asset is actually loading before
+  digging further.
+* **Built-in self-diagnostic.** `window.JimCommentReply` is now
+  exposed on every page that loads the script:
+  ```js
+  window.JimCommentReply.diagnose();
+  // returns { version, stats, issueRef, url, ajsAvailable, jiraAvailable,
+  //          counts: { activityComment, actionLinksToolbar, replyButtons,
+  //                    replyBadges, composers },
+  //          metaIssueKey, metaRemoteUser }
+  ```
+  Also exposes `.scan()` (force an immediate rescan + report) and
+  `.enableDebug()` / `.disableDebug()` (toggle verbose logging,
+  persisted in localStorage).
+* **Verbose logging on demand.** Setting either `?jimReplyDebug=1` in
+  the URL OR `localStorage.jimReplyDebug = "1"` switches on per-event
+  logging (mutation hits, button injection, composer open / submit /
+  failure). Off by default to keep production consoles clean.
+
+### Files
+
+* `src/main/resources/js/jim-comment-reply.js` — tolerant author
+  resolver, always-inject button, periodic backstop, AJS/Jira hooks,
+  `window.JimCommentReply` diagnostic surface, debug toggle.
+* `pom.xml` — version bumped to `1.0.0-internal-replies5`.
+
+### Verification
+
+* Built, deployed, plugin REST health 200, diagnostics reports
+  `pluginVersion = 1.0.0-internal-replies5`. Previous artifacts
+  preserved in `/root/jira-dev/releases/`.
+* Served JS parses cleanly (15709 bytes). Key surface strings present:
+  `JimCommentReply`, `diagnose`, `jimReplyDebug` (×4), `NEW_CONTENT_ADDED`
+  (×2), `1.0.0-internal-replies5` (×4 — the version banner).
+* Reply pipeline unchanged on the backend side, so existing
+  `JimEventLog` + Jira Assistant flow continues to fire as proven in
+  the previous releases.
+
+### How to self-diagnose if Reply still does not appear
+
+After installing the JAR and hard-refreshing the browser (Ctrl+Shift+R
+/ Cmd+Shift+R to defeat any proxy cache), open any Jira issue page,
+open browser DevTools → Console, and run:
+
+```js
+window.JimCommentReply.diagnose()
+```
+
+Expected output for a healthy page (numbers depend on the issue):
+
+```
+{ version: "1.0.0-internal-replies5",
+  url: "https://…/browse/ABC-123",
+  ajsAvailable: true, jiraAvailable: true,
+  counts: { activityComment: 5, actionLinksToolbar: 5,
+            replyButtons: 5, replyBadges: 0, composers: 0 },
+  metaIssueKey: "ABC-123", metaRemoteUser: "alice",
+  stats: { commentsSeen: 5, buttonsInjected: 5,
+           authorLookupSuccess: 5, authorLookupFailed: 0, … } }
+```
+
+Interpretation:
+
+| Symptom | Probable cause |
+|---|---|
+| `window.JimCommentReply` is undefined | The plugin's web-resource didn't load on this page. Check Manage Apps → corbitchat-jira-dc is **Enabled**. Hard-refresh to defeat browser cache. |
+| `version` is older than `1.0.0-internal-replies5` | An older JAR is still active; Jira is loading the cached bundle. Restart Jira after replacing the JAR, then hard-refresh. |
+| `activityComment > 0` but `replyButtons == 0` | DOM variant we haven't handled yet. Enable verbose mode (`window.JimCommentReply.enableDebug()`), reload, share the `no toolbar yet for comment-N` / `reply button injected` log lines. |
+| `activityComment == 0` | The activity feed isn't a `.activity-comment` block on this surface. Inspect a comment's class in DevTools and share it. |
+| `metaIssueKey == ""` | Issue-key detection from `<meta>` failed; the comment-DOM fallback resolver should still take over on click. Send Reply will work even if the meta tag is missing. |
+| `authorLookupFailed > 0` | At least some comments use a non-canonical author DOM. The button still injects — clicking it opens the composer without auto-mention. |
+
+To force a rescan on demand:
+
+```js
+window.JimCommentReply.scan()
+```
+
+To enable verbose logging across page loads:
+
+```js
+window.JimCommentReply.enableDebug();   // persists in localStorage
+window.JimCommentReply.disableDebug();
+```
+
+### Branch & artifact
+
+* Branch: `fix/jira-comment-replies` (same branch as previous fixes).
+* New artifact: `corbitchat-jira-dc-1.0.0-internal-replies5.jar`.
+* Previous artifacts (`replies`, `replies2`, `replies3`, `replies4`)
+  preserved in `/root/jira-dev/releases/` for rollback.
+
+---
+
 ## 1.0.0-internal-replies4 — 2026-06-30 (fix, follow-up #2)
 
 UX fix to `internal-replies3`: every successful reply was triggering

@@ -90,7 +90,8 @@ public class JimAttachmentResource {
             boolean partial = start > 0L || end < fileLength - 1L;
             long contentLength = end - start + 1L;
             Response.ResponseBuilder builder = partial ? Response.status((int)206) : Response.ok();
-            builder.entity((Object)this.buildRangeStream(file, start, contentLength)).type(contentType).header("Accept-Ranges", (Object)"bytes").header("Content-Length", (Object)contentLength).header("Content-Disposition", (Object)(dispositionType + "; filename=\"" + filename + "\""));
+            String disposition = buildContentDispositionHeader(dispositionType, filename);
+            builder.entity((Object)this.buildRangeStream(file, start, contentLength)).type(contentType).header("Accept-Ranges", (Object)"bytes").header("Content-Length", (Object)contentLength).header("Content-Disposition", (Object)disposition);
             if (partial) {
                 builder.header("Content-Range", (Object)("bytes " + start + "-" + end + "/" + fileLength));
             }
@@ -175,6 +176,105 @@ public class JimAttachmentResource {
             return "inline";
         }
         return "attachment";
+    }
+
+    /**
+     * Build a Content-Disposition header that preserves non-ASCII
+     * filenames (Persian, Arabic, CJK, accented Latin, etc.) when the
+     * user downloads an attachment.
+     *
+     * Per RFC 6266 / RFC 5987 we emit two `filename` parameters:
+     *
+     *   Content-Disposition: attachment;
+     *       filename="ASCII fallback.ext";
+     *       filename*=UTF-8''<percent-encoded-UTF-8 bytes>
+     *
+     * Modern browsers prefer `filename*` and decode it as UTF-8. Older
+     * browsers and most CDNs fall back to the ASCII-only `filename`.
+     * Without this, Chrome/Edge save Persian filenames as a literal
+     * "download" or "?" because the raw multi-byte chars in a plain
+     * `filename="..."` header are not decoded as UTF-8.
+     */
+    static String buildContentDispositionHeader(String dispositionType, String filename) {
+        String safe = filename == null ? "" : filename;
+        String ascii = toAsciiFallback(safe);
+        if (ascii.isEmpty()) {
+            ascii = "download";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(dispositionType == null ? "attachment" : dispositionType);
+        sb.append("; filename=\"").append(ascii).append('"');
+        if (isAscii(safe)) {
+            // Filename is already pure ASCII; no need for the
+            // RFC 5987 parameter.
+            return sb.toString();
+        }
+        sb.append("; filename*=UTF-8''").append(rfc5987Encode(safe));
+        return sb.toString();
+    }
+
+    private static boolean isAscii(String s) {
+        if (s == null) {
+            return true;
+        }
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= 0x80 || c < 0x20) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Build an ASCII-only fallback used by older clients. Non-ASCII
+     * characters become '_'. Quotes and backslashes (which would
+     * break the quoted-string syntax) are also replaced.
+     */
+    private static String toAsciiFallback(String s) {
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c < 0x20 || c == 0x7F || c >= 0x80 || c == '"' || c == '\\') {
+                sb.append('_');
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * RFC 5987 ext-value encoding. UTF-8 bytes outside the
+     * {@code attr-char} set are percent-encoded as %XX (uppercase
+     * hex). attr-char = ALPHA / DIGIT / "!" / "#" / "$" / "&amp;" /
+     * "+" / "-" / "." / "^" / "_" / "`" / "|" / "~" .
+     */
+    private static String rfc5987Encode(String s) {
+        try {
+            byte[] bytes = s.getBytes("UTF-8");
+            StringBuilder sb = new StringBuilder(bytes.length);
+            for (int i = 0; i < bytes.length; i++) {
+                int b = bytes[i] & 0xFF;
+                boolean attrChar = (b >= '0' && b <= '9')
+                        || (b >= 'A' && b <= 'Z')
+                        || (b >= 'a' && b <= 'z')
+                        || b == '!' || b == '#' || b == '$' || b == '&'
+                        || b == '+' || b == '-' || b == '.' || b == '^'
+                        || b == '_' || b == '`' || b == '|' || b == '~';
+                if (attrChar) {
+                    sb.append((char) b);
+                } else {
+                    sb.append('%');
+                    sb.append(Character.toUpperCase(Character.forDigit((b >>> 4) & 0xF, 16)));
+                    sb.append(Character.toUpperCase(Character.forDigit(b & 0xF, 16)));
+                }
+            }
+            return sb.toString();
+        } catch (java.io.UnsupportedEncodingException e) {
+            // Cannot happen: UTF-8 is required by the JLS.
+            return s == null ? "" : s;
+        }
     }
 
     private String resolveCurrentUserKey() {

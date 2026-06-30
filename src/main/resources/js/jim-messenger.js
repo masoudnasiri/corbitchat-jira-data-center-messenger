@@ -101,6 +101,7 @@
         initialLoadComplete: false,
         replyToMessage: null,
         editingMessageId: null,
+        savedDraftBeforeEdit: '',
         deleteConfirmMessageId: null,
         reactionPickerMessageId: null,
         pinnedMessage: null,
@@ -196,6 +197,9 @@
         els.composerReplyAuthor = document.getElementById('jim-composer-reply-author');
         els.composerReplyText = document.getElementById('jim-composer-reply-text');
         els.composerReplyCancel = document.getElementById('jim-composer-reply-cancel');
+        els.composerEditing = document.getElementById('jim-composer-editing');
+        els.composerEditingPreview = document.getElementById('jim-composer-editing-preview');
+        els.composerEditingCancel = document.getElementById('jim-composer-editing-cancel');
         els.emojiButton = document.getElementById('jim-emoji-button');
         els.emojiPalette = document.getElementById('jim-emoji-palette');
         els.mentionButton = document.getElementById('jim-mention-button');
@@ -2661,18 +2665,10 @@
         els.imageLightboxImg.setAttribute('src', '');
     }
 
-    function renderEditForm(message) {
-        var body = message.body ? String(message.body) : '';
-        return '' +
-            '<form class="jim-message-edit-form" data-message-id="' + message.id + '">' +
-            '  <textarea class="jim-message-edit-textarea" rows="3" maxlength="' + MAX_MESSAGE_LENGTH + '">' + escapeHtml(body) + '</textarea>' +
-            '  <div class="jim-message-edit-error" hidden></div>' +
-            '  <div class="jim-message-edit-actions">' +
-            '    <button type="button" class="aui-button aui-button-link" data-action="edit-cancel" data-message-id="' + message.id + '">Cancel</button>' +
-            '    <button type="submit" class="aui-button aui-button-primary" data-action="edit-save" data-message-id="' + message.id + '">Save</button>' +
-            '  </div>' +
-            '</form>';
-    }
+    // renderEditForm() (which rendered an inline edit form inside the
+    // message bubble) has been removed. The edit textarea now lives
+    // in the main composer at the bottom of the chat; see
+    // enterEditMode() / cancelEditMode() / submitComposerEdit().
 
     function renderIssueChatCard(message) {
         if (!message || !message.issueKey) {
@@ -2727,7 +2723,14 @@
         if (message.deleted) {
             contentHtml = '<div class="jim-message-deleted">This message was deleted.</div>';
         } else if (isEditing) {
-            contentHtml = renderEditForm(message);
+            // The actual edit textarea lives in the main composer at
+            // the bottom of the chat (Slack/Telegram style). The
+            // original bubble just shows a faint placeholder so the
+            // user can see which message they are editing.
+            contentHtml = '<div class="jim-message-editing-placeholder">' +
+                '<span class="jim-message-editing-icon" aria-hidden="true">&#9998;</span>' +
+                'Editing this message&hellip;' +
+                '</div>';
         } else {
             var body = message.body ? String(message.body).trim() : '';
             var textDir = detectTextDirection(body);
@@ -3012,6 +3015,13 @@
         if (!message || message.deleted) {
             return;
         }
+        // Replying and editing are mutually exclusive in the composer.
+        // If the user is currently editing a message and clicks Reply
+        // on another, cancel the edit first (restoring whatever draft
+        // they had before they started editing).
+        if (state.editingMessageId) {
+            cancelEditMode();
+        }
         state.replyToMessage = {
             id: message.id,
             senderDisplayName: message.senderDisplayName || message.senderUserKey || 'User',
@@ -3027,11 +3037,114 @@
         if (!state.replyToMessage.bodyPreview && attachments.length) {
             state.replyToMessage.attachmentPreview = attachmentPreviewLabel(attachments[0]);
         }
-        state.editingMessageId = null;
         renderComposerReply();
         if (els.messageInput) {
             els.messageInput.focus();
         }
+    }
+
+    /**
+     * Renders the "Editing message" chip above the composer. The chip
+     * sits next to the reply chip so the user has a clear visual cue
+     * that the composer is now in edit mode rather than send mode.
+     * Hidden when no edit is in progress.
+     */
+    function renderComposerEditing() {
+        if (!els.composerEditing) {
+            return;
+        }
+        if (!state.editingMessageId) {
+            setHidden(els.composerEditing, true);
+            if (els.composerEditingPreview) {
+                els.composerEditingPreview.textContent = '';
+            }
+            return;
+        }
+        var msg = findMessageById(state.editingMessageId);
+        if (els.composerEditingPreview) {
+            var preview = msg && msg.body ? String(msg.body) : '';
+            // Single-line preview - just enough so the user knows
+            // which message they're editing without re-rendering
+            // the whole body inside the chip.
+            els.composerEditingPreview.textContent = preview.replace(/\s+/g, ' ').slice(0, 80);
+        }
+        setHidden(els.composerEditing, false);
+    }
+
+    /**
+     * Enters edit mode for the given message:
+     *   - saves whatever the user has currently typed (so cancelling
+     *     restores it exactly)
+     *   - drops any reply/issue/file/voice context that would conflict
+     *     with editing
+     *   - loads the message body into the main composer textarea
+     *   - shows the "Editing message" chip above the composer
+     *   - re-renders the message list so the original bubble shows the
+     *     "Editing this message..." placeholder
+     */
+    function enterEditMode(message) {
+        if (!message || message.deleted) {
+            return;
+        }
+        if (!isWithinEditWindow(message)) {
+            showError('Messages can only be edited within 30 minutes.');
+            return;
+        }
+        // Leaving an existing edit? Discard its in-progress edits but
+        // keep the original pre-edit draft (the user was editing, not
+        // composing).
+        if (state.editingMessageId && state.editingMessageId !== message.id) {
+            // We're switching the edit target - drop the in-progress
+            // edited text but keep the pre-edit draft so cancel still
+            // restores the right thing.
+        } else if (!state.editingMessageId) {
+            // First edit entry - snapshot whatever they had typed.
+            state.savedDraftBeforeEdit = (els.messageInput && els.messageInput.value) || '';
+        }
+        // Edit mode and reply/issue/file are mutually exclusive in the
+        // composer for clarity. Clear them.
+        if (state.replyToMessage) {
+            clearReplyTarget();
+        }
+        clearSelectedIssue();
+        clearSelectedFile();
+        cancelVoiceRecording();
+
+        state.editingMessageId = message.id;
+        state.deleteConfirmMessageId = null;
+
+        if (els.messageInput) {
+            els.messageInput.value = message.body || '';
+            // Move cursor to the end so the user can keep typing.
+            try {
+                var n = els.messageInput.value.length;
+                els.messageInput.setSelectionRange(n, n);
+            } catch (e) { /* ignore - unsupported on some browsers */ }
+        }
+        renderComposerEditing();
+        renderMessages();
+        updateComposerState();
+        focusMessageInput();
+    }
+
+    /**
+     * Exits edit mode, restoring the user's original draft (whatever
+     * they had typed in the composer before they clicked Edit). Safe
+     * to call when no edit is in progress.
+     */
+    function cancelEditMode() {
+        if (!state.editingMessageId) {
+            return;
+        }
+        state.editingMessageId = null;
+        if (els.messageInput) {
+            els.messageInput.value = state.savedDraftBeforeEdit || '';
+        }
+        state.savedDraftBeforeEdit = '';
+        renderComposerEditing();
+        renderMessages();
+        updateComposerState();
+        focusMessageInput();
     }
 
     function scrollToReplyTarget(messageId) {
@@ -3200,24 +3313,16 @@
                 return;
             }
             if (action === 'edit') {
-                // Defensive: don't even open the editor for a message past
-                // the 30-minute edit window. The Edit button shouldn't be
-                // visible in that state, but a stale DOM (e.g. user opened
-                // actions just before the window lapsed) could still hit
-                // here.
-                var editTarget = findMessageById(messageId);
-                if (!editTarget || !isWithinEditWindow(editTarget)) {
-                    showError('Messages can only be edited within 30 minutes.');
-                    return;
-                }
-                state.editingMessageId = messageId;
-                state.deleteConfirmMessageId = null;
-                renderMessages();
+                // The edit textarea lives in the main composer at the
+                // bottom of the chat now. enterEditMode() handles the
+                // 30-minute window check, snapshots the current draft
+                // so cancel can restore it, and loads the message body
+                // into the composer for the user to edit there.
+                enterEditMode(findMessageById(messageId));
                 return;
             }
             if (action === 'edit-cancel') {
-                state.editingMessageId = null;
-                renderMessages();
+                cancelEditMode();
                 return;
             }
             if (action === 'delete') {
@@ -3240,38 +3345,11 @@
             }
         });
 
-        els.messageList.addEventListener('submit', function (event) {
-            var form = event.target;
-            if (!form || !form.classList || !form.classList.contains('jim-message-edit-form')) {
-                return;
-            }
-            event.preventDefault();
-
-            var messageId = parseInt(form.getAttribute('data-message-id'), 10);
-            var textarea = form.querySelector('.jim-message-edit-textarea');
-            var errorEl = form.querySelector('.jim-message-edit-error');
-            var body = textarea ? normalizeMessageBody(textarea.value) : '';
-
-            if (!body) {
-                if (errorEl) {
-                    errorEl.textContent = 'Message cannot be empty.';
-                    setHidden(errorEl, false);
-                }
-                return;
-            }
-
-            if (errorEl) {
-                setHidden(errorEl, true);
-            }
-
-            saveEditedMessage(messageId, body).catch(function (error) {
-                logError('editMessage', error);
-                if (errorEl) {
-                    errorEl.textContent = error && error.message ? error.message : 'Unable to save changes.';
-                    setHidden(errorEl, false);
-                }
-            });
-        });
+        // The edit form is no longer rendered inside the bubble - the
+        // edit textarea lives in the main composer at the bottom of
+        // the chat (see enterEditMode / submitComposerEdit). The
+        // inline-form submit handler that used to live here is gone
+        // intentionally.
     }
 
     var messageActionsBound = false;
@@ -3427,16 +3505,30 @@
             '</svg>';
         if (state.uploading) {
             els.sendButton.innerHTML = '<span class="jim-send-label">Uploading\u2026</span>';
+        } else if (state.sending && state.editingMessageId) {
+            els.sendButton.innerHTML = '<span class="jim-send-label">Saving\u2026</span>';
         } else if (state.sending) {
             els.sendButton.innerHTML = '<span class="jim-send-label">Sending\u2026</span>';
+        } else if (state.editingMessageId) {
+            // Clear visual cue that hitting Send / Enter will save an
+            // edit, not create a new message.
+            els.sendButton.innerHTML = '<span class="jim-send-label">Save</span>';
         } else {
             els.sendButton.innerHTML = SEND_ICON_SVG;
+        }
+        if (els.sendButton) {
+            els.sendButton.classList.toggle('jim-send-button-editing', !!state.editingMessageId);
+        }
+        if (els.composer) {
+            els.composer.classList.toggle('jim-composer-is-editing', !!state.editingMessageId);
         }
 
         setHidden(els.uploadProgress, !state.uploading);
 
         if (!readOnly) {
-            els.messageInput.placeholder = 'Write a message... (Enter to send, Shift+Enter for new line)';
+            els.messageInput.placeholder = state.editingMessageId
+                ? 'Edit the message... (Enter to save, Esc to cancel)'
+                : 'Write a message... (Enter to send, Shift+Enter for new line)';
         }
     }
 
@@ -3757,7 +3849,12 @@
         clearSelectedFile();
         clearSelectedIssue();
         clearReplyTarget();
+        // Drop any in-progress edit; the savedDraftBeforeEdit belongs
+        // to the OUTGOING conversation, so we can discard it - the
+        // INCOMING conversation will get its own draft restored below.
         state.editingMessageId = null;
+        state.savedDraftBeforeEdit = '';
+        renderComposerEditing();
         state.deleteConfirmMessageId = null;
         state.reactionPickerMessageId = null;
         state.pinnedMessage = null;
@@ -3985,12 +4082,60 @@
         }, SEARCH_DEBOUNCE_MS);
     }
 
+    /**
+     * Performs the edit submit when the composer is in edit mode. The
+     * composer's textarea content replaces the original message body.
+     * On success, edit mode is cleared, the saved pre-edit draft is
+     * restored to the composer, and the message list re-renders so
+     * the original bubble shows the new body + "(edited)" marker.
+     */
+    function submitComposerEdit() {
+        var messageId = state.editingMessageId;
+        var body = normalizeMessageBody(els.messageInput ? els.messageInput.value : '');
+        if (!body) {
+            showComposerError('Message cannot be empty.');
+            return;
+        }
+        showComposerError(null);
+        state.sending = true;
+        updateComposerState();
+        saveEditedMessage(messageId, body).then(function () {
+            // saveEditedMessage already clears state.editingMessageId.
+            // Restore whatever draft the user had typed before they
+            // entered edit mode (so editing a message doesn't blow
+            // away their in-progress composer text).
+            if (els.messageInput) {
+                els.messageInput.value = state.savedDraftBeforeEdit || '';
+            }
+            state.savedDraftBeforeEdit = '';
+            renderComposerEditing();
+            renderMessages();
+        }).catch(function (error) {
+            logError('editMessage', error);
+            var detail = error && error.message ? error.message : 'Unable to save changes.';
+            showComposerError(detail);
+            showError(detail);
+        }).then(function () {
+            state.sending = false;
+            updateComposerState();
+            focusMessageInput();
+        });
+    }
+
     function sendMessage() {
         if (!state.selectedConversationId || state.sending || state.uploading || !els.messageInput) {
             return;
         }
 
         if (state.selectedConversation && isSystemConversation(state.selectedConversation)) {
+            return;
+        }
+
+        // When the composer is in edit mode, Send saves the edit
+        // instead of creating a new message. Files / replies / issue
+        // links are already cleared when entering edit mode.
+        if (state.editingMessageId) {
+            submitComposerEdit();
             return;
         }
 
@@ -4538,6 +4683,9 @@
         if (els.composerReplyCancel) {
             els.composerReplyCancel.addEventListener('click', clearReplyTarget);
         }
+        if (els.composerEditingCancel) {
+            els.composerEditingCancel.addEventListener('click', cancelEditMode);
+        }
         if (els.newConversationButton && els.searchInput) {
             els.newConversationButton.addEventListener('click', function () {
                 els.searchInput.focus();
@@ -4792,6 +4940,11 @@
                 if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();
                     sendMessage();
+                } else if (event.key === 'Escape' && state.editingMessageId) {
+                    // Esc cancels edit mode, restoring whatever draft
+                    // the user had typed before they entered edit.
+                    event.preventDefault();
+                    cancelEditMode();
                 }
             });
             els.messageInput.addEventListener('paste', onComposerPaste);
