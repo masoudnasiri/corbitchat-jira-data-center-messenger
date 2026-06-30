@@ -6,6 +6,80 @@ see `docs/marketplace/release-notes.md`.
 
 ---
 
+## 1.0.0-internal-replies3 — 2026-06-30 (fix, follow-up)
+
+UX follow-up to `internal-replies2`. The inline composer rendered
+correctly on **every** Jira issue view variant — but the **Send Reply**
+button failed with "Cannot detect this issue's key. Refresh and try
+again." on issue views other than the standalone `/browse/<KEY>`
+page (specifically the project-centric and global Issue Navigator
+side-panel views), because `meta[name="ajs-issue-key"]` is unreliable
+there.
+
+### What changed
+
+Issue context is now resolved from the **parent comment block's own
+DOM**, with the page-level meta tag as just one of several fallbacks.
+Every native Jira comment carries the issue identity in its rendered
+markup, so we always have a usable signal regardless of which issue
+view the user is in. The resolver tries, in order:
+
+1. `meta[name="ajs-issue-key"]` (standalone `/browse/<KEY>`)
+2. `jira-comment-pins[data-issuekey][data-issueid]` *inside* the
+   comment block (Jira's own template emits this on every comment)
+3. `.edit-comment[href]` / `.delete-comment[href]` query param
+   `?id=<issue-id>` (always present on comments the user can edit /
+   delete; we extract the numeric issue id)
+4. Ancestor `[data-issue-key]` (e.g. the issue panel container in
+   project-centric view)
+5. URL fallbacks: `/browse/<KEY>` path, `?selectedIssue=<KEY>`,
+   `?issueKey=<KEY>` (global Issue Navigator)
+6. `<body data-issue-key>` / `<body data-issue-id>`
+
+The REST endpoint accepts either an issue **key** or a numeric issue
+**id** in the path, so any one of the above signals is enough. This
+covers every Jira DC issue-view variant we have observed:
+
+- `/browse/<KEY>` (standalone)
+- `/projects/<PROJ>/issues/?selectedIssue=<KEY>` (project-centric
+  Issue Navigator — the variant in the user-reported screenshot)
+- `/issues/?jql=…&selectedIssue=<KEY>` (global Issue Navigator)
+- Issue panel rendered inside an Agile board side panel
+
+### Files
+
+* `src/main/resources/js/jim-comment-reply.js` — added
+  `issueRefForComment(commentEl)` with the multi-source resolver;
+  `submitReply()` now uses it.
+* `pom.xml` — version bumped to `1.0.0-internal-replies3`.
+
+### Verification
+
+- Built `1.0.0-internal-replies3`, deployed, Jira restarted, plugin
+  REST health 200, diagnostics confirms `pluginVersion =
+  1.0.0-internal-replies3`.
+- Re-fetched the served JS — the fallback signal strings all survived
+  minification: `jira-comment-pins`, `EditComment`, `DeleteComment`,
+  `selectedIssue`, `data-issuekey`, `data-issueid`. JS parses cleanly
+  (8843 bytes, `Parsed OK`).
+- Previous artifact `corbitchat-jira-dc-1.0.0-internal-replies2.jar`
+  preserved in `/root/jira-dev/releases/` for rollback.
+
+### How to re-test from the Jira UI
+
+Same steps as in `internal-replies2`, but the Send Reply button will
+now also work when you open an issue from:
+
+* the project's "Issues" navigator (`/projects/<PROJ>/issues/`),
+* the global Issues navigator (`/issues/`),
+* an Agile board's side-panel issue view.
+
+If it still reports "Cannot detect this issue's key" please share the
+URL and the surrounding DOM of the parent comment — we'll add the
+specific signal that variant exposes.
+
+---
+
 ## 1.0.0-internal-replies2 — 2026-06-30 (fix)
 
 Fix for the previous `internal-replies` build. The first attempt drove

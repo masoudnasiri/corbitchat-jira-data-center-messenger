@@ -82,13 +82,96 @@
         var el = document.querySelector('meta[name="' + name + '"]');
         return el ? (el.getAttribute('content') || '') : '';
     }
+    function queryParam(name) {
+        try {
+            var m = new RegExp('[?&]' + name + '=([^&#]+)').exec(window.location.search || '');
+            return m ? decodeURIComponent(m[1]) : '';
+        } catch (e) { return ''; }
+    }
+    /**
+     * Resolve the parent comment's issue context. Returns {key, id}
+     * where at least one is populated. Jira's REST comment endpoint
+     * accepts either form (`/rest/api/2/issue/<KEY>/comment` or
+     * `/rest/api/2/issue/<NUMERIC_ID>/comment`).
+     *
+     * This is robust across Jira DC issue-view variants:
+     *   - /browse/<KEY>          - standalone issue page (meta tag works)
+     *   - /projects/.../issues/  - project-centric navigator (meta tag
+     *                              is often empty / lags - we read the
+     *                              comment block's own Edit/Delete/Pin
+     *                              elements which always carry the
+     *                              issue id and key).
+     *   - /issues/?selectedIssue - global issue navigator (read from
+     *                              the URL query string).
+     */
+    function issueRefForComment(commentEl) {
+        var key = '';
+        var id  = '';
+
+        // 1. Meta tag (works on /browse/<KEY>).
+        key = metaContent('ajs-issue-key') || key;
+
+        // 2. The comment block's own Pin custom element carries both.
+        //    Jira renders:
+        //      <jira-comment-pins data-commentid=".." data-issueid=".."
+        //                         data-issuekey=".." data-pinned=".."/>
+        if (commentEl) {
+            var pin = commentEl.querySelector('jira-comment-pins, [data-issuekey], [data-issueid]');
+            if (pin) {
+                key = key || pin.getAttribute('data-issuekey') || '';
+                id  = id  || pin.getAttribute('data-issueid')  || '';
+            }
+        }
+
+        // 3. The comment block's Edit / Delete links carry the issue
+        //    numeric id as a query parameter:
+        //      .../secure/EditComment!default.jspa?id=<ISSUE_ID>&commentId=N
+        if (commentEl && !id) {
+            var link = commentEl.querySelector(
+                '.edit-comment[href*="id="], .delete-comment[href*="id="],' +
+                ' a[href*="EditComment"], a[href*="DeleteComment"]'
+            );
+            if (link) {
+                var m = /[?&]id=(\d+)/.exec(link.getAttribute('href') || '');
+                if (m) id = m[1];
+            }
+        }
+
+        // 4. Ancestor data-issue-key (some issue-view variants set this
+        //    on the surrounding container, e.g. .issue-container).
+        if (!key && commentEl) {
+            var node = commentEl;
+            while (node && node !== document) {
+                var k2 = node.getAttribute && node.getAttribute('data-issue-key');
+                if (k2) { key = k2; break; }
+                node = node.parentNode;
+            }
+        }
+
+        // 5. URL fallbacks: /browse/<KEY> path, ?selectedIssue=<KEY>,
+        //    ?issueKey=<KEY> query string.
+        if (!key) {
+            var pm = /\/browse\/([A-Z][A-Z0-9_]*-\d+)/.exec(window.location.pathname || '');
+            if (pm) key = pm[1];
+        }
+        if (!key) {
+            key = queryParam('selectedIssue') || queryParam('issueKey') || '';
+        }
+
+        // 6. Body-level data attribute (rare but cheap to check).
+        if (!key && document.body) {
+            key = document.body.getAttribute('data-issue-key') || key;
+            id  = id || document.body.getAttribute('data-issue-id') || '';
+        }
+
+        if (!key && !id) return null;
+        return { key: key, id: id };
+    }
     function issueKey() {
-        var k = metaContent('ajs-issue-key');
-        if (k) return k;
-        var bodyKey = document.body ? document.body.getAttribute('data-issue-key') : '';
-        if (bodyKey) return bodyKey;
-        var m = /\/browse\/([A-Z][A-Z0-9_]*-\d+)/.exec(window.location.pathname || '');
-        return m ? m[1] : '';
+        // Back-compat helper used outside the click path. The click
+        // path uses the more specific issueRefForComment().
+        var ref = issueRefForComment(null);
+        return ref ? (ref.key || ref.id || '') : '';
     }
     function contextPath() {
         if (window.AJS && AJS.contextPath) {
@@ -298,8 +381,12 @@
             ctx.textarea.focus();
             return;
         }
-        var key = issueKey();
-        if (!key) {
+        // Resolve the issue context from the parent comment's own DOM
+        // (works on /browse/<KEY> AND project-centric / global issue
+        // navigator views where meta[name=ajs-issue-key] is unreliable).
+        var ref = issueRefForComment(ctx.commentEl);
+        var keyOrId = ref ? (ref.key || ref.id || '') : '';
+        if (!keyOrId) {
             setStatus(ctx.status, 'Cannot detect this issue\u2019s key. Refresh and try again.', 'error');
             return;
         }
@@ -315,7 +402,7 @@
         ctx.sendBtn.textContent = 'Sending\u2026';
         setStatus(ctx.status, '');
 
-        var url = contextPath() + '/rest/api/2/issue/' + encodeURIComponent(key) + '/comment';
+        var url = contextPath() + '/rest/api/2/issue/' + encodeURIComponent(keyOrId) + '/comment';
         var xhr = new XMLHttpRequest();
         xhr.open('POST', url, true);
         xhr.setRequestHeader('Content-Type', 'application/json');
