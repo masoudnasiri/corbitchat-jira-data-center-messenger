@@ -66,14 +66,47 @@
     }
     window.__jimCommentReplyLoaded = true;
 
+    var VERSION = '1.0.0-internal-replies5';
     var BTN_CLASS = 'jim-comment-reply-btn';
     var COMPOSER_CLASS = 'jim-comment-reply-composer';
     var BADGE_CLASS = 'jim-comment-reply-badge';
     var INSTALLED_FLAG = 'jimReplyInstalled';
     var BADGE_FLAG = 'jimReplyBadged';
     var EXCERPT_MAX = 240;
+
+    // Verbose logging is enabled by ?jimReplyDebug=1 in the URL or by
+    // localStorage.jimReplyDebug = '1'. A single concise startup
+    // banner is always logged so the operator can confirm the JS is
+    // actually loading on a given page.
     var DEBUG = false;
-    function log() { if (DEBUG && window.console) { try { console.log.apply(console, ['[CorbitChat reply]'].concat([].slice.call(arguments))); } catch (e) { /* ignore */ } } }
+    try {
+        if (/[?&]jimReplyDebug=1/.test(window.location.search || '')) DEBUG = true;
+        if (window.localStorage && window.localStorage.getItem('jimReplyDebug') === '1') DEBUG = true;
+    } catch (e) { /* ignore - private mode, etc. */ }
+    function log() {
+        if (!DEBUG || !window.console) return;
+        try { console.log.apply(console, ['[CorbitChat reply]'].concat([].slice.call(arguments))); }
+        catch (e) { /* ignore */ }
+    }
+    function info(msg) {
+        if (!window.console) return;
+        try { console.info('[CorbitChat reply ' + VERSION + '] ' + msg); }
+        catch (e) { /* ignore */ }
+    }
+
+    // Counters surfaced through window.JimCommentReply for ops debugging.
+    var stats = {
+        version: VERSION,
+        observedAt: null,
+        commentsSeen: 0,
+        buttonsInjected: 0,
+        badgesInjected: 0,
+        composersOpened: 0,
+        repliesSent: 0,
+        repliesFailed: 0,
+        authorLookupSuccess: 0,
+        authorLookupFailed: 0
+    };
 
     // -----------------------------------------------------------------
     // Context resolution from the page (meta tags Jira always emits).
@@ -214,21 +247,74 @@
         var m = /comment-(\d+)/.exec(el.id || '');
         return m ? m[1] : null;
     }
+    /**
+     * Find the author of a native Jira comment block. Tolerant of many
+     * DOM variants we have encountered across Jira DC issue-view
+     * surfaces (standalone /browse, project-centric navigator, global
+     * navigator, Service Desk agent view, etc.).
+     *
+     * Returns {username, displayName} or null. Caller must handle null
+     * gracefully - the Reply button itself still injects without an
+     * author (it just opens the composer with no auto-mention).
+     */
+    function isJunkRelValue(rel) {
+        return !rel || /^(nofollow|noopener|noreferrer|external|tag|alternate)$/i.test(rel);
+    }
+    function parseAuthorFromAnchor(a) {
+        if (!a) return null;
+        var name = a.getAttribute('data-username') || '';
+        if (!name) {
+            var rel = a.getAttribute('rel') || '';
+            if (!isJunkRelValue(rel)) name = rel;
+        }
+        if (!name) {
+            var href = a.getAttribute('href') || '';
+            var m = /[?&]name=([^&#]+)/.exec(href);
+            if (m) {
+                try { name = decodeURIComponent(m[1]); } catch (e) { name = m[1]; }
+            }
+        }
+        var display = (a.textContent || '').trim();
+        if (!name && !display) return null;
+        return { username: (name || '').trim(), displayName: display || name };
+    }
     function authorOfComment(commentEl) {
         if (!commentEl) return null;
-        var head = commentEl.querySelector('.action-details');
-        if (!head) return null;
-        var link = head.querySelector('a.user-hover[rel], a[data-username], a[rel]');
-        if (!link) return null;
-        var name = link.getAttribute('rel') || link.getAttribute('data-username') || '';
-        // Jira sometimes uses `rel="nofollow"` on non-user links, so we
-        // only trust `rel=` when it's not "nofollow"/"noopener".
-        if (/^(nofollow|noopener|noreferrer|external)$/i.test(name)) {
-            name = link.getAttribute('data-username') || '';
+        var head = commentEl.querySelector('.action-details') || commentEl.querySelector('.action-head') || commentEl;
+
+        // 1) Canonical user-hover anchor.
+        var a = head.querySelector('a.user-hover[rel]');
+        var parsed = parseAuthorFromAnchor(a);
+        if (parsed && parsed.username) return parsed;
+
+        // 2) Any anchor with data-username.
+        a = head.querySelector('a[data-username]');
+        parsed = parseAuthorFromAnchor(a);
+        if (parsed && parsed.username) return parsed;
+
+        // 3) Any anchor pointing at ViewProfile.jspa - the username is
+        // in the name= query param.
+        a = head.querySelector('a[href*="ViewProfile.jspa"], a[href*="ViewProfile!"], a[href*="people/"]');
+        parsed = parseAuthorFromAnchor(a);
+        if (parsed && parsed.username) return parsed;
+
+        // 4) Any anchor with a non-junk rel.
+        var anchors = head.querySelectorAll('a[rel]');
+        for (var i = 0; i < anchors.length; i++) {
+            if (!isJunkRelValue(anchors[i].getAttribute('rel'))) {
+                parsed = parseAuthorFromAnchor(anchors[i]);
+                if (parsed && parsed.username) return parsed;
+            }
         }
-        var display = (link.textContent || '').trim();
-        if (!name && !display) return null;
-        return { username: name.trim(), displayName: display || name };
+
+        // 5) Last resort - return display name only so the composer
+        // can show "Replying to <Name>" even if we can't auto-mention.
+        var anyLink = head.querySelector('a');
+        if (anyLink) {
+            var dn = (anyLink.textContent || '').trim();
+            if (dn) return { username: '', displayName: dn };
+        }
+        return null;
     }
     function rawBodyTextOfComment(commentEl) {
         if (!commentEl) return '';
@@ -707,21 +793,26 @@
     // -----------------------------------------------------------------
     function injectReplyButton(commentEl) {
         if (!commentEl || commentEl.dataset[INSTALLED_FLAG] === '1') return;
+        stats.commentsSeen++;
         var author = authorOfComment(commentEl);
-        // Even if author lookup fails, mark as installed so we don't
-        // re-scan repeatedly. Without a resolvable author we cannot
-        // safely produce a mention, so we skip the button.
-        commentEl.dataset[INSTALLED_FLAG] = '1';
-        if (!author) {
-            log('skip - no author for', commentEl.id);
-            return;
-        }
+        if (author && author.username) stats.authorLookupSuccess++;
+        else stats.authorLookupFailed++;
+
         var toolbar = actionToolbarOf(commentEl);
         if (!toolbar) {
-            log('skip - no toolbar for', commentEl.id);
+            // Without a toolbar there is nowhere to put the link. Do
+            // not mark as installed so the next mutation can retry if
+            // the toolbar appears later.
+            log('no toolbar yet for', commentEl.id);
             return;
         }
 
+        // Mark as installed only once we have a place to anchor.
+        commentEl.dataset[INSTALLED_FLAG] = '1';
+
+        // Build the button. We always inject it, even when the author
+        // lookup failed - in that case the composer opens with no
+        // auto-mention, but the user can still reply (with quote).
         var divider = document.createElement('span');
         divider.className = 'action-links__divider';
 
@@ -729,12 +820,14 @@
         btn.href = '#';
         btn.className = BTN_CLASS + ' issue-comment-action';
         btn.textContent = 'Reply';
-        btn.setAttribute('title', 'Reply to ' + author.displayName);
+        var titleAuthor = author ? author.displayName : 'this comment';
+        btn.setAttribute('title', 'Reply to ' + titleAuthor);
         btn.addEventListener('click', function (event) {
             event.preventDefault();
             if (btn.classList.contains(BTN_CLASS + '--disabled')) return;
+            stats.composersOpened++;
             var excerpt = trimTo(rawBodyTextOfComment(commentEl), EXCERPT_MAX);
-            openComposer(commentEl, author, excerpt);
+            openComposer(commentEl, author || { username: '', displayName: '?' }, excerpt);
         });
 
         // Insert AT THE START of the toolbar so Reply leads.
@@ -745,7 +838,10 @@
             toolbar.appendChild(btn);
             toolbar.appendChild(divider);
         }
-        log('reply button injected on', commentEl.id, 'author=', author.username);
+        stats.buttonsInjected++;
+        log('reply button injected on', commentEl.id,
+            'author=', author ? author.username : '(none)',
+            'toolbar=', toolbar.className);
 
         injectReplyBadge(commentEl);
     }
@@ -795,7 +891,11 @@
 
     function startObserver() {
         scanForComments(document);
-        if (typeof window.MutationObserver === 'undefined') return;
+        stats.observedAt = new Date().toISOString();
+        if (typeof window.MutationObserver === 'undefined') {
+            log('MutationObserver unavailable - relying on periodic scan only');
+            return;
+        }
         var observer = new MutationObserver(function (mutations) {
             for (var i = 0; i < mutations.length; i++) {
                 var m = mutations[i];
@@ -815,16 +915,121 @@
         log('observer started');
     }
 
-    function init() {
-        // If after 200ms the issue key still cannot be resolved we
-        // assume this is not actually an issue page (e.g. a sub-context
-        // accidentally pulled into a non-issue route) and bail.
-        if (!issueKey()) {
-            log('init - no issue key; remaining idle');
-            // Even without a key we install the observer so navigations
-            // within the SPA can pick it up later.
+    /**
+     * Periodic backstop. The MutationObserver is the primary signal,
+     * but in some Jira surfaces (Service Desk agent view + SLA panel,
+     * Tempo timesheets, etc.) the comment activity sub-tree is swapped
+     * in via mechanisms that occasionally don't surface as mutations
+     * we observe. A cheap periodic rescan guarantees the Reply link
+     * eventually appears. We taper the polling so it doesn't run
+     * forever: every 750ms for the first 30s, then every 5s, then
+     * stop after 5 minutes. Each scan that finds no new comments is
+     * effectively a no-op.
+     */
+    function startBackstop() {
+        var startedAt = Date.now();
+        var fastPhaseUntil = startedAt + 30000;     // 30s
+        var slowPhaseUntil = startedAt + 5 * 60000; // 5min
+        function tick() {
+            var now = Date.now();
+            if (now > slowPhaseUntil) return;
+            scanForComments(document);
+            var delay = (now < fastPhaseUntil) ? 750 : 5000;
+            window.setTimeout(tick, delay);
         }
+        window.setTimeout(tick, 750);
+    }
+
+    /**
+     * Some Jira surfaces (Service Desk, KickAss issue view's tab
+     * switcher) emit AJS events when the activity feed re-renders.
+     * Hook into them so we rescan immediately on those signals.
+     */
+    function bindAjsHooks() {
+        if (!window.AJS || !AJS.$) return;
+        try {
+            AJS.$(document).on('ajaxStop', function () {
+                scanForComments(document);
+            });
+        } catch (e) { /* ignore */ }
+        // Jira KickAss event for new HTML injected anywhere on the page.
+        if (window.JIRA && JIRA.bind && JIRA.Events && JIRA.Events.NEW_CONTENT_ADDED) {
+            try {
+                JIRA.bind(JIRA.Events.NEW_CONTENT_ADDED, function () {
+                    scanForComments(document);
+                });
+            } catch (e) { /* ignore */ }
+        }
+    }
+
+    /**
+     * Diagnostic surface exposed on window so an operator can
+     * confirm the JS is loaded and inspect the live counters from
+     * the browser DevTools console:
+     *
+     *   window.JimCommentReply.diagnose()
+     *
+     * Prints version, comment counts, button counts, issue context,
+     * and the configured WRM URLs. Useful when the user reports
+     * "Reply button isn't appearing" on an unfamiliar Jira surface.
+     */
+    function buildDiagnose() {
+        return {
+            version: VERSION,
+            stats: stats,
+            debugEnabled: DEBUG,
+            issueRef: issueRefForComment(null),
+            url: window.location.href,
+            ajsAvailable: !!(window.AJS && AJS.$),
+            jiraAvailable: !!(window.JIRA && JIRA.Events),
+            counts: {
+                activityComment:   document.querySelectorAll('.activity-comment').length,
+                actionLinksToolbar: document.querySelectorAll('.activity-comment .action-links').length,
+                replyButtons:      document.querySelectorAll('.activity-comment .' + BTN_CLASS).length,
+                replyBadges:       document.querySelectorAll('.activity-comment .' + BADGE_CLASS).length,
+                composers:         document.querySelectorAll('.' + COMPOSER_CLASS).length
+            },
+            metaIssueKey:   metaContent('ajs-issue-key'),
+            metaRemoteUser: metaContent('ajs-remote-user')
+        };
+    }
+    window.JimCommentReply = {
+        version: VERSION,
+        diagnose: function () {
+            var d = buildDiagnose();
+            if (window.console) { try { console.table(d.counts); console.log(d); } catch (e) { /* ignore */ } }
+            return d;
+        },
+        scan: function () { scanForComments(document); return buildDiagnose(); },
+        enableDebug: function () {
+            DEBUG = true;
+            try { window.localStorage.setItem('jimReplyDebug', '1'); } catch (e) { /* ignore */ }
+            info('debug logging enabled');
+            return true;
+        },
+        disableDebug: function () {
+            DEBUG = false;
+            try { window.localStorage.removeItem('jimReplyDebug'); } catch (e) { /* ignore */ }
+            return true;
+        }
+    };
+
+    function init() {
+        info('script loaded; url=' + window.location.pathname);
         startObserver();
+        bindAjsHooks();
+        startBackstop();
+        // Best-effort: if the AJS jQuery is available, also re-scan
+        // each time the user clicks an activity-tab header.
+        if (window.AJS && AJS.$) {
+            try {
+                AJS.$(document).on(
+                    'click',
+                    '#activitymodule-tabs a, .menu-section a, .aui-tabs .menu-item a',
+                    function () { window.setTimeout(function () { scanForComments(document); }, 250); }
+                );
+            } catch (e) { /* ignore */ }
+        }
     }
 
     if (document.readyState === 'loading') {

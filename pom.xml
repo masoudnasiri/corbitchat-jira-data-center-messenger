@@ -8,7 +8,7 @@
 
     <groupId>com.corbitlogic</groupId>
     <artifactId>corbitchat-jira-dc</artifactId>
-    <version>1.0.0-internal-replies4</version>
+    <version>1.0.0-internal-replies5</version>
     <packaging>atlassian-plugin</packaging>
 
     <name>CorbitChat — Team Messenger for Jira (Internal Build + Board Gallery)</name>
