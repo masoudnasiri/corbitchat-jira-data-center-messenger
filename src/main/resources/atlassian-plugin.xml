@@ -21,15 +21,20 @@
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimPushSubscription</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimAccessPolicy</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimAdminAudit</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimMobilePreference</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimMobileSession</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimMobileFeatureRule</entity>
     </ao>
 
     <component-import key="activeObjects" interface="com.atlassian.activeobjects.external.ActiveObjects"/>
     <component-import key="eventPublisher" interface="com.atlassian.event.api.EventPublisher"/>
     <component-import key="authenticationContext" interface="com.atlassian.jira.security.JiraAuthenticationContext"/>
     <component-import key="userManager" interface="com.atlassian.jira.user.util.UserManager"/>
+    <component-import key="crowdService" interface="com.atlassian.crowd.embedded.api.CrowdService"/>
     <component-import key="applicationProperties" interface="com.atlassian.jira.config.properties.ApplicationProperties"/>
     <component-import key="jiraHome" interface="com.atlassian.jira.config.util.JiraHome"/>
     <component-import key="userSearchService" interface="com.atlassian.jira.bc.user.search.UserSearchService"/>
+    <component-import key="searchService" interface="com.atlassian.jira.bc.issue.search.SearchService"/>
     <component-import key="avatarService" interface="com.atlassian.jira.avatar.AvatarService"/>
     <component-import key="templateRenderer" interface="com.atlassian.templaterenderer.TemplateRenderer"/>
     <component-import key="webResourceManager" interface="com.atlassian.plugin.webresource.WebResourceManager"/>
@@ -106,6 +111,24 @@
                class="com.corbitlogic.jira.internalmessenger.service.JimAccessPolicyServiceImpl">
         <description>Chat access-control policies for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimAccessPolicyService</interface>
+    </component>
+
+    <component key="jimMobileFeatureService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureServiceImpl">
+        <description>Mobile feature access-control rules for CorbitChat Mobile</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService</interface>
+    </component>
+
+    <component key="jimMobilePreferenceService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMobilePreferenceServiceImpl">
+        <description>Per-user preferences for CorbitChat Mobile</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimMobilePreferenceService</interface>
+    </component>
+
+    <component key="jimMobileSessionService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMobileSessionServiceImpl">
+        <description>Plugin-issued mobile session tokens for CorbitChat Mobile</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimMobileSessionService</interface>
     </component>
 
     <component key="jimAdminAuditService"
@@ -231,6 +254,17 @@
         <link linkId="jim-corbitchat-user">/plugins/servlet/jim/chat</link>
         <condition class="com.atlassian.jira.plugin.webfragment.conditions.UserLoggedInCondition"/>
     </web-item>
+
+    <servlet-filter key="corbit-mobile-session-filter"
+                    name="CorbitChat Mobile Session Filter"
+                    class="com.corbitlogic.jira.internalmessenger.mobile.CorbitMobileSessionFilter"
+                    location="before-dispatch"
+                    weight="100">
+        <description>Resolves the real Jira user from a plugin-issued mobile session token</description>
+        <url-pattern>/rest/corbit-mobile/1.0/*</url-pattern>
+        <dispatcher>REQUEST</dispatcher>
+        <dispatcher>FORWARD</dispatcher>
+    </servlet-filter>
 
     <servlet-filter key="jim-mobile-menu-filter"
                     name="CorbitChat Mobile Menu Injection Filter"
@@ -361,6 +395,15 @@
 
     <rest key="jim-rest" path="/jim" version="1.0">
         <description>REST API for CorbitChat</description>
+        <package>com.corbitlogic.jira.internalmessenger.rest</package>
+    </rest>
+
+    <!-- Mobile BFF REST module for the CorbitChat Mobile app (see
+         docs/mobile-roadmap/). Additive and package-scoped so it evolves
+         independently from the web surface at /rest/jim/1.0/*. -->
+    <rest key="corbit-mobile-rest" path="/corbit-mobile" version="1.0">
+        <description>Mobile BFF REST API for CorbitChat Mobile</description>
+        <package>com.corbitlogic.jira.internalmessenger.mobile.rest</package>
     </rest>
 
     <resource type="i18n" name="jim-i18n" location="jim/i18n"/>

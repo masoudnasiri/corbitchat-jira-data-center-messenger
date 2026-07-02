@@ -15,6 +15,7 @@
     <nav class="jim-admin-tabs" role="tablist" aria-label="Admin sections">
         <button type="button" class="jim-admin-tab is-active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
         <button type="button" class="jim-admin-tab" data-tab="access" role="tab" aria-selected="false">Access Control</button>
+        <button type="button" class="jim-admin-tab" data-tab="mobile" role="tab" aria-selected="false">Mobile Access</button>
         <button type="button" class="jim-admin-tab" data-tab="notifications" role="tab" aria-selected="false">Notifications</button>
         <button type="button" class="jim-admin-tab" data-tab="attachments" role="tab" aria-selected="false">Attachments</button>
         <button type="button" class="jim-admin-tab" data-tab="branding" role="tab" aria-selected="false">Branding</button>
@@ -80,6 +81,58 @@
             <button id="jim-pol-add" type="button" class="aui-button">Add policy</button>
             <button id="jim-pol-cancel-edit" type="button" class="aui-button aui-button-link" hidden>Cancel</button>
         </div>
+    </section>
+
+    <!-- ===== Mobile Access (Sprint 04G) ===== -->
+    <section class="jim-admin-panel" data-panel="mobile">
+        <h3>CorbitHub mobile feature access</h3>
+        <p class="jim-admin-hint">
+            Restrict which sections of the <strong>CorbitHub mobile app</strong> a Jira user or group can use.
+            This is a product-level gate layered on top of Jira permissions &mdash; it never grants access to
+            Jira data a user could not otherwise see. <strong>With no rules, every user gets all mobile
+            features</strong> (fully backward compatible). Jira username/password &amp; PAT login, and the web
+            chat, are unaffected.
+        </p>
+        <p class="jim-admin-hint">
+            <strong>Precedence:</strong> only enabled rules count. A <code>USER</code> rule always wins over a
+            <code>GROUP</code> rule. Among rules of the same type the highest priority wins; ties are broken by
+            the oldest rule. Exactly one rule ever applies to a user &mdash; feature sets are never merged.
+        </p>
+
+        <table class="aui jim-admin-policy-table" id="jim-mobile-rule-table">
+            <thead>
+            <tr>
+                <th>Subject</th><th>Allowed mobile features</th>
+                <th>Enabled</th><th>Priority</th><th></th>
+            </tr>
+            </thead>
+            <tbody id="jim-mobile-rule-rows">
+            <tr><td colspan="5">Loading...</td></tr>
+            </tbody>
+        </table>
+
+        <h4 id="jim-mobile-form-title">Add mobile access rule</h4>
+        <div class="jim-admin-policy-form" id="jim-mobile-form">
+            <select id="jim-mob-subject-type"><option value="USER">USER</option><option value="GROUP">GROUP</option></select>
+            <input id="jim-mob-subject-value" type="text" placeholder="username or group name"/>
+            <input id="jim-mob-priority" type="number" value="0" title="Priority"/>
+            <button id="jim-mob-add" type="button" class="aui-button">Add rule</button>
+            <button id="jim-mob-cancel-edit" type="button" class="aui-button aui-button-link" hidden>Cancel</button>
+        </div>
+        <div class="jim-admin-mobile-features" id="jim-mob-features">
+            <span class="jim-admin-mobile-features-label">Allowed features:</span>
+            <label><input type="checkbox" class="jim-mob-feature" value="dashboard" checked/> Dashboard</label>
+            <label><input type="checkbox" class="jim-mob-feature" value="chat" checked/> Chat</label>
+            <label><input type="checkbox" class="jim-mob-feature" value="boards" checked/> Boards</label>
+            <label><input type="checkbox" class="jim-mob-feature" value="projects" checked/> Projects</label>
+            <label><input type="checkbox" class="jim-mob-feature" value="tasks" checked/> Tasks</label>
+            <label><input type="checkbox" class="jim-mob-feature" value="issueDetail" checked/> Issue detail</label>
+        </div>
+        <p class="jim-admin-hint">
+            Tip: to give a group <em>Chat only</em>, choose <code>GROUP</code>, pick the group, tick only
+            <strong>Chat</strong>, and add the rule. Profile / Settings / About / Logout always stay available in
+            the app so restricted users can still change settings or sign out.
+        </p>
     </section>
 
     <!-- ===== Notifications ===== -->

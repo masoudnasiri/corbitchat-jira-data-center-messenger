@@ -86,7 +86,7 @@ key and no remote server to tunnel into.
 
 - Test Jira (direct): `http://185.83.181.194:8080`
 - Test Jira (HTTPS via nginx): `https://jira.corbitlogic.com`
-- Test SysAdmin user: `m.nasiri` / `Man@782761`
+- Test SysAdmin user: `m.nasiri` / `<REDACTED>`
 - Other test users exist (`masoud`, `m.zeynali`, `z.zarhoon`,
   `a.hesari`, `m.moosavi`) — ask the operator for passwords.
 - Containers: `jira-srv` (Jira 9.17.5), `mysql-jira`
@@ -98,7 +98,7 @@ key and no remote server to tunnel into.
   `github.com/masoudnasiri/corbitchat-jira-data-center-messenger`
   (pushes still work via redirect).
 - Smoke test the API right now:
-  `curl -su m.nasiri:Man@782761 http://185.83.181.194:8080/rest/api/2/myself`
+  `curl -su m.nasiri:<REDACTED> http://185.83.181.194:8080/rest/api/2/myself`
 
 # Product scope
 
@@ -213,7 +213,7 @@ Both clients must behave the same way.
 1. Read `docs/handover-mobile-app.md` end to end, then
    `docs/architecture.md` §2, §8, §9 and Appendix C.
 2. Confirm connectivity:
-   `curl -su m.nasiri:Man@782761 http://185.83.181.194:8080/rest/api/2/myself`
+   `curl -su m.nasiri:<REDACTED> http://185.83.181.194:8080/rest/api/2/myself`
    should return 200 with the user profile.
 3. Scaffold `/root/jira-dev/corbitchat-mobile/` as a React Native
    + TypeScript app; stub the auth screen and the API client

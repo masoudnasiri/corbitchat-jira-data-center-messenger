@@ -8,7 +8,7 @@
 
     <groupId>com.corbitlogic</groupId>
     <artifactId>corbitchat-jira-dc</artifactId>
-    <version>1.0.0-internal-reply-attach</version>
+    <version>1.0.0-mobile-s04g</version>
     <packaging>atlassian-plugin</packaging>
 
     <name>CorbitChat — Team Messenger for Jira (Internal Build + Board Gallery)</name>
@@ -114,6 +114,18 @@
             <groupId>com.atlassian.templaterenderer</groupId>
             <artifactId>atlassian-template-renderer-api</artifactId>
             <version>5.0.0</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Jira Software / GreenHopper (bundled with Jira DC). Used ONLY by the
+             mobile Board Gallery BFF (Sprint 04D) to list boards the user can see.
+             provided → never packaged; the OSGi import falls under the pom's
+             `*;resolution:=optional` rule, so the plugin still enables if Jira
+             Software is somehow absent (board endpoint degrades gracefully). -->
+        <dependency>
+            <groupId>com.atlassian.jira.plugins</groupId>
+            <artifactId>jira-greenhopper-plugin</artifactId>
+            <version>${jira.version}</version>
             <scope>provided</scope>
         </dependency>
 

@@ -648,6 +648,195 @@
         });
     }
 
+    // ===== Mobile feature access rules (Sprint 04G) =====
+
+    var cachedMobileRules = [];
+    var editingMobileRuleId = null;
+
+    function mobileFeatureCheckboxes() {
+        return document.querySelectorAll('.jim-mob-feature');
+    }
+
+    function readSelectedFeatures() {
+        var boxes = mobileFeatureCheckboxes();
+        var out = [];
+        for (var i = 0; i < boxes.length; i++) {
+            if (boxes[i].checked) {
+                out.push(boxes[i].value);
+            }
+        }
+        return out;
+    }
+
+    function setSelectedFeatures(features) {
+        var set = {};
+        (features || []).forEach(function (f) { set[f] = true; });
+        var boxes = mobileFeatureCheckboxes();
+        for (var i = 0; i < boxes.length; i++) {
+            boxes[i].checked = !!set[boxes[i].value];
+        }
+    }
+
+    function renderMobileRuleRows(rules) {
+        var tbody = el('jim-mobile-rule-rows');
+        if (!tbody) {
+            return;
+        }
+        if (!rules.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="jim-admin-empty">No rules. Every user currently has all mobile features.</td></tr>';
+            return;
+        }
+        var html = [];
+        for (var i = 0; i < rules.length; i++) {
+            var r = rules[i];
+            var rowClasses = (r.enabled ? '' : 'jim-policy-disabled') +
+                (editingMobileRuleId === r.id ? ' jim-policy-editing' : '');
+            var featureText = (r.features && r.features.length)
+                ? escapeHtml(r.features.join(', '))
+                : '<em>none (no features)</em>';
+            html.push('<tr class="' + rowClasses + '">' +
+                '<td>' + escapeHtml(r.subjectType) + ': <strong>' + escapeHtml(r.subjectValue) + '</strong></td>' +
+                '<td>' + featureText + '</td>' +
+                '<td>' + (r.enabled ? 'Yes' : 'No') + '</td>' +
+                '<td>' + escapeHtml(r.priority) + '</td>' +
+                '<td>' +
+                '<button type="button" class="aui-button aui-button-link" data-mob-edit="' + r.id + '">Edit</button> ' +
+                '<button type="button" class="aui-button aui-button-link" data-mob-toggle="' + r.id + '">' + (r.enabled ? 'Disable' : 'Enable') + '</button> ' +
+                '<button type="button" class="aui-button aui-button-link jim-policy-delete" data-mob-delete="' + r.id + '">Delete</button>' +
+                '</td>' +
+                '</tr>');
+        }
+        tbody.innerHTML = html.join('');
+    }
+
+    function loadMobileRules() {
+        return request('GET', '/mobile-feature-rules').then(function (response) {
+            cachedMobileRules = response.rules || [];
+            renderMobileRuleRows(cachedMobileRules);
+        }).catch(function (error) {
+            var tbody = el('jim-mobile-rule-rows');
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="5">' + escapeHtml(error.message) + '</td></tr>';
+            }
+        });
+    }
+
+    function findMobileRule(id) {
+        for (var i = 0; i < cachedMobileRules.length; i++) {
+            if (cachedMobileRules[i].id === id) {
+                return cachedMobileRules[i];
+            }
+        }
+        return null;
+    }
+
+    function enterMobileEditMode(rule) {
+        editingMobileRuleId = rule.id;
+        setTypeAndValue('jim-mob-subject-type', 'jim-mob-subject-value', rule.subjectType, rule.subjectValue);
+        el('jim-mob-priority').value = rule.priority;
+        setSelectedFeatures(rule.features);
+        el('jim-mobile-form-title').textContent = 'Edit mobile access rule';
+        el('jim-mob-add').textContent = 'Save changes';
+        el('jim-mob-cancel-edit').hidden = false;
+        renderMobileRuleRows(cachedMobileRules);
+        el('jim-mobile-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el('jim-mob-subject-value').focus();
+    }
+
+    function exitMobileEditMode() {
+        editingMobileRuleId = null;
+        setTypeAndValue('jim-mob-subject-type', 'jim-mob-subject-value', 'USER', '');
+        el('jim-mob-priority').value = 0;
+        setSelectedFeatures(['dashboard', 'chat', 'boards', 'projects', 'tasks', 'issueDetail']);
+        el('jim-mobile-form-title').textContent = 'Add mobile access rule';
+        el('jim-mob-add').textContent = 'Add rule';
+        el('jim-mob-cancel-edit').hidden = true;
+        renderMobileRuleRows(cachedMobileRules);
+    }
+
+    function bindMobileRuleActions() {
+        if (!el('jim-mob-add')) {
+            return;
+        }
+        attachPicker(el('jim-mob-subject-value'), el('jim-mob-subject-type'));
+
+        el('jim-mob-add').addEventListener('click', function () {
+            var editing = editingMobileRuleId !== null ? findMobileRule(editingMobileRuleId) : null;
+            var payload = {
+                subjectType: el('jim-mob-subject-type').value,
+                subjectValue: el('jim-mob-subject-value').value,
+                features: readSelectedFeatures(),
+                enabled: editing ? editing.enabled : true,
+                priority: parseInt(el('jim-mob-priority').value, 10) || 0
+            };
+            var call = editing
+                ? request('PUT', '/mobile-feature-rules/' + editing.id, payload)
+                : request('POST', '/mobile-feature-rules', payload);
+            call.then(function () {
+                showMessage(editing ? 'Mobile access rule updated.' : 'Mobile access rule added.');
+                return loadMobileRules();
+            }).then(function () {
+                exitMobileEditMode();
+                loadOverview();
+            }).catch(function (error) {
+                showMessage(error.message, true);
+            });
+        });
+
+        el('jim-mob-cancel-edit').addEventListener('click', function () {
+            exitMobileEditMode();
+        });
+
+        el('jim-mobile-rule-rows').addEventListener('click', function (event) {
+            var target = event.target;
+            var editId = target.getAttribute && target.getAttribute('data-mob-edit');
+            var deleteId = target.getAttribute && target.getAttribute('data-mob-delete');
+            var toggleId = target.getAttribute && target.getAttribute('data-mob-toggle');
+            if (editId) {
+                var editRule = findMobileRule(parseInt(editId, 10));
+                if (editRule) {
+                    enterMobileEditMode(editRule);
+                }
+                return;
+            }
+            if (deleteId) {
+                if (!window.confirm('Delete this mobile access rule?')) {
+                    return;
+                }
+                request('DELETE', '/mobile-feature-rules/' + deleteId).then(function () {
+                    if (editingMobileRuleId === parseInt(deleteId, 10)) {
+                        exitMobileEditMode();
+                    }
+                    showMessage('Mobile access rule deleted.');
+                    loadMobileRules();
+                    loadOverview();
+                }).catch(function (error) {
+                    showMessage(error.message, true);
+                });
+                return;
+            }
+            if (toggleId) {
+                var rule = findMobileRule(parseInt(toggleId, 10));
+                if (!rule) {
+                    return;
+                }
+                var update = {
+                    subjectType: rule.subjectType,
+                    subjectValue: rule.subjectValue,
+                    features: rule.features || [],
+                    enabled: !rule.enabled,
+                    priority: rule.priority
+                };
+                request('PUT', '/mobile-feature-rules/' + toggleId, update).then(function () {
+                    showMessage('Mobile access rule updated.');
+                    loadMobileRules();
+                }).catch(function (error) {
+                    showMessage(error.message, true);
+                });
+            }
+        });
+    }
+
     // ===== Diagnostics + overview =====
 
     var DIAG_LABELS = {
@@ -818,10 +1007,12 @@
         bindTabs();
         bindSettingsActions();
         bindPolicyActions();
+        bindMobileRuleActions();
         el('jim-diag-refresh').addEventListener('click', loadDiagnostics);
         el('jim-license-refresh').addEventListener('click', loadLicense);
         loadSettings();
         loadPolicies();
+        loadMobileRules();
         loadOverview();
     }
 

@@ -178,7 +178,7 @@ runs shell commands on the host, which talks to Docker directly.
 
 **Jira test users** (SysAdmin unless noted):
 
-- `m.nasiri` / `Man@782761` — primary, SysAdmin.
+- `m.nasiri` / `<REDACTED>` — primary, SysAdmin.
 - `masoud`, `m.zeynali`, `z.zarhoon`, `a.hesari`, `m.moosavi` —
   additional test users on the test instance. Passwords are set
   by the operator; ask before assuming.
@@ -211,7 +211,7 @@ runs shell commands on the host, which talks to Docker directly.
 docker ps
 
 # Health probe (via curl on the host)
-curl -su m.nasiri:Man@782761 http://185.83.181.194:8080/rest/jim/1.0/health
+curl -su m.nasiri:<REDACTED> http://185.83.181.194:8080/rest/jim/1.0/health
 
 # Install a new plugin JAR + restart Jira
 docker exec -u 0 jira-srv bash -lc \
@@ -222,7 +222,7 @@ docker restart jira-srv
 
 # Wait for startup (Jira returns 503 for ~2-3 min)
 for i in $(seq 1 60); do
-  code=$(curl -s -u m.nasiri:Man@782761 -o /dev/null -w '%{http_code}' \
+  code=$(curl -s -u m.nasiri:<REDACTED> -o /dev/null -w '%{http_code}' \
     http://185.83.181.194:8080/rest/jim/1.0/health)
   [ "$code" = 200 ] && echo READY && break
   sleep 5

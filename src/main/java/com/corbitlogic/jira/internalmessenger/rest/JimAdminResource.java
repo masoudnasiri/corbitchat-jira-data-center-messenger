@@ -37,12 +37,15 @@ import com.atlassian.jira.user.ApplicationUser;
 import com.atlassian.plugin.Plugin;
 import com.corbitlogic.jira.internalmessenger.ao.JimAccessPolicy;
 import com.corbitlogic.jira.internalmessenger.ao.JimAdminAudit;
+import com.corbitlogic.jira.internalmessenger.ao.JimMobileFeatureRule;
+import com.corbitlogic.jira.internalmessenger.mobile.JimMobileFeatures;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
 import com.corbitlogic.jira.internalmessenger.service.JimAccessPolicyService;
 import com.corbitlogic.jira.internalmessenger.service.JimAdminAuditService;
 import com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService;
 import com.corbitlogic.jira.internalmessenger.service.JimLicenseService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
+import com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService;
 import com.corbitlogic.jira.internalmessenger.service.JimPushService;
 import java.util.ArrayList;
 import java.util.Date;
@@ -78,9 +81,10 @@ public class JimAdminResource {
     private final ActiveObjects activeObjects;
     private final ApplicationProperties applicationProperties;
     private final JimLicenseService licenseService;
+    private final JimMobileFeatureService mobileFeatureService;
 
     @Inject
-    public JimAdminResource(JiraAuthenticationContext authenticationContext, GlobalPermissionManager globalPermissionManager, JimAdminSettingsService adminSettingsService, JimAccessPolicyService accessPolicyService, JimAdminAuditService auditService, JimPushService pushService, ActiveObjects activeObjects, ApplicationProperties applicationProperties, JimLicenseService licenseService) {
+    public JimAdminResource(JiraAuthenticationContext authenticationContext, GlobalPermissionManager globalPermissionManager, JimAdminSettingsService adminSettingsService, JimAccessPolicyService accessPolicyService, JimAdminAuditService auditService, JimPushService pushService, ActiveObjects activeObjects, ApplicationProperties applicationProperties, JimLicenseService licenseService, JimMobileFeatureService mobileFeatureService) {
         this.authenticationContext = authenticationContext;
         this.globalPermissionManager = globalPermissionManager;
         this.adminSettingsService = adminSettingsService;
@@ -90,6 +94,7 @@ public class JimAdminResource {
         this.activeObjects = activeObjects;
         this.applicationProperties = applicationProperties;
         this.licenseService = licenseService;
+        this.mobileFeatureService = mobileFeatureService;
     }
 
     @GET
@@ -234,6 +239,129 @@ public class JimAdminResource {
         }
     }
 
+    // ===== Mobile feature access rules (Sprint 04G) ==========================
+
+    @GET
+    @Path(value="/mobile-features")
+    public Response listMobileFeatureKeys() {
+        try {
+            this.requireSysAdmin();
+            LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("features", JimMobileFeatures.all());
+            return JimRestResponses.okJson(body);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("GET /admin/mobile-features", ex);
+        }
+    }
+
+    @GET
+    @Path(value="/mobile-feature-rules")
+    public Response listMobileFeatureRules() {
+        try {
+            this.requireSysAdmin();
+            ArrayList<Map<String, Object>> items = new ArrayList<Map<String, Object>>();
+            for (JimMobileFeatureRule rule : this.mobileFeatureService.listRules()) {
+                items.add(this.toMobileRuleMap(rule));
+            }
+            LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("rules", items);
+            body.put("features", JimMobileFeatures.all());
+            return JimRestResponses.okJson(body);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("GET /admin/mobile-feature-rules", ex);
+        }
+    }
+
+    @POST
+    @Path(value="/mobile-feature-rules")
+    @Consumes(value={"application/json"})
+    public Response createMobileFeatureRule(Map<String, Object> request) {
+        try {
+            ApplicationUser admin = this.requireSysAdmin();
+            if (!this.licenseService.canUseAdminSettings()) {
+                return JimRestResponses.licenseBlocked();
+            }
+            if (request == null) {
+                return JimRestResponses.errorJson(400, "bad_request", "Request body is required");
+            }
+            JimMobileFeatureRule rule = this.mobileFeatureService.createRule(
+                    JimAdminResource.str(request, "subjectType"),
+                    JimAdminResource.str(request, "subjectValue"),
+                    JimAdminResource.featuresCsv(request),
+                    JimAdminResource.bool(request, "enabled", true),
+                    JimAdminResource.intValue(request, "priority", 0),
+                    admin.getKey());
+            this.auditService.record(admin.getKey(), "mobileFeatureRule.create", JimAdminResource.describeMobileRule(rule));
+            return JimRestResponses.okJson(this.toMobileRuleMap(rule));
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("POST /admin/mobile-feature-rules", ex);
+        }
+    }
+
+    @PUT
+    @Path(value="/mobile-feature-rules/{ruleId}")
+    @Consumes(value={"application/json"})
+    public Response updateMobileFeatureRule(@PathParam(value="ruleId") int ruleId, Map<String, Object> request) {
+        try {
+            ApplicationUser admin = this.requireSysAdmin();
+            if (!this.licenseService.canUseAdminSettings()) {
+                return JimRestResponses.licenseBlocked();
+            }
+            if (request == null) {
+                return JimRestResponses.errorJson(400, "bad_request", "Request body is required");
+            }
+            JimMobileFeatureRule rule = this.mobileFeatureService.updateRule(
+                    ruleId,
+                    JimAdminResource.str(request, "subjectType"),
+                    JimAdminResource.str(request, "subjectValue"),
+                    JimAdminResource.featuresCsv(request),
+                    JimAdminResource.bool(request, "enabled", true),
+                    JimAdminResource.intValue(request, "priority", 0));
+            this.auditService.record(admin.getKey(), "mobileFeatureRule.update", JimAdminResource.describeMobileRule(rule));
+            return JimRestResponses.okJson(this.toMobileRuleMap(rule));
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("PUT /admin/mobile-feature-rules/" + ruleId, ex);
+        }
+    }
+
+    @DELETE
+    @Path(value="/mobile-feature-rules/{ruleId}")
+    public Response deleteMobileFeatureRule(@PathParam(value="ruleId") int ruleId) {
+        try {
+            ApplicationUser admin = this.requireSysAdmin();
+            if (!this.licenseService.canUseAdminSettings()) {
+                return JimRestResponses.licenseBlocked();
+            }
+            this.mobileFeatureService.deleteRule(ruleId);
+            this.auditService.record(admin.getKey(), "mobileFeatureRule.delete", "ruleId=" + ruleId);
+            LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("deleted", true);
+            return JimRestResponses.okJson(body);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("DELETE /admin/mobile-feature-rules/" + ruleId, ex);
+        }
+    }
+
     @GET
     @Path(value="/diagnostics")
     public Response getDiagnostics(@Context HttpServletRequest request) {
@@ -272,6 +400,12 @@ public class JimAdminResource {
             body.put("failedPushCount", this.pushService.getFailedPushCount());
             body.put("chatMode", this.adminSettingsService.getChatMode());
             body.put("policyCount", this.accessPolicyService.listPolicies().size());
+            try {
+                body.put("mobileFeatureRuleCount", this.mobileFeatureService.listRules().size());
+            }
+            catch (RuntimeException ex) {
+                body.put("mobileFeatureRuleCount", 0);
+            }
             return JimRestResponses.okJson(body);
         }
         catch (JimMessengerException ex) {
@@ -374,6 +508,50 @@ public class JimAdminResource {
         item.put("createdAt", policy.getCreatedAt());
         item.put("updatedAt", policy.getUpdatedAt());
         return item;
+    }
+
+    private Map<String, Object> toMobileRuleMap(JimMobileFeatureRule rule) {
+        LinkedHashMap<String, Object> item = new LinkedHashMap<String, Object>();
+        item.put("id", rule.getID());
+        item.put("subjectType", rule.getSubjectType());
+        item.put("subjectValue", rule.getSubjectValue());
+        item.put("features", new ArrayList<String>(JimMobileFeatures.parse(rule.getFeatures())));
+        item.put("enabled", Boolean.TRUE.equals(rule.getEnabled()));
+        item.put("priority", rule.getPriority() != null ? rule.getPriority() : 0);
+        item.put("createdBy", rule.getCreatedBy());
+        item.put("createdAt", rule.getCreatedAt());
+        item.put("updatedAt", rule.getUpdatedAt());
+        return item;
+    }
+
+    private static String describeMobileRule(JimMobileFeatureRule rule) {
+        return "id=" + rule.getID() + " " + rule.getSubjectType() + ":" + rule.getSubjectValue()
+                + " features=[" + JimMobileFeatures.toCsv(JimMobileFeatures.parse(rule.getFeatures())) + "]"
+                + " enabled=" + Boolean.TRUE.equals(rule.getEnabled())
+                + " priority=" + rule.getPriority();
+    }
+
+    /**
+     * Accepts the allowed feature keys either as a JSON array ({@code features})
+     * or a comma-separated string, and returns a normalised CSV. Unknown keys
+     * are dropped by the service layer.
+     */
+    private static String featuresCsv(Map<String, Object> request) {
+        Object value = request.get("features");
+        if (value instanceof List) {
+            StringBuilder sb = new StringBuilder();
+            for (Object item : (List<?>) value) {
+                if (item == null) {
+                    continue;
+                }
+                if (sb.length() > 0) {
+                    sb.append(',');
+                }
+                sb.append(String.valueOf(item));
+            }
+            return sb.toString();
+        }
+        return value != null ? String.valueOf(value) : "";
     }
 
     private static String describePolicy(JimAccessPolicy policy) {

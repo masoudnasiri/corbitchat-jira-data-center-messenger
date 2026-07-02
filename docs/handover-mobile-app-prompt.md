@@ -50,7 +50,7 @@ built; your job is the mobile client.
 
 - Test Jira: `http://185.83.181.194:8080`
   (HTTPS front: `https://jira.corbitlogic.com`).
-- Test user (SysAdmin): `m.nasiri` / `Man@782761`.
+- Test user (SysAdmin): `m.nasiri` / `<REDACTED>`.
 - Docker containers on the same host: `jira-srv`, `mysql-jira`,
   `nginx-jira`.
 - Preserved release JARs for rollback: `/root/jira-dev/releases/`.
@@ -153,7 +153,7 @@ issue on the plugin repo with the exact request/response shape.
    the API client (`src/api/client.ts`), point it at the test
    Jira `http://185.83.181.194:8080`, and verify a plain
    `GET /rest/api/2/myself` with Basic auth (`m.nasiri` /
-   `Man@782761`) returns 200 with the user's profile. That's your
+   `<REDACTED>`) returns 200 with the user's profile. That's your
    "hello world".
 
 Do NOT modify the plugin repo unless the plugin needs a new

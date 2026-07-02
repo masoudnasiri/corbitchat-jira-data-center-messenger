@@ -217,6 +217,26 @@
     color: #6b778c;
 }
 
+#jim-admin-page .jim-admin-mobile-features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    margin: 10px 0 4px;
+    font-size: 13px;
+}
+
+#jim-admin-page .jim-admin-mobile-features-label {
+    font-weight: 600;
+    color: #42526e;
+}
+
+#jim-admin-page .jim-admin-mobile-features label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
 /* ===== User/group typeahead picker ===== */
 #jim-admin-page .jim-admin-picker {
     position: relative;

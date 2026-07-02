@@ -30,6 +30,19 @@ public final class JimRestResponses {
         return JimRestResponses.errorJson(402, "LICENSE_INVALID", "CorbitChat license is missing or expired.");
     }
 
+    /**
+     * HTTP 403 for a mobile section/action the admin has restricted for this
+     * user (Sprint 04G). Distinct {@code feature_disabled} code + {@code feature}
+     * key let the app show a precise "feature not available" state.
+     */
+    public static Response featureDisabled(String feature) {
+        LinkedHashMap<String, String> body = new LinkedHashMap<String, String>();
+        body.put("error", "feature_disabled");
+        body.put("feature", feature == null ? "" : feature);
+        body.put("message", "This CorbitHub feature is not available for your account.");
+        return Response.status(403).type(MediaType.APPLICATION_JSON_TYPE).entity(body).build();
+    }
+
     public static Response errorJson(int statusCode, String error, String message) {
         LinkedHashMap<String, String> body = new LinkedHashMap<String, String>();
         body.put("error", error);
