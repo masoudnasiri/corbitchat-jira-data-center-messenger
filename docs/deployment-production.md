@@ -4,10 +4,14 @@ Audience: the agent (or engineer) deploying a new CorbitChat plugin
 release to the **production** Jira server at `193.162.129.56`.
 
 This runbook is specific to the real production topology (verified
-2026-07-02). It is different from the dev recipe in `AGENTS.md`
+2026-07-02, re-verified 2026-07-04 after the `1.0.0-mobile-s08-fix3`
+deploy). It is different from the dev recipe in `AGENTS.md`
 only in that it adds backup + smoke-test + rollback steps; the
 underlying install mechanism is the same because production runs
 the same single-container Docker layout as dev.
+
+> **Current production plugin version: `1.0.0-mobile-s08-fix3`**
+> (deployed 2026-07-04). Bump past it for the next release.
 
 ---
 
@@ -66,8 +70,12 @@ Expected: host `vm-186356` and three running containers
 
 Because this is a **single node** (no Jira shared home / no
 cluster), there is no rolling restart — a file install needs one
-short `docker restart jira-srv` (~1–3 min of downtime while Jira
-boots).
+`docker restart jira-srv`. **Observed production boot times range
+from ~5 up to ~25 minutes** (the instance has grown); keep polling
+the health endpoint patiently — a long 503 phase is normal, not a
+failed deploy. Verify container status/logs via
+`ssh corbit-prod 'docker ps; docker logs jira-srv --tail 20'`
+before considering a rollback.
 
 ---
 
@@ -142,11 +150,9 @@ JAR=target/corbitchat-jira-dc-<version>.jar
 # 1. copy to the server host
 scp "$JAR" corbit-prod:/root/
 
-# 2. remove ALL previous plugin jars, then copy the new one in.
-#    NOTE (2026-07-02): production currently has a stale
-#    corbitchat-jira-dc-1.0.0-internal-boards.jar sitting next to
-#    the current jar. Remove every corbitchat/messenger jar so only
-#    ONE version of the plugin key is present.
+# 2. remove ALL previous plugin jars, then copy the new one in, so
+#    only ONE version of the plugin key is ever present. (The stale
+#    -internal-boards.jar noted on 2026-07-02 has been cleaned up.)
 ssh corbit-prod 'bash -lc "
   docker exec -u 0 jira-srv bash -lc \"rm -f /var/jira/plugins/installed-plugins/corbitchat-jira-dc-*.jar /var/jira/plugins/installed-plugins/jira-internal-messenger-*.jar\"
   JAR=$(basename '"$JAR"')
@@ -207,10 +213,18 @@ for p in \
   /rest/corbit-mobile/1.0/health \
   /rest/corbit-mobile/1.0/ao-health \
   /rest/corbit-mobile/1.0/bootstrap \
-  /rest/corbit-mobile/1.0/preferences ; do
+  /rest/corbit-mobile/1.0/preferences \
+  /rest/corbit-mobile/1.0/branding ; do
   echo "$p => $(curl -s -u "$AUTH" -o /dev/null -w '%{http_code}' "$BASE$p")"
 done
+
+# Confirm the running plugin version:
+curl -s -u "$AUTH" "$BASE/rest/corbit-mobile/1.0/health"   # → {"version":"..."}
 ```
+
+For chat-affecting releases, additionally run a mobile-session
+functional pass (login → send/read → attachments → cleanup); see
+`docs/handover-agent-current-state.md` §7–§8 for the recipe.
 
 Expect all **200** (`bootstrap`/`preferences` require an
 authenticated user). Then confirm in **Manage apps** that the
@@ -256,8 +270,8 @@ builds, data is preserved on rollback. Only restore the DB dump
   (this bit us before — see `JimMobilePreference` using
   `@Table("JimMobilePref")`).
 - Only ONE `corbitchat-jira-dc-*.jar` may live in
-  `installed-plugins/` at a time. Remove stale jars (there is
-  currently a lingering `-internal-boards.jar` to clean up).
+  `installed-plugins/` at a time. Always remove stale jars during
+  install (Path B step B2 does this).
 - Test on the dev/test instance (`https://jira.corbitlogic.com`,
   `AGENTS.md` workflow) before touching production; production has
   real users behind `https://jira.7gtech.net`.
