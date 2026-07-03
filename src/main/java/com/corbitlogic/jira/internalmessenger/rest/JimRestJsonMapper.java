@@ -285,9 +285,14 @@ public class JimRestJsonMapper {
         item.put("contentType", attachment.getContentType());
         item.put("fileSize", attachment.getFileSize());
         item.put("fileKind", attachment.getFileKind());
+        // Sprint 07 Fix-2: recorded voice note vs picked/shared audio file.
+        // Additive field; fileKind stays AUDIO so existing web rendering
+        // (inline <audio> player) is unaffected.
+        item.put("voice", JimAttachmentPolicy.isVoiceAttachment(attachment.getFileKind(), attachment.getVoice()));
         item.put("downloadUrl", this.buildAttachmentUrl(attachment.getID(), "download"));
         boolean bl = imagePreviewAllowed = !"IMAGE".equals(attachment.getFileKind()) || this.adminSettingsService.isImagePreviewEnabled();
-        if (("IMAGE".equals(attachment.getFileKind()) || "AUDIO".equals(attachment.getFileKind())) && imagePreviewAllowed) {
+        if (("IMAGE".equals(attachment.getFileKind()) || "AUDIO".equals(attachment.getFileKind())
+                || "VIDEO".equals(attachment.getFileKind())) && imagePreviewAllowed) {
             item.put("previewUrl", this.buildAttachmentUrl(attachment.getID(), "preview"));
         }
         return item;
@@ -447,8 +452,11 @@ public class JimRestJsonMapper {
         if ("IMAGE".equals(first.getFileKind())) {
             return "Image";
         }
-        if ("AUDIO".equals(first.getFileKind())) {
+        if (JimAttachmentPolicy.isVoiceAttachment(first.getFileKind(), first.getVoice())) {
             return "Voice message";
+        }
+        if ("VIDEO".equals(first.getFileKind())) {
+            return "Video";
         }
         return "File: " + JimAttachmentPolicy.sanitizeOriginalFilename(first.getOriginalFilename());
     }

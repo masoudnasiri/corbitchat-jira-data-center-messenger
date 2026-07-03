@@ -3,8 +3,12 @@ package com.corbitlogic.jira.internalmessenger.mobile.rest;
 import com.atlassian.jira.security.JiraAuthenticationContext;
 import com.atlassian.jira.user.ApplicationUser;
 import com.atlassian.plugins.rest.common.security.AnonymousAllowed;
+import com.corbitlogic.jira.internalmessenger.ao.JimAttachment;
 import com.corbitlogic.jira.internalmessenger.ao.JimConversation;
 import com.corbitlogic.jira.internalmessenger.ao.JimMessage;
+import com.corbitlogic.jira.internalmessenger.attachment.JimAttachmentStorageService;
+import com.corbitlogic.jira.internalmessenger.attachment.JimAttachmentStreaming;
+import com.corbitlogic.jira.internalmessenger.attachment.JimMultipartParser;
 import com.corbitlogic.jira.internalmessenger.dto.UserSearchResultDto;
 import com.corbitlogic.jira.internalmessenger.mobile.JimMobileAvatars;
 import com.corbitlogic.jira.internalmessenger.mobile.JimMobileFeatures;
@@ -12,6 +16,7 @@ import com.corbitlogic.jira.internalmessenger.model.JimConversationType;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestJsonMapper;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
 import com.corbitlogic.jira.internalmessenger.service.JimAccessPolicyService;
+import com.corbitlogic.jira.internalmessenger.service.JimAttachmentService;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
 import com.corbitlogic.jira.internalmessenger.service.JimLicenseService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
@@ -22,21 +27,25 @@ import com.corbitlogic.jira.internalmessenger.service.JimPresenceService;
 import com.corbitlogic.jira.internalmessenger.service.JimReactionService;
 import com.corbitlogic.jira.internalmessenger.service.JimReadStateService;
 import com.corbitlogic.jira.internalmessenger.service.JimUserSearchService;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
+import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
+import javax.ws.rs.HeaderParam;
 import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,6 +88,8 @@ public class CorbitMobileChatResource {
     private final JimLicenseService licenseService;
     private final JimUserSearchService userSearchService;
     private final JimMobileFeatureService featureService;
+    private final JimAttachmentService attachmentService;
+    private final JimAttachmentStorageService attachmentStorageService;
 
     @Inject
     public CorbitMobileChatResource(JiraAuthenticationContext authenticationContext,
@@ -92,7 +103,9 @@ public class CorbitMobileChatResource {
                                     JimAccessPolicyService accessPolicyService,
                                     JimLicenseService licenseService,
                                     JimUserSearchService userSearchService,
-                                    JimMobileFeatureService featureService) {
+                                    JimMobileFeatureService featureService,
+                                    JimAttachmentService attachmentService,
+                                    JimAttachmentStorageService attachmentStorageService) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
@@ -105,6 +118,8 @@ public class CorbitMobileChatResource {
         this.licenseService = licenseService;
         this.userSearchService = userSearchService;
         this.featureService = featureService;
+        this.attachmentService = attachmentService;
+        this.attachmentStorageService = attachmentStorageService;
     }
 
     /**
@@ -268,6 +283,7 @@ public class CorbitMobileChatResource {
             List<Map<String, Object>> messageMaps =
                     this.restJsonMapper.toMessageMaps(messages, viewer, conversation, currentUserKey);
             rewriteMessageAvatars(messageMaps);
+            rewriteMessageAttachments(messageMaps);
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("messages", messageMaps);
             return JimRestResponses.okJson(body);
@@ -314,6 +330,7 @@ public class CorbitMobileChatResource {
             Map<String, Object> messageMap =
                     this.restJsonMapper.toMessageMap(message, viewer, conversation, currentUserKey);
             rewriteMessageAvatar(messageMap);
+            rewriteMessageAttachment(messageMap);
             return JimRestResponses.okJson(messageMap);
         } catch (JimMessengerException ex) {
             return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
@@ -321,6 +338,90 @@ public class CorbitMobileChatResource {
             return JimRestResponses.internalError(log,
                     "POST /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/messages",
                     userKey, ex, "internal_error", "An internal error occurred while sending the message.");
+        }
+    }
+
+    // --- Attachments (Sprint 07 Fix-1) ----------------------------------------
+    // Upload/download/preview through the BFF so the mobile session filter (which
+    // only covers /rest/corbit-mobile/1.0/*) authenticates them. The legacy web
+    // endpoints at /rest/jim/1.0/* require Jira-native auth (PAT/cookie) and 401
+    // for username/password mobile sessions, which the client surfaced as a false
+    // "session expired". Same services, participant checks, direct-chat policy,
+    // allow-list, size limit and license gate as the web surface.
+
+    @POST
+    @Path("/conversations/{conversationId}/attachments")
+    @Produces({"application/json"})
+    public Response uploadAttachment(@PathParam("conversationId") int conversationId,
+                                     @Context HttpServletRequest request) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        if (!this.licenseService.canUploadAttachments()) {
+            return JimRestResponses.licenseBlocked();
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimConversation conversation =
+                    this.conversationService.getConversationForUser(conversationId, currentUserKey);
+            enforceDirectChatPolicy(conversation, currentUserKey);
+            File tempDirectory = this.attachmentStorageService.createUploadTempDirectory();
+            JimMultipartParser.ParsedMultipartForm form = JimMultipartParser.parse(request, tempDirectory);
+            JimAttachmentService.UploadResult result = this.attachmentService.uploadAttachment(
+                    conversationId, currentUserKey, form.getBody(), form.getFile(),
+                    form.getContentType(), form.getOriginalFilename(), form.getVoice());
+            return okMessage(result.getCreatedMessage(), viewer, currentUserKey);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/attachments",
+                    userKey, ex, "internal_error", "An internal error occurred while uploading the attachment.");
+        }
+    }
+
+    @GET
+    @Path("/attachments/{attachmentId}/download")
+    public Response downloadAttachment(@PathParam("attachmentId") int attachmentId,
+                                       @HeaderParam("Range") String rangeHeader) {
+        return streamAttachment(attachmentId, false, rangeHeader);
+    }
+
+    @GET
+    @Path("/attachments/{attachmentId}/preview")
+    public Response previewAttachment(@PathParam("attachmentId") int attachmentId,
+                                      @HeaderParam("Range") String rangeHeader) {
+        return streamAttachment(attachmentId, true, rangeHeader);
+    }
+
+    private Response streamAttachment(int attachmentId, boolean inlinePreview, String rangeHeader) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            this.permissionService.requireAuthenticatedUserKey();
+            // getAttachmentForUser enforces the participant permission check.
+            JimAttachment attachment = this.attachmentService.getAttachmentForUser(attachmentId, userKey);
+            File file = this.attachmentStorageService.resolveAttachmentFile(attachment);
+            return JimAttachmentStreaming.stream(attachment, file, inlinePreview, rangeHeader);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/chat/attachments/" + attachmentId
+                            + (inlinePreview ? "/preview" : "/download"),
+                    userKey, ex, "internal_error", "An internal error occurred while loading the attachment.");
         }
     }
 
@@ -475,6 +576,7 @@ public class CorbitMobileChatResource {
                 Map<String, Object> messageMap =
                         this.restJsonMapper.toMessageMap(pinned, viewer, conversation, currentUserKey);
                 rewriteMessageAvatar(messageMap);
+                rewriteMessageAttachment(messageMap);
                 body.put("message", messageMap);
             }
             return JimRestResponses.okJson(body);
@@ -565,6 +667,7 @@ public class CorbitMobileChatResource {
         Map<String, Object> messageMap =
                 this.restJsonMapper.toMessageMap(message, viewer, conversation, currentUserKey);
         rewriteMessageAvatar(messageMap);
+        rewriteMessageAttachment(messageMap);
         return JimRestResponses.okJson(messageMap);
     }
 
@@ -651,6 +754,48 @@ public class CorbitMobileChatResource {
         Object key = message.get("senderUserKey");
         if ("USER".equals(String.valueOf(type)) && key != null) {
             message.put("senderAvatarUrl", JimMobileAvatars.userPath(key.toString()));
+        }
+    }
+
+    // --- Attachment URL rewriting (Sprint 07 Fix-1) ---------------------------
+    // The shared mapper emits web attachment URLs (/rest/jim/1.0/attachments/..)
+    // which the mobile session token does NOT authenticate. Rewrite them to the
+    // session-aware BFF paths in mobile responses only — the shared /rest/jim
+    // mapper is untouched, so the web surface keeps its own URLs.
+
+    private void rewriteMessageAttachments(List<Map<String, Object>> messages) {
+        if (messages == null) {
+            return;
+        }
+        for (Map<String, Object> m : messages) {
+            rewriteMessageAttachment(m);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void rewriteMessageAttachment(Map<String, Object> message) {
+        if (message == null) {
+            return;
+        }
+        Object atts = message.get("attachments");
+        if (!(atts instanceof List)) {
+            return;
+        }
+        for (Object o : (List<Object>) atts) {
+            if (!(o instanceof Map)) {
+                continue;
+            }
+            Map<String, Object> a = (Map<String, Object>) o;
+            Object id = a.get("id");
+            if (id == null) {
+                continue;
+            }
+            if (a.get("downloadUrl") != null) {
+                a.put("downloadUrl", "/rest/corbit-mobile/1.0/chat/attachments/" + id + "/download");
+            }
+            if (a.get("previewUrl") != null) {
+                a.put("previewUrl", "/rest/corbit-mobile/1.0/chat/attachments/" + id + "/preview");
+            }
         }
     }
 

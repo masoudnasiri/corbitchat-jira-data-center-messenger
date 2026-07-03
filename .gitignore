@@ -14,3 +14,6 @@ Thumbs.db
 *firebase-adminsdk*.json
 *service-account*.json
 corbithub-firebase-*.json
+
+# Local release artifacts (jars/APKs staged for deploy) — never commit
+dist/

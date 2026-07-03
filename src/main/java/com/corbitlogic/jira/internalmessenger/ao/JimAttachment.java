@@ -104,6 +104,16 @@ extends Entity {
     @Mutator(value="THUMBNAIL_PATH")
     public void setThumbnailPath(String var1);
 
+    // Sprint 07 Fix-2: distinguishes a recorded voice note (composer mic /
+    // browser MediaRecorder) from a picked/shared audio file. Nullable so the
+    // AO upgrade is non-destructive; NULL on legacy rows means "voice" because
+    // historically every AUDIO upload came from a voice recorder.
+    @Accessor(value="VOICE")
+    public Boolean getVoice();
+
+    @Mutator(value="VOICE")
+    public void setVoice(Boolean var1);
+
     @Accessor(value="WIDTH")
     public Integer getWidth();
 

@@ -23,6 +23,15 @@ public final class JimAttachmentPolicy {
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint")));
     private static final Set<String> ALLOWED_AUDIO_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("audio/webm", "audio/ogg", "audio/mpeg", "audio/mp4", "audio/wav", "audio/x-wav", "audio/aac")));
+    // Sprint 07 Fix-3: video messages (gallery/camera capture on mobile).
+    private static final Set<String> ALLOWED_VIDEO_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("video/mp4", "video/3gpp", "video/webm", "video/quicktime", "video/x-matroska")));
+    // Sprint 07 Fix-3: shared contacts (single-contact vCard built by the app).
+    private static final Set<String> ALLOWED_CONTACT_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("text/vcard", "text/x-vcard")));
+
+    /** App-generated vCard (contact share): exempt from the admin extension allowlist like audio/video. */
+    public static boolean isContactCardType(String contentType) {
+        return ALLOWED_CONTACT_TYPES.contains(JimAttachmentPolicy.normalizeContentType(contentType));
+    }
     private static final Set<String> BLOCKED_EXTENSIONS = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("exe", "bat", "cmd", "com", "msi", "sh", "bash", "js", "jar", "jsp", "php", "html", "htm", "svg")));
 
     private JimAttachmentPolicy() {
@@ -33,6 +42,8 @@ public final class JimAttachmentPolicy {
         allowed.addAll(ALLOWED_IMAGE_TYPES);
         allowed.addAll(ALLOWED_FILE_TYPES);
         allowed.addAll(ALLOWED_AUDIO_TYPES);
+        allowed.addAll(ALLOWED_VIDEO_TYPES);
+        allowed.addAll(ALLOWED_CONTACT_TYPES);
         return Collections.unmodifiableSet(allowed);
     }
 
@@ -91,6 +102,9 @@ public final class JimAttachmentPolicy {
         if (ALLOWED_AUDIO_TYPES.contains(normalizedType)) {
             return "AUDIO";
         }
+        if (ALLOWED_VIDEO_TYPES.contains(normalizedType)) {
+            return "VIDEO";
+        }
         return "FILE";
     }
 
@@ -128,7 +142,21 @@ public final class JimAttachmentPolicy {
         return trimmed.isEmpty() ? "application/octet-stream" : trimmed;
     }
 
+    /**
+     * Sprint 07 Fix-2: whether an AUDIO attachment is a recorded voice note as
+     * opposed to a picked/shared audio file. A NULL flag (legacy rows created
+     * before the flag existed) counts as voice, because historically every
+     * AUDIO upload came from a voice recorder (web MediaRecorder / mobile mic).
+     */
+    public static boolean isVoiceAttachment(String fileKind, Boolean voiceFlag) {
+        return "AUDIO".equals(fileKind) && !Boolean.FALSE.equals(voiceFlag);
+    }
+
     public static String buildPreviewText(String body, String fileKind, String originalFilename) {
+        return JimAttachmentPolicy.buildPreviewText(body, fileKind, originalFilename, true);
+    }
+
+    public static String buildPreviewText(String body, String fileKind, String originalFilename, boolean voice) {
         String normalizedBody;
         String string = normalizedBody = body != null ? body.trim() : "";
         if (!normalizedBody.isEmpty()) {
@@ -137,8 +165,11 @@ public final class JimAttachmentPolicy {
         if ("IMAGE".equals(fileKind)) {
             return "Image";
         }
-        if ("AUDIO".equals(fileKind)) {
+        if ("AUDIO".equals(fileKind) && voice) {
             return "Voice message";
+        }
+        if ("VIDEO".equals(fileKind)) {
+            return "Video";
         }
         return "File: " + JimAttachmentPolicy.sanitizeOriginalFilename(originalFilename);
     }

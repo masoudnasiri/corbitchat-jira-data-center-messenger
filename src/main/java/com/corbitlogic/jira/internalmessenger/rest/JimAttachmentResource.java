@@ -172,7 +172,8 @@ public class JimAttachmentResource {
     }
 
     private String resolveDispositionType(JimAttachment attachment, boolean inlinePreview) {
-        if (inlinePreview && ("IMAGE".equals(attachment.getFileKind()) || "AUDIO".equals(attachment.getFileKind()))) {
+        if (inlinePreview && ("IMAGE".equals(attachment.getFileKind()) || "AUDIO".equals(attachment.getFileKind())
+                || "VIDEO".equals(attachment.getFileKind()))) {
             return "inline";
         }
         return "attachment";

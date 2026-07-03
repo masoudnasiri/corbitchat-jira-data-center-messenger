@@ -732,7 +732,8 @@ implements JimMessageService {
             return "";
         }
         JimAttachment first = attachments.get(0);
-        return JimAttachmentPolicy.buildPreviewText(null, first.getFileKind(), first.getOriginalFilename());
+        return JimAttachmentPolicy.buildPreviewText(null, first.getFileKind(), first.getOriginalFilename(),
+                JimAttachmentPolicy.isVoiceAttachment(first.getFileKind(), first.getVoice()));
     }
 
     private int findLatestMessageId(int conversationId) {

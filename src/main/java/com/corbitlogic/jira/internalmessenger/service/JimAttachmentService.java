@@ -79,7 +79,19 @@ public class JimAttachmentService {
         // extension allowlist, so we skip the allowlist for audio content
         // types. The hardcoded BLOCKED_EXTENSIONS in JimAttachmentPolicy
         // and the audio MIME safe list still apply.
-        if ("AUDIO".equals(JimAttachmentPolicy.resolveFileKind(contentType))) {
+        String kind = JimAttachmentPolicy.resolveFileKind(contentType);
+        if ("AUDIO".equals(kind)) {
+            return;
+        }
+        // Sprint 07 Fix-3: camera-captured videos likewise have device-generated
+        // extensions (mp4/3gp) that admins won't typically allowlist. The video
+        // MIME safe list and BLOCKED_EXTENSIONS still apply.
+        if ("VIDEO".equals(kind)) {
+            return;
+        }
+        // Sprint 07 Fix-3: app-generated single-contact vCards (.vcf) are a
+        // built-in share feature, not user file uploads — skip the allowlist.
+        if (JimAttachmentPolicy.isContactCardType(contentType)) {
             return;
         }
         String allowedExtensions = this.adminSettingsService.getAllowedExtensions();
@@ -100,6 +112,19 @@ public class JimAttachmentService {
     }
 
     public UploadResult uploadAttachment(int conversationId, String senderUserKey, String optionalBody, File uploadedFile, String contentType, String originalFilename) throws IOException {
+        // Legacy call path (web + older mobile clients): no voice hint. Audio is
+        // treated as a voice note, matching all behavior before Sprint 07 Fix-2
+        // (the web only produces audio via its MediaRecorder voice composer).
+        return this.uploadAttachment(conversationId, senderUserKey, optionalBody, uploadedFile, contentType, originalFilename, null);
+    }
+
+    /**
+     * Sprint 07 Fix-2: {@code voiceHint} distinguishes a recorded voice note
+     * (TRUE) from a picked/shared audio file (FALSE). Null means the client
+     * did not say — treated as voice for AUDIO to preserve legacy behavior.
+     * The hint is only meaningful for AUDIO content; other kinds store FALSE.
+     */
+    public UploadResult uploadAttachment(int conversationId, String senderUserKey, String optionalBody, File uploadedFile, String contentType, String originalFilename, Boolean voiceHint) throws IOException {
         JimValidation.requirePositiveId(conversationId, "conversationId");
         JimValidation.requireNonBlank(senderUserKey, "senderUserKey");
         String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
@@ -112,7 +137,9 @@ public class JimAttachmentService {
         this.enforceAdminAttachmentSettings(uploadedFile, contentType, originalFilename);
         this.storageService.ensureStorageRootExists();
         JimAttachmentStorageService.StoredAttachmentFile storedFile = this.storageService.storeUploadedFile(uploadedFile, contentType, originalFilename, this.adminSettingsService.getAllowedExtensions());
-        String preview = JimAttachmentPolicy.buildPreviewText(normalizedBody, storedFile.getFileKind(), storedFile.getOriginalFilename());
+        boolean voice = "AUDIO".equals(storedFile.getFileKind())
+                && (voiceHint == null || voiceHint.booleanValue());
+        String preview = JimAttachmentPolicy.buildPreviewText(normalizedBody, storedFile.getFileKind(), storedFile.getOriginalFilename(), voice);
         long now = System.currentTimeMillis();
         UploadResult result = (UploadResult)this.activeObjects.executeInTransaction(() -> {
             JimMessage message = (JimMessage)this.activeObjects.create(JimMessage.class, new DBParam[0]);
@@ -136,6 +163,7 @@ public class JimAttachmentService {
             attachment.setContentType(storedFile.getContentType());
             attachment.setFileSize(storedFile.getFileSize());
             attachment.setFileKind(storedFile.getFileKind());
+            attachment.setVoice(voice ? Boolean.TRUE : Boolean.FALSE);
             attachment.setCreatedAt(now);
             attachment.setDeleted(0);
             attachment.save();

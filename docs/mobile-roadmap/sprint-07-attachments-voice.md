@@ -79,3 +79,49 @@ message DTO for client rendering.
 - Large-file guardrails + rate limiting respected (PDF §6.4; enforced
   Sprint 13).
 - RTL layout of attachment bubbles verified.
+
+---
+
+## Implementation addendum (Sprint 07 — delivered)
+
+**Scope delivered:** Android share sheet for images/files, inbound share →
+destination selection, in-chat attachment send from a Telegram-inspired
+composer, image original-vs-compressed choice, in-thread attachment rendering
+(image lightbox + file card with download/open), Saved Messages attachment
+support (same backend path). Voice messages, camera capture, audio in-thread
+playback, upload queue/retry, and multi-file share are **deferred** (see below).
+
+**Root cause of the gap:** the plugin already had a complete attachment stack
+(multipart upload `POST /rest/jim/1.0/conversations/{id}/attachments`,
+download/preview with Range, allow-list policy, license gate) and the mobile BFF
+message payload already emitted **relative** attachment URLs
+(`/rest/jim/1.0/attachments/{id}/download|preview`). The mobile app simply never
+(1) modelled/rendered `attachments`, (2) uploaded files, or (3) registered as an
+image/file share target. So this was **mobile-only**.
+
+**Backend / plugin changes:** none. Plugin stays `1.0.0-mobile-s06-fix2`; no
+redeploy. The web upload endpoint enforces the same participant permission +
+direct-chat policy + license the BFF uses, so it is reused directly by the app
+over the authenticated connection.
+
+**No new Flutter packages** (none of `image_picker` / `file_picker` /
+`flutter_image_compress` / share plugins are in the offline pub cache). All new
+device capabilities are native Kotlin over the existing `corbitchat/share`
+`MethodChannel`:
+- receive shared image/file (`ACTION_SEND` + `EXTRA_STREAM` → copied to app
+  cache), `pickAttachment` (system document picker), `compressImage`
+  (Bitmap downscale + JPEG), `getCacheDir` + `openFile` (FileProvider
+  `ACTION_VIEW`). Text share (Sprint 06) is preserved.
+- Upload uses `dio` multipart (`file` + optional `body`); authenticated image
+  previews reuse the existing `avatarImage` helper.
+
+**Compression UX:** sending/sharing an image opens a bottom sheet offering
+*Compress* (longest edge ≤ 1600px, JPEG q80) or *Original size*. Non-images
+upload as-is. Compression failures fall back to the original.
+
+**Deferred (documented):** multi-file share (`ACTION_SEND_MULTIPLE`), voice
+messages/recording, in-thread audio playback, camera capture, and offline
+upload queue/retry — none are required for usable single image/file workflows
+and each adds material native surface area.
+
+**App build:** `1.0.0+7` / label `s07`.

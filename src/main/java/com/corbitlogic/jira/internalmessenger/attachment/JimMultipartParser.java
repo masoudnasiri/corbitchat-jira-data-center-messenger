@@ -24,6 +24,9 @@ public final class JimMultipartParser {
     private static final Logger log = LoggerFactory.getLogger(JimMultipartParser.class);
     private static final String FILE_FIELD = "file";
     private static final String BODY_FIELD = "body";
+    // Sprint 07 Fix-2: optional "voice" field ("true"/"false") marking a
+    // recorded voice note vs a picked audio file. Absent = null (legacy client).
+    private static final String VOICE_FIELD = "voice";
 
     private JimMultipartParser() {
     }
@@ -50,6 +53,7 @@ public final class JimMultipartParser {
         File uploadedFile = null;
         String originalFilename = null;
         String fileContentType = null;
+        Boolean voice = null;
         for (String part : parts) {
             ParsedPart parsedPart;
             if (part == null || part.trim().isEmpty() || part.startsWith("--") || (parsedPart = JimMultipartParser.parsePart(part)) == null) continue;
@@ -60,13 +64,22 @@ public final class JimMultipartParser {
                 fileContentType = parsedPart.getContentType();
                 continue;
             }
+            if (VOICE_FIELD.equals(parsedPart.getFieldName())) {
+                String value = new String(parsedPart.getContent(), StandardCharsets.UTF_8).trim();
+                if ("true".equalsIgnoreCase(value)) {
+                    voice = Boolean.TRUE;
+                } else if ("false".equalsIgnoreCase(value)) {
+                    voice = Boolean.FALSE;
+                }
+                continue;
+            }
             if (!BODY_FIELD.equals(parsedPart.getFieldName())) continue;
             optionalBody = new String(parsedPart.getContent(), StandardCharsets.UTF_8);
         }
         if (uploadedFile == null || !uploadedFile.exists() || uploadedFile.length() == 0L) {
             throw JimMessengerException.badRequest("file field is required");
         }
-        return new ParsedMultipartForm(optionalBody, uploadedFile, fileContentType, originalFilename);
+        return new ParsedMultipartForm(optionalBody, uploadedFile, fileContentType, originalFilename, voice);
     }
 
     private static String extractBoundary(String contentType) {
@@ -279,12 +292,18 @@ public final class JimMultipartParser {
         private final File file;
         private final String contentType;
         private final String originalFilename;
+        private final Boolean voice;
 
         public ParsedMultipartForm(String body, File file, String contentType, String originalFilename) {
+            this(body, file, contentType, originalFilename, null);
+        }
+
+        public ParsedMultipartForm(String body, File file, String contentType, String originalFilename, Boolean voice) {
             this.body = body;
             this.file = file;
             this.contentType = contentType;
             this.originalFilename = originalFilename;
+            this.voice = voice;
         }
 
         public String getBody() {
@@ -301,6 +320,11 @@ public final class JimMultipartParser {
 
         public String getOriginalFilename() {
             return this.originalFilename;
+        }
+
+        /** Voice-note hint: TRUE/FALSE when the client sent it, null otherwise. */
+        public Boolean getVoice() {
+            return this.voice;
         }
     }
 }

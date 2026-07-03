@@ -2147,8 +2147,13 @@
         if (attachment.fileKind === 'IMAGE') {
             return 'Image';
         }
-        if (attachment.fileKind === 'AUDIO') {
+        // Sprint 07 Fix-2: `voice` distinguishes a recorded voice note from a
+        // picked/shared audio file. Missing field (older server) = voice.
+        if (attachment.fileKind === 'AUDIO' && attachment.voice !== false) {
             return 'Voice message';
+        }
+        if (attachment.fileKind === 'VIDEO') {
+            return 'Video';
         }
         return 'File: ' + (attachment.fileName || 'attachment');
     }
@@ -2164,12 +2169,32 @@
 
         if (attachment.fileKind === 'AUDIO' && (previewUrl || downloadUrl)) {
             var audioSrc = previewUrl || downloadUrl;
+            // Voice notes keep the "Voice message" label; picked/shared audio
+            // files show their real file name (still with the inline player).
+            var audioLabel = attachment.voice !== false ? 'Voice message' : fileName;
             return '' +
                 '<div class="jim-audio-attachment">' +
                 '  <audio class="jim-audio-player" controls preload="metadata" src="' + escapeHtml(audioSrc) + '"></audio>' +
                 '  <div class="jim-audio-meta">' +
-                '    <span class="jim-audio-label">Voice message</span>' +
+                '    <span class="jim-audio-label">' + escapeHtml(audioLabel) + '</span>' +
                 '    <span class="jim-attachment-caption-size">' + escapeHtml(formatFileSize(attachment.fileSize)) + '</span>' +
+                '  </div>' +
+                '</div>';
+        }
+
+        // Sprint 07 Fix-3: inline video playback via the same Range-capable
+        // preview stream the audio player uses.
+        if (attachment.fileKind === 'VIDEO' && (previewUrl || downloadUrl)) {
+            var videoSrc = previewUrl || downloadUrl;
+            return '' +
+                '<div class="jim-video-attachment">' +
+                '  <video class="jim-video-player" controls preload="metadata" src="' + escapeHtml(videoSrc) + '" style="max-width:320px;max-height:240px;border-radius:8px;"></video>' +
+                '  <div class="jim-audio-meta">' +
+                '    <span class="jim-audio-label">' + escapeHtml(fileName) + '</span>' +
+                '    <span class="jim-attachment-caption-size">' + escapeHtml(formatFileSize(attachment.fileSize)) + '</span>' +
+                (downloadUrl
+                    ? ' <a class="jim-image-download aui-button aui-button-link" href="' + escapeHtml(downloadUrl) + '" target="_blank" rel="noopener noreferrer">Download</a>'
+                    : '') +
                 '  </div>' +
                 '</div>';
         }
