@@ -163,9 +163,12 @@ implements JimConversationService {
     }
 
     void validateDirectConversationRequest(String currentUserKey, String targetUserKey) {
-        String normalizedCurrent = JimValidation.requireNonBlank(currentUserKey, "currentUserKey");
-        String normalizedTarget = JimValidation.requireNonBlank(targetUserKey, "targetUserKey");
-        JimValidation.requireDistinctUsers(normalizedCurrent, normalizedTarget);
+        // Self-direct conversations ("Saved Messages", Sprint 06 Fix-2) are
+        // allowed: current == target is intentional and produces a single
+        // canonical row (USER_A_KEY == USER_B_KEY). We therefore no longer
+        // require the two keys to be distinct here.
+        JimValidation.requireNonBlank(currentUserKey, "currentUserKey");
+        JimValidation.requireNonBlank(targetUserKey, "targetUserKey");
     }
 
     void validateSystemConversationRequest(String userKey) {

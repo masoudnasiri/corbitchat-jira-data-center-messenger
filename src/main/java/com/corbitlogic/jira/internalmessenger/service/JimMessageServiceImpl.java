@@ -127,6 +127,70 @@ implements JimMessageService {
         return created;
     }
 
+    @Override
+    public JimMessage forwardUserMessage(int targetConversationId, String forwarderUserKey, int sourceMessageId) {
+        JimValidation.requirePositiveId(targetConversationId, "conversationId");
+        JimValidation.requirePositiveId(sourceMessageId, "sourceMessageId");
+        JimValidation.requireNonBlank(forwarderUserKey, "forwarderUserKey");
+        String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
+        this.permissionService.requireSameUser(authenticatedUserKey, forwarderUserKey);
+        // Forwarder must participate in the TARGET conversation...
+        this.conversationService.getConversationForUser(targetConversationId, forwarderUserKey);
+        // ...and must be allowed to read the SOURCE message (participant of its
+        // conversation). getMessageForParticipant throws otherwise → forward is
+        // permission-safe on both ends.
+        JimMessage source = this.getMessageForParticipant(sourceMessageId, forwarderUserKey);
+        if (JimMessageFlags.isDeleted(source)) {
+            throw JimMessengerException.badRequest("Deleted messages cannot be forwarded");
+        }
+        if (!JimSenderType.USER.name().equals(source.getSenderType())) {
+            throw JimMessengerException.badRequest("Only user messages can be forwarded");
+        }
+        String normalizedBody = JimValidation.validateMessageBody(source.getBody());
+        // Chain to the ULTIMATE original author so re-forwarding preserves the
+        // true author rather than the last relayer.
+        final long originMessageId = source.getForwardedFromMessageId() != null
+                ? source.getForwardedFromMessageId()
+                : (long) source.getID();
+        final String originUserKey = source.getForwardedFromUserKey() != null
+                ? source.getForwardedFromUserKey()
+                : source.getSenderUserKey();
+        final String originDisplayName = source.getForwardedFromDisplayName() != null
+                ? source.getForwardedFromDisplayName()
+                : this.resolveDisplayName(source.getSenderUserKey());
+        long now = System.currentTimeMillis();
+        JimMessage created = (JimMessage)this.activeObjects.executeInTransaction(() -> {
+            JimMessage message = (JimMessage)this.activeObjects.create(JimMessage.class, new DBParam[0]);
+            message.setConversationId(targetConversationId);
+            message.setSenderType(JimSenderType.USER.name());
+            message.setSenderUserKey(forwarderUserKey);
+            message.setBody(normalizedBody);
+            message.setBodyFormat(JimBodyFormat.TEXT.name());
+            message.setEventType(JimEventType.NORMAL.name());
+            message.setCreatedAt(now);
+            message.setEdited(0);
+            message.setDeleted(0);
+            message.setForwardedFromMessageId(originMessageId);
+            message.setForwardedFromUserKey(originUserKey);
+            message.setForwardedFromDisplayName(originDisplayName);
+            message.setForwardedAt(now);
+            message.save();
+            this.conversationService.touchConversation(targetConversationId, normalizedBody, forwarderUserKey);
+            return message;
+        });
+        this.notifyGroupMentionsSafely(targetConversationId, forwarderUserKey, normalizedBody, created.getID());
+        this.notifyDirectRecipientPushSafely(targetConversationId, forwarderUserKey, normalizedBody, created.getID());
+        return created;
+    }
+
+    private String resolveDisplayName(String userKey) {
+        if (userKey == null) {
+            return null;
+        }
+        ApplicationUser user = ComponentAccessor.getUserManager().getUserByKey(userKey);
+        return user != null ? user.getDisplayName() : userKey;
+    }
+
     private void notifyDirectRecipientPushSafely(int conversationId, String senderUserKey, String preview, int messageId) {
         try {
             String recipient;

@@ -14,6 +14,15 @@ public interface JimMessageService {
 
     public JimMessage sendUserMessage(int var1, String var2, String var3, Long var4);
 
+    /**
+     * Forward an existing message into another conversation, preserving the
+     * original author's attribution (Sprint 06 Fix-1). Permission-safe: the
+     * forwarder must be a participant of both the source message's conversation
+     * and the target conversation. Args: targetConversationId, forwarderUserKey,
+     * sourceMessageId.
+     */
+    public JimMessage forwardUserMessage(int var1, String var2, int var3);
+
     public JimMessage sendIssueLinkMessage(int var1, String var2, String var3, String var4, String var5, String var6);
 
     public JimMessage editUserMessage(int var1, String var2, String var3);

@@ -147,5 +147,40 @@ extends Entity {
 
     @Mutator(value="ACTIONED_AT")
     public void setActionedAt(Long var1);
+
+    /**
+     * Forward attribution (Sprint 06 Fix-1). When a message is forwarded, a NEW
+     * message row is created in the target conversation carrying the original
+     * author's identity so the receiver can see it was forwarded and who wrote
+     * it. All four columns are nullable and auto-migrated; legacy rows (and
+     * non-forwarded messages) leave them null and render as normal messages.
+     * The forwarded-from message id / user key chain to the ULTIMATE original
+     * so re-forwarding preserves the true author rather than the last relayer.
+     */
+    @Accessor(value="FORWARDED_FROM_MESSAGE_ID")
+    public Long getForwardedFromMessageId();
+
+    @Mutator(value="FORWARDED_FROM_MESSAGE_ID")
+    public void setForwardedFromMessageId(Long var1);
+
+    @StringLength(value=255)
+    @Accessor(value="FORWARDED_FROM_USER_KEY")
+    public String getForwardedFromUserKey();
+
+    @Mutator(value="FORWARDED_FROM_USER_KEY")
+    public void setForwardedFromUserKey(String var1);
+
+    @StringLength(value=255)
+    @Accessor(value="FORWARDED_FROM_NAME")
+    public String getForwardedFromDisplayName();
+
+    @Mutator(value="FORWARDED_FROM_NAME")
+    public void setForwardedFromDisplayName(String var1);
+
+    @Accessor(value="FORWARDED_AT")
+    public Long getForwardedAt();
+
+    @Mutator(value="FORWARDED_AT")
+    public void setForwardedAt(Long var1);
 }
 

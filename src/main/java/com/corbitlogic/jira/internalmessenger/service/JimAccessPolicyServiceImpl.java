@@ -141,6 +141,12 @@ implements JimAccessPolicyService {
         if ("DISABLED".equals(mode)) {
             return false;
         }
+        // Self chat / "Saved Messages" (Sprint 06 Fix-2): a user may always
+        // chat with themselves whenever chat is not fully disabled, regardless
+        // of the RESTRICTED policy graph (which governs chatting with OTHERS).
+        if (initiatorUserKey != null && initiatorUserKey.equals(targetUserKey)) {
+            return true;
+        }
         if ("ALLOW_ALL".equals(mode)) {
             return true;
         }

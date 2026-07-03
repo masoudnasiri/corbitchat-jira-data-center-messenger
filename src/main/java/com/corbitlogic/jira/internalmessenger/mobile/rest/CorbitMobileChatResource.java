@@ -19,6 +19,7 @@ import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 import com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService;
 import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
 import com.corbitlogic.jira.internalmessenger.service.JimPresenceService;
+import com.corbitlogic.jira.internalmessenger.service.JimReactionService;
 import com.corbitlogic.jira.internalmessenger.service.JimReadStateService;
 import com.corbitlogic.jira.internalmessenger.service.JimUserSearchService;
 import java.util.ArrayList;
@@ -27,9 +28,11 @@ import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
 import javax.ws.rs.Consumes;
+import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
+import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
@@ -68,6 +71,7 @@ public class CorbitMobileChatResource {
     private final JimPermissionService permissionService;
     private final JimConversationService conversationService;
     private final JimMessageService messageService;
+    private final JimReactionService reactionService;
     private final JimReadStateService readStateService;
     private final JimPresenceService presenceService;
     private final JimRestJsonMapper restJsonMapper;
@@ -81,6 +85,7 @@ public class CorbitMobileChatResource {
                                     JimPermissionService permissionService,
                                     JimConversationService conversationService,
                                     JimMessageService messageService,
+                                    JimReactionService reactionService,
                                     JimReadStateService readStateService,
                                     JimPresenceService presenceService,
                                     JimRestJsonMapper restJsonMapper,
@@ -92,6 +97,7 @@ public class CorbitMobileChatResource {
         this.permissionService = permissionService;
         this.conversationService = conversationService;
         this.messageService = messageService;
+        this.reactionService = reactionService;
         this.readStateService = readStateService;
         this.presenceService = presenceService;
         this.restJsonMapper = restJsonMapper;
@@ -156,6 +162,44 @@ public class CorbitMobileChatResource {
     }
 
     // --- Create/open a DIRECT conversation ------------------------------------
+
+    @POST
+    @Path("/conversations/self")
+    public Response getOrCreateSelfConversation() {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        if (!this.licenseService.canUseMessaging()) {
+            return JimRestResponses.licenseBlocked();
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            // "Saved Messages": a direct conversation whose two sides are both
+            // the current user. Allowed by policy (self short-circuit) and by
+            // the conversation service (distinct-user rule relaxed).
+            this.accessPolicyService.requireCanChatWith(currentUserKey, currentUserKey);
+            JimConversation conversation =
+                    this.conversationService.getOrCreateDirectConversation(currentUserKey, currentUserKey);
+            this.permissionService.requireParticipant(conversation, currentUserKey);
+            int unreadCount = this.readStateService.getUnreadCount(conversation.getID(), currentUserKey);
+            Map<String, Object> convMap =
+                    this.restJsonMapper.toConversationMap(conversation, currentUserKey, viewer, unreadCount);
+            rewriteConversationAvatar(conversation, convMap, currentUserKey);
+            return JimRestResponses.okJson(convMap);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/conversations/self", userKey, ex,
+                    "internal_error", "An internal error occurred while opening Saved Messages.");
+        }
+    }
 
     @POST
     @Path("/conversations/direct")
@@ -305,6 +349,223 @@ public class CorbitMobileChatResource {
                     "POST /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/read",
                     userKey, ex, "internal_error", "An internal error occurred while marking the conversation as read.");
         }
+    }
+
+    // --- Message actions (Sprint 06): edit / delete / pin / react -------------
+    // Thin wrappers over the SAME services the web surface uses, so every rule
+    // (edit 30-min window, delete 10-min soft-delete, pin = one per conversation,
+    // reaction allowlist, participant/ownership checks) is enforced server-side.
+    // The mobile session token only authenticates /rest/corbit-mobile/1.0/*, so
+    // these must live here rather than the client calling /rest/jim/1.0/messages.
+
+    @PUT
+    @Path("/messages/{messageId}")
+    @Consumes({"application/json"})
+    public Response editMessage(@PathParam("messageId") int messageId, Map<String, Object> requestBody) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        String body = str(requestBody, "body");
+        if (body == null || body.trim().isEmpty()) {
+            return JimRestResponses.errorJson(400, "bad_request", "body is required");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimMessage message = this.messageService.editUserMessage(messageId, currentUserKey, body);
+            return okMessage(message, viewer, currentUserKey);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "PUT /rest/corbit-mobile/1.0/chat/messages/" + messageId, userKey, ex,
+                    "internal_error", "An internal error occurred while editing the message.");
+        }
+    }
+
+    @DELETE
+    @Path("/messages/{messageId}")
+    public Response deleteMessage(@PathParam("messageId") int messageId) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimMessage message = this.messageService.deleteUserMessage(messageId, currentUserKey);
+            return okMessage(message, viewer, currentUserKey);
+        } catch (JimMessengerException ex) {
+            if (ex.getStatusCode() == 403 && "Messages can only be deleted within 10 minutes.".equals(ex.getMessage())) {
+                return JimRestResponses.errorJson(403, "delete_window_expired", ex.getMessage());
+            }
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "DELETE /rest/corbit-mobile/1.0/chat/messages/" + messageId, userKey, ex,
+                    "internal_error", "An internal error occurred while deleting the message.");
+        }
+    }
+
+    @POST
+    @Path("/messages/{messageId}/pin")
+    public Response pinMessage(@PathParam("messageId") int messageId) {
+        return setPinned(messageId, true);
+    }
+
+    @DELETE
+    @Path("/messages/{messageId}/pin")
+    public Response unpinMessage(@PathParam("messageId") int messageId) {
+        return setPinned(messageId, false);
+    }
+
+    private Response setPinned(int messageId, boolean pinned) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimMessage message = this.messageService.setPinned(messageId, currentUserKey, pinned);
+            return okMessage(message, viewer, currentUserKey);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    (pinned ? "POST" : "DELETE") + " /rest/corbit-mobile/1.0/chat/messages/" + messageId + "/pin",
+                    userKey, ex, "internal_error", "An internal error occurred while updating the pinned message.");
+        }
+    }
+
+    @GET
+    @Path("/conversations/{conversationId}/pinned")
+    public Response getPinnedMessage(@PathParam("conversationId") int conversationId) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimConversation conversation =
+                    this.conversationService.getConversationForUser(conversationId, currentUserKey);
+            JimMessage pinned = this.messageService.getPinnedMessage(conversationId, currentUserKey);
+            Map<String, Object> body = new LinkedHashMap<>();
+            if (pinned == null) {
+                body.put("message", null);
+            } else {
+                Map<String, Object> messageMap =
+                        this.restJsonMapper.toMessageMap(pinned, viewer, conversation, currentUserKey);
+                rewriteMessageAvatar(messageMap);
+                body.put("message", messageMap);
+            }
+            return JimRestResponses.okJson(body);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/pinned",
+                    userKey, ex, "internal_error", "An internal error occurred while loading the pinned message.");
+        }
+    }
+
+    @POST
+    @Path("/messages/{messageId}/forward")
+    @Consumes({"application/json"})
+    public Response forwardMessage(@PathParam("messageId") int messageId, Map<String, Object> requestBody) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        Long targetConversationId = asLong(requestBody, "targetConversationId");
+        if (targetConversationId == null || targetConversationId <= 0) {
+            return JimRestResponses.errorJson(400, "bad_request", "targetConversationId is required");
+        }
+        if (!this.licenseService.canUseMessaging()) {
+            return JimRestResponses.licenseBlocked();
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimConversation target = this.conversationService.getConversationForUser(
+                    targetConversationId.intValue(), currentUserKey);
+            enforceDirectChatPolicy(target, currentUserKey);
+            JimMessage message = this.messageService.forwardUserMessage(
+                    targetConversationId.intValue(), currentUserKey, messageId);
+            return okMessage(message, viewer, currentUserKey);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/messages/" + messageId + "/forward",
+                    userKey, ex, "internal_error", "An internal error occurred while forwarding the message.");
+        }
+    }
+
+    @POST
+    @Path("/messages/{messageId}/reactions")
+    @Consumes({"application/json"})
+    public Response toggleReaction(@PathParam("messageId") int messageId, Map<String, Object> requestBody) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        String emoji = str(requestBody, "emoji");
+        if (emoji == null || emoji.trim().isEmpty()) {
+            return JimRestResponses.errorJson(400, "bad_request", "emoji is required");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            this.reactionService.toggleReaction(messageId, currentUserKey, emoji.trim());
+            JimMessage message = this.messageService.getMessageForParticipant(messageId, currentUserKey);
+            return okMessage(message, viewer, currentUserKey);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/messages/" + messageId + "/reactions",
+                    userKey, ex, "internal_error", "An internal error occurred while updating the reaction.");
+        }
+    }
+
+    /**
+     * Loads the message's conversation (participant-checked) and returns the
+     * shared message JSON with the mobile avatar-proxy rewrite applied.
+     */
+    private Response okMessage(JimMessage message, ApplicationUser viewer, String currentUserKey) {
+        JimConversation conversation =
+                this.conversationService.getConversationForUser(message.getConversationId(), currentUserKey);
+        Map<String, Object> messageMap =
+                this.restJsonMapper.toMessageMap(message, viewer, conversation, currentUserKey);
+        rewriteMessageAvatar(messageMap);
+        return JimRestResponses.okJson(messageMap);
     }
 
     // --- User search (start a chat) -------------------------------------------

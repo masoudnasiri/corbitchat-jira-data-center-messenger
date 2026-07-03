@@ -148,6 +148,52 @@ public class JimMessageResource {
     }
 
     @POST
+    @Path(value="/{messageId}/forward")
+    @Consumes(value={"application/json"})
+    public Response forwardMessage(@PathParam(value="messageId") int messageId, java.util.Map<String, Object> request) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        Integer targetConversationId = asInt(request, "targetConversationId");
+        if (targetConversationId == null || targetConversationId <= 0) {
+            return JimRestResponses.errorJson(400, "bad_request", "targetConversationId is required");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimMessage message = this.messageService.forwardUserMessage(targetConversationId, currentUserKey, messageId);
+            JimConversation conversation = this.conversationService.getConversationForUser(message.getConversationId(), currentUserKey);
+            return JimRestResponses.okJson(this.restJsonMapper.toMessageMap(message, viewer, conversation, currentUserKey));
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST /rest/jim/1.0/messages/" + messageId + "/forward", userKey, ex, "internal_error", "An internal error occurred while forwarding the message.");
+        }
+    }
+
+    private static Integer asInt(java.util.Map<String, Object> map, String key) {
+        if (map == null) {
+            return null;
+        }
+        Object value = map.get(key);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        try {
+            return Integer.valueOf(Integer.parseInt(value.toString().trim()));
+        }
+        catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    @POST
     @Path(value="/{messageId}/action")
     public Response markActioned(@PathParam(value="messageId") int messageId) {
         String userKey = this.resolveCurrentUserKey();

@@ -123,6 +123,11 @@ public class JimRestJsonMapper {
             return item;
         }
         String otherUserKey = this.resolveOtherParticipantKey(conversation, currentUserKey);
+        // Self "Saved Messages" conversation (Sprint 06 Fix-2): both sides are
+        // the viewer. Flag it so the client can label it distinctly.
+        boolean self = currentUserKey != null && currentUserKey.equals(conversation.getUserAKey())
+                && currentUserKey.equals(conversation.getUserBKey());
+        item.put("self", self);
         ApplicationUser otherUser = this.userManager.getUserByKey(otherUserKey);
         if (otherUser != null) {
             item.put("displayName", otherUser.getDisplayName());
@@ -198,6 +203,7 @@ public class JimRestJsonMapper {
         item.put("canEdit", ownMessage && isUserMessage && !deleted && this.isWithinEditWindow(message));
         item.put("canDelete", ownMessage && isUserMessage && !deleted && this.isWithinDeleteWindow(message));
         item.put("replyTo", this.buildReplyPreview(message, replyContext));
+        item.put("forwardedFrom", this.buildForwardedFrom(message));
         item.put("attachments", deleted ? Collections.emptyList() : this.toAttachmentMaps(attachments != null ? attachments : Collections.emptyList()));
         item.put("reactions", deleted ? Collections.emptyList() : this.toReactionMaps(reactions, currentUserKey));
         return item;
@@ -359,6 +365,32 @@ public class JimRestJsonMapper {
             replyAttachments = this.attachmentService.listAttachmentsForMessages(new ArrayList<JimMessage>(replyMessages.values()));
         }
         return new ReplyContext(replyMessages, replyAttachments);
+    }
+
+    /**
+     * Forward attribution block (Sprint 06 Fix-1), or null for non-forwarded
+     * messages. Carries the original author so the client can render
+     * "Forwarded from &lt;name&gt;". The display name is a stored snapshot taken
+     * at forward time; fall back to a live lookup if it is missing.
+     */
+    private Map<String, Object> buildForwardedFrom(JimMessage message) {
+        Long forwardedFromMessageId = message.getForwardedFromMessageId();
+        String forwardedFromUserKey = message.getForwardedFromUserKey();
+        if ((forwardedFromMessageId == null || forwardedFromMessageId <= 0L)
+                && (forwardedFromUserKey == null || forwardedFromUserKey.isEmpty())) {
+            return null;
+        }
+        LinkedHashMap<String, Object> info = new LinkedHashMap<String, Object>();
+        info.put("messageId", forwardedFromMessageId);
+        info.put("userKey", forwardedFromUserKey);
+        String displayName = message.getForwardedFromDisplayName();
+        if ((displayName == null || displayName.isEmpty()) && forwardedFromUserKey != null) {
+            ApplicationUser original = this.userManager.getUserByKey(forwardedFromUserKey);
+            displayName = original != null ? original.getDisplayName() : forwardedFromUserKey;
+        }
+        info.put("displayName", displayName);
+        info.put("at", message.getForwardedAt());
+        return info;
     }
 
     private Map<String, Object> buildReplyPreview(JimMessage message, ReplyContext replyContext) {
