@@ -46,6 +46,7 @@ import com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService;
 import com.corbitlogic.jira.internalmessenger.service.JimLicenseService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 import com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService;
+import com.corbitlogic.jira.internalmessenger.service.JimMobilePushService;
 import com.corbitlogic.jira.internalmessenger.service.JimPushService;
 import java.util.ArrayList;
 import java.util.Date;
@@ -82,9 +83,10 @@ public class JimAdminResource {
     private final ApplicationProperties applicationProperties;
     private final JimLicenseService licenseService;
     private final JimMobileFeatureService mobileFeatureService;
+    private final JimMobilePushService mobilePushService;
 
     @Inject
-    public JimAdminResource(JiraAuthenticationContext authenticationContext, GlobalPermissionManager globalPermissionManager, JimAdminSettingsService adminSettingsService, JimAccessPolicyService accessPolicyService, JimAdminAuditService auditService, JimPushService pushService, ActiveObjects activeObjects, ApplicationProperties applicationProperties, JimLicenseService licenseService, JimMobileFeatureService mobileFeatureService) {
+    public JimAdminResource(JiraAuthenticationContext authenticationContext, GlobalPermissionManager globalPermissionManager, JimAdminSettingsService adminSettingsService, JimAccessPolicyService accessPolicyService, JimAdminAuditService auditService, JimPushService pushService, ActiveObjects activeObjects, ApplicationProperties applicationProperties, JimLicenseService licenseService, JimMobileFeatureService mobileFeatureService, JimMobilePushService mobilePushService) {
         this.authenticationContext = authenticationContext;
         this.globalPermissionManager = globalPermissionManager;
         this.adminSettingsService = adminSettingsService;
@@ -95,6 +97,7 @@ public class JimAdminResource {
         this.applicationProperties = applicationProperties;
         this.licenseService = licenseService;
         this.mobileFeatureService = mobileFeatureService;
+        this.mobilePushService = mobilePushService;
     }
 
     @GET
@@ -363,6 +366,88 @@ public class JimAdminResource {
     }
 
     @GET
+    @Path(value="/mobile-push")
+    public Response getMobilePushConfig() {
+        try {
+            this.requireSysAdmin();
+            return JimRestResponses.okJson(this.mobilePushService.diagnostics());
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("GET /admin/mobile-push", ex);
+        }
+    }
+
+    @POST
+    @Path(value="/mobile-push")
+    @Consumes(value={"application/json"})
+    public Response configureMobilePush(Map<String, Object> request) {
+        try {
+            ApplicationUser admin = this.requireSysAdmin();
+            if (!this.licenseService.canUseAdminSettings()) {
+                return JimRestResponses.licenseBlocked();
+            }
+            if (request == null) {
+                return JimRestResponses.errorJson(400, "bad_request", "Service-account configuration is required");
+            }
+            this.mobilePushService.configure(request);
+            // Audit only non-secret metadata; never the private key.
+            this.auditService.record(admin.getKey(), "mobilePush.configure", "configured=true");
+            return JimRestResponses.okJson(this.mobilePushService.diagnostics());
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("POST /admin/mobile-push", ex);
+        }
+    }
+
+    @POST
+    @Path(value="/mobile-push/test")
+    @Consumes(value={"application/json"})
+    public Response testMobilePush(Map<String, Object> request) {
+        try {
+            this.requireSysAdmin();
+            String token = request != null ? JimAdminResource.str(request, "token") : null;
+            String result = this.mobilePushService.sendTestToToken(token);
+            LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("result", result);
+            return JimRestResponses.okJson(body);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("POST /admin/mobile-push/test", ex);
+        }
+    }
+
+    @DELETE
+    @Path(value="/mobile-push")
+    public Response clearMobilePush() {
+        try {
+            ApplicationUser admin = this.requireSysAdmin();
+            if (!this.licenseService.canUseAdminSettings()) {
+                return JimRestResponses.licenseBlocked();
+            }
+            this.mobilePushService.clearConfig();
+            this.auditService.record(admin.getKey(), "mobilePush.clear", "configured=false");
+            LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("cleared", true);
+            return JimRestResponses.okJson(body);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("DELETE /admin/mobile-push", ex);
+        }
+    }
+
+    @GET
     @Path(value="/diagnostics")
     public Response getDiagnostics(@Context HttpServletRequest request) {
         try {
@@ -405,6 +490,12 @@ public class JimAdminResource {
             }
             catch (RuntimeException ex) {
                 body.put("mobileFeatureRuleCount", 0);
+            }
+            try {
+                body.put("mobilePush", this.mobilePushService.diagnostics());
+            }
+            catch (RuntimeException ex) {
+                body.put("mobilePush", "unavailable");
             }
             return JimRestResponses.okJson(body);
         }

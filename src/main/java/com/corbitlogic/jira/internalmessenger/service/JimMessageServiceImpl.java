@@ -25,6 +25,8 @@ import com.corbitlogic.jira.internalmessenger.model.JimBodyFormat;
 import com.corbitlogic.jira.internalmessenger.model.JimConversationType;
 import com.corbitlogic.jira.internalmessenger.model.JimEventType;
 import com.corbitlogic.jira.internalmessenger.model.JimSenderType;
+import com.corbitlogic.jira.internalmessenger.mobile.JimMobileFeatures;
+import com.corbitlogic.jira.internalmessenger.mobile.push.MobilePushEvent;
 import com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService;
 import com.corbitlogic.jira.internalmessenger.service.JimAttachmentService;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
@@ -62,8 +64,9 @@ implements JimMessageService {
     private final JimPresenceService presenceService;
     private final JimPushService pushService;
     private final JimAdminSettingsService adminSettingsService;
+    private final JimMobilePushService mobilePushService;
 
-    public JimMessageServiceImpl(ActiveObjects activeObjects, JimConversationService conversationService, JimPermissionService permissionService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimPresenceService presenceService, JimPushService pushService, JimAdminSettingsService adminSettingsService) {
+    public JimMessageServiceImpl(ActiveObjects activeObjects, JimConversationService conversationService, JimPermissionService permissionService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimPresenceService presenceService, JimPushService pushService, JimAdminSettingsService adminSettingsService, JimMobilePushService mobilePushService) {
         this.activeObjects = activeObjects;
         this.conversationService = conversationService;
         this.permissionService = permissionService;
@@ -72,6 +75,7 @@ implements JimMessageService {
         this.presenceService = presenceService;
         this.pushService = pushService;
         this.adminSettingsService = adminSettingsService;
+        this.mobilePushService = mobilePushService;
     }
 
     private boolean pushAllowedForEvent(JimEventType eventType) {
@@ -147,9 +151,43 @@ implements JimMessageService {
                 chatPayload.put("messageId", String.valueOf(messageId));
             }
             this.pushService.pushToUserAsync(recipient, chatPayload);
+            // Native mobile push (Sprint 05/05B): a SEPARATE channel from web push.
+            // The raw preview is passed to the sender, which decides — per the
+            // recipient's notification preferences — how much (if any) to include.
+            this.sendMobileChatPush(recipient, senderUserKey, senderName, preview, conversationId, messageId);
         }
         catch (RuntimeException runtimeException) {
             // empty catch block
+        }
+    }
+
+    /**
+     * Enqueue a native mobile push for a direct message. The message body is
+     * passed to the push sender as a candidate preview only; whether it is
+     * actually included is decided by the recipient's notification preferences
+     * (detail level + message-preview toggle). The client always re-fetches full
+     * data from the BFF (which rechecks permissions) after the notification tap.
+     */
+    private void sendMobileChatPush(String recipient, String senderUserKey, String senderName,
+                                    String preview, int conversationId, int messageId) {
+        try {
+            if (this.mobilePushService == null) {
+                return;
+            }
+            MobilePushEvent event = MobilePushEvent.builder(MobilePushEvent.CHAT_MESSAGE, JimMobileFeatures.CHAT)
+                    .category(MobilePushEvent.CAT_CHAT)
+                    .entityId(String.valueOf(conversationId))
+                    .deepLink("corbithub://chat/conversation/" + conversationId)
+                    .actorName(senderName)
+                    .actorUserKey(senderUserKey)
+                    .chatPreview(preview)
+                    .genericBody("New message")
+                    .dedupeKey("chat|" + conversationId + "|" + messageId + "|" + recipient)
+                    .extra("conversationId", String.valueOf(conversationId))
+                    .build();
+            this.mobilePushService.sendToUser(recipient, event);
+        } catch (RuntimeException ex) {
+            // Never let mobile push failures affect message delivery.
         }
     }
 
@@ -375,6 +413,10 @@ implements JimMessageService {
                     assistantPayload.put("conversationId", String.valueOf(conversation.getID()));
                     assistantPayload.put("messageId", String.valueOf(created.getID()));
                     this.pushService.pushToUserAsync(normalizedTarget, assistantPayload);
+                    // Native mobile push (Sprint 05/05B), feature- and preference-aware.
+                    this.sendMobileSystemPush(normalizedTarget, normalizedEventType, actorUserKey,
+                            actorDisplayName, this.trimToNull(issueKey), conversation.getID(),
+                            created.getID(), fingerprint);
                 }
             }
             catch (RuntimeException runtimeException) {
@@ -382,6 +424,74 @@ implements JimMessageService {
             }
         }
         return created;
+    }
+
+    /**
+     * Enqueue a privacy-safe native mobile push for a system/assistant message.
+     * Issue-related events (with an issue key) deep-link to Issue Detail and are
+     * gated on the {@code issueDetail} mobile feature; chat/assistant mentions
+     * without an issue key deep-link to the assistant conversation and are gated
+     * on {@code chat}. No issue summary or body is ever included.
+     */
+    private void sendMobileSystemPush(String targetUserKey, JimEventType eventType, String actorUserKey,
+                                      String actorDisplayName, String issueKey, int conversationId,
+                                      int messageId, String fingerprint) {
+        try {
+            if (this.mobilePushService == null) {
+                return;
+            }
+            MobilePushEvent event;
+            // A safe, high-level summary (no issue description/comments/fields).
+            String summary = JimMessageServiceImpl.buildPushTitleForEvent(eventType, issueKey);
+            String actor = this.trimToNull(actorUserKey);
+            String actorName = this.trimToNull(actorDisplayName);
+            String dedupe = fingerprint != null ? fingerprint
+                    : (eventType.name() + "|" + issueKey + "|" + targetUserKey + "|" + messageId);
+            boolean isMention = eventType == JimEventType.MENTION;
+            if (issueKey != null) {
+                event = MobilePushEvent.builder(mobileEventTypeForIssue(eventType), JimMobileFeatures.ISSUE_DETAIL)
+                        .category(isMention ? MobilePushEvent.CAT_MENTION : MobilePushEvent.CAT_TASK)
+                        .entityId(issueKey)
+                        .deepLink("corbithub://issue/" + issueKey)
+                        .issueKey(issueKey)
+                        .actorName(actorName)
+                        .actorUserKey(actor)
+                        .summaryText(summary)
+                        .genericBody(isMention ? "You were mentioned" : "Task update")
+                        .dedupeKey(dedupe)
+                        .extra("issueKey", issueKey)
+                        .build();
+            } else {
+                event = MobilePushEvent.builder(MobilePushEvent.CHAT_MESSAGE,
+                                isMention ? JimMobileFeatures.CHAT : JimMobileFeatures.CHAT)
+                        .category(isMention ? MobilePushEvent.CAT_MENTION : MobilePushEvent.CAT_CHAT)
+                        .entityId(String.valueOf(conversationId))
+                        .deepLink("corbithub://chat/conversation/" + conversationId)
+                        .actorName(actorName)
+                        .actorUserKey(actor)
+                        .summaryText(summary)
+                        .genericBody(isMention ? "You were mentioned" : "New message")
+                        .dedupeKey(dedupe)
+                        .extra("conversationId", String.valueOf(conversationId))
+                        .build();
+            }
+            this.mobilePushService.sendToUser(targetUserKey, event);
+        } catch (RuntimeException ex) {
+            // Never let mobile push failures affect message delivery.
+        }
+    }
+
+    private static String mobileEventTypeForIssue(JimEventType eventType) {
+        switch (eventType) {
+            case ASSIGNMENT:
+                return MobilePushEvent.ISSUE_ASSIGNMENT;
+            case STATUS_CHANGE:
+                return MobilePushEvent.ISSUE_STATUS;
+            case MENTION:
+                return MobilePushEvent.ISSUE_MENTION;
+            default:
+                return MobilePushEvent.ISSUE_STATUS;
+        }
     }
 
     @Override

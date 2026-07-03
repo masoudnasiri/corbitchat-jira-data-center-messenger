@@ -71,6 +71,67 @@ public interface JimMobilePreference extends Entity {
     @Mutator("QUIET_HOURS")
     void setQuietHours(String quietHours);
 
+    // --- Sprint 05B: granular push notification preferences -------------------
+    // All Boolean (nullable) columns are additive; a null value means "not set"
+    // and is coerced to the safe default (enabled) when read.
+
+    /** Master switch for native mobile push. Null = enabled. */
+    @Accessor("PUSH_ENABLED")
+    Boolean getPushEnabled();
+
+    @Mutator("PUSH_ENABLED")
+    void setPushEnabled(Boolean pushEnabled);
+
+    /** Direct-chat push category. Null = enabled. */
+    @Accessor("CHAT_PUSH")
+    Boolean getChatPushEnabled();
+
+    @Mutator("CHAT_PUSH")
+    void setChatPushEnabled(Boolean chatPushEnabled);
+
+    /** Task/assignment/status push category. Null = enabled. */
+    @Accessor("TASK_PUSH")
+    Boolean getTaskPushEnabled();
+
+    @Mutator("TASK_PUSH")
+    void setTaskPushEnabled(Boolean taskPushEnabled);
+
+    /** Mention/assistant push category. Null = enabled. */
+    @Accessor("MENTION_PUSH")
+    Boolean getMentionPushEnabled();
+
+    @Mutator("MENTION_PUSH")
+    void setMentionPushEnabled(Boolean mentionPushEnabled);
+
+    /** Overdue/today reminder push category. Null = enabled. */
+    @Accessor("REMINDER_PUSH")
+    Boolean getReminderPushEnabled();
+
+    @Mutator("REMINDER_PUSH")
+    void setReminderPushEnabled(Boolean reminderPushEnabled);
+
+    /** Notification detail level: {@code generic} | {@code keyOnly} | {@code preview}. */
+    @StringLength(16)
+    @Accessor("DETAIL_LEVEL")
+    String getDetailLevel();
+
+    @Mutator("DETAIL_LEVEL")
+    void setDetailLevel(String detailLevel);
+
+    /** Whether chat message text is shown in the notification. Null = enabled. */
+    @Accessor("SHOW_PREVIEW")
+    Boolean getShowMessagePreview();
+
+    @Mutator("SHOW_PREVIEW")
+    void setShowMessagePreview(Boolean showMessagePreview);
+
+    /** Whether the sender avatar is shown in the notification. Null = enabled. */
+    @Accessor("SHOW_AVATAR")
+    Boolean getShowSenderAvatar();
+
+    @Mutator("SHOW_AVATAR")
+    void setShowSenderAvatar(Boolean showSenderAvatar);
+
     @Accessor("UPDATED_AT")
     Long getUpdatedAt();
 

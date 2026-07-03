@@ -67,13 +67,23 @@ public class CorbitMobilePreferencesResource {
                     "You must be signed in to use CorbitChat Mobile.");
         }
         try {
-            MobilePreferences patch = new MobilePreferences(
-                    str(requested, "language"),
-                    str(requested, "theme"),
-                    str(requested, "calendar"),
-                    str(requested, "notificationLevel"),
-                    str(requested, "quietHours"),
-                    0L);
+            // A partial PATCH: only non-null fields are applied by the service.
+            MobilePreferences patch = MobilePreferences.builder()
+                    .language(str(requested, "language"))
+                    .theme(str(requested, "theme"))
+                    .calendar(str(requested, "calendar"))
+                    .notificationLevel(str(requested, "notificationLevel"))
+                    .quietHours(str(requested, "quietHours"))
+                    .pushEnabled(bool(requested, "pushEnabled"))
+                    .chatPushEnabled(bool(requested, "chatPushEnabled"))
+                    .taskPushEnabled(bool(requested, "taskPushEnabled"))
+                    .mentionPushEnabled(bool(requested, "mentionPushEnabled"))
+                    .reminderPushEnabled(bool(requested, "reminderPushEnabled"))
+                    .detailLevel(str(requested, "detailLevel"))
+                    .showMessagePreview(bool(requested, "showMessagePreview"))
+                    .showSenderAvatar(bool(requested, "showSenderAvatar"))
+                    .updatedAt(0L)
+                    .build();
             MobilePreferences saved = this.preferenceService.saveForUser(user.getKey(), patch);
             Map<String, Object> body = saved.toMap();
             body.put("ok", true);
@@ -93,5 +103,27 @@ public class CorbitMobilePreferencesResource {
         }
         Object value = map.get(key);
         return value == null ? null : value.toString();
+    }
+
+    /** Read a nullable boolean; absent key → null (so the service keeps current). */
+    private static Boolean bool(Map<String, Object> map, String key) {
+        if (map == null || !map.containsKey(key)) {
+            return null;
+        }
+        Object value = map.get(key);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        String s = value.toString().trim();
+        if ("true".equalsIgnoreCase(s) || "1".equals(s)) {
+            return Boolean.TRUE;
+        }
+        if ("false".equalsIgnoreCase(s) || "0".equals(s)) {
+            return Boolean.FALSE;
+        }
+        return null;
     }
 }

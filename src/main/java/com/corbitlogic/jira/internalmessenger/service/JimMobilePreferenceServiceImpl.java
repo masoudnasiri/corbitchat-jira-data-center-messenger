@@ -46,6 +46,20 @@ public class JimMobilePreferenceServiceImpl implements JimMobilePreferenceServic
         final String quietHours = truncate(
                 requested.getQuietHours() != null ? requested.getQuietHours() : current.getQuietHours(),
                 QUIET_HOURS_MAX);
+
+        // Push preferences: null in the patch means "keep current".
+        final boolean pushEnabled = firstNonNull(requested.getPushEnabled(), current.getPushEnabled(), Boolean.TRUE);
+        final boolean chatPush = firstNonNull(requested.getChatPushEnabled(), current.getChatPushEnabled(), Boolean.TRUE);
+        final boolean taskPush = firstNonNull(requested.getTaskPushEnabled(), current.getTaskPushEnabled(), Boolean.TRUE);
+        final boolean mentionPush = firstNonNull(requested.getMentionPushEnabled(), current.getMentionPushEnabled(), Boolean.TRUE);
+        final boolean reminderPush = firstNonNull(requested.getReminderPushEnabled(), current.getReminderPushEnabled(), Boolean.TRUE);
+        final String detailLevel = normalizeEnum(
+                firstNonNull(requested.getDetailLevel(), current.getDetailLevel()),
+                current.getDetailLevel(),
+                MobilePreferences.DETAIL_GENERIC, MobilePreferences.DETAIL_KEY_ONLY, MobilePreferences.DETAIL_PREVIEW);
+        final boolean showPreview = firstNonNull(requested.getShowMessagePreview(), current.getShowMessagePreview(), Boolean.TRUE);
+        final boolean showAvatar = firstNonNull(requested.getShowSenderAvatar(), current.getShowSenderAvatar(), Boolean.TRUE);
+
         final long now = System.currentTimeMillis();
 
         this.activeObjects.executeInTransaction(() -> {
@@ -59,12 +73,35 @@ public class JimMobilePreferenceServiceImpl implements JimMobilePreferenceServic
             row.setCalendar(calendar);
             row.setNotificationLevel(notificationLevel);
             row.setQuietHours(quietHours);
+            row.setPushEnabled(pushEnabled);
+            row.setChatPushEnabled(chatPush);
+            row.setTaskPushEnabled(taskPush);
+            row.setMentionPushEnabled(mentionPush);
+            row.setReminderPushEnabled(reminderPush);
+            row.setDetailLevel(detailLevel);
+            row.setShowMessagePreview(showPreview);
+            row.setShowSenderAvatar(showAvatar);
             row.setUpdatedAt(now);
             row.save();
             return null;
         });
 
-        return new MobilePreferences(language, theme, calendar, notificationLevel, quietHours, now);
+        return MobilePreferences.builder()
+                .language(language)
+                .theme(theme)
+                .calendar(calendar)
+                .notificationLevel(notificationLevel)
+                .quietHours(quietHours)
+                .pushEnabled(pushEnabled)
+                .chatPushEnabled(chatPush)
+                .taskPushEnabled(taskPush)
+                .mentionPushEnabled(mentionPush)
+                .reminderPushEnabled(reminderPush)
+                .detailLevel(detailLevel)
+                .showMessagePreview(showPreview)
+                .showSenderAvatar(showAvatar)
+                .updatedAt(now)
+                .build();
     }
 
     private JimMobilePreference findForUser(String userKey) {
@@ -74,13 +111,25 @@ public class JimMobilePreferenceServiceImpl implements JimMobilePreferenceServic
     }
 
     private MobilePreferences toValue(JimMobilePreference row) {
-        return new MobilePreferences(
-                orDefault(row.getLanguage(), MobilePreferences.DEFAULT_LANGUAGE),
-                orDefault(row.getTheme(), MobilePreferences.DEFAULT_THEME),
-                orDefault(row.getCalendar(), MobilePreferences.DEFAULT_CALENDAR),
-                orDefault(row.getNotificationLevel(), MobilePreferences.DEFAULT_NOTIFICATION_LEVEL),
-                row.getQuietHours(),
-                row.getUpdatedAt() == null ? 0L : row.getUpdatedAt());
+        String detailLevel = normalizeEnum(row.getDetailLevel(), MobilePreferences.DEFAULT_DETAIL_LEVEL,
+                MobilePreferences.DETAIL_GENERIC, MobilePreferences.DETAIL_KEY_ONLY, MobilePreferences.DETAIL_PREVIEW);
+        return MobilePreferences.builder()
+                .language(orDefault(row.getLanguage(), MobilePreferences.DEFAULT_LANGUAGE))
+                .theme(orDefault(row.getTheme(), MobilePreferences.DEFAULT_THEME))
+                .calendar(orDefault(row.getCalendar(), MobilePreferences.DEFAULT_CALENDAR))
+                .notificationLevel(orDefault(row.getNotificationLevel(), MobilePreferences.DEFAULT_NOTIFICATION_LEVEL))
+                .quietHours(row.getQuietHours())
+                // Null (legacy rows) → enabled default.
+                .pushEnabled(row.getPushEnabled() == null ? Boolean.TRUE : row.getPushEnabled())
+                .chatPushEnabled(row.getChatPushEnabled() == null ? Boolean.TRUE : row.getChatPushEnabled())
+                .taskPushEnabled(row.getTaskPushEnabled() == null ? Boolean.TRUE : row.getTaskPushEnabled())
+                .mentionPushEnabled(row.getMentionPushEnabled() == null ? Boolean.TRUE : row.getMentionPushEnabled())
+                .reminderPushEnabled(row.getReminderPushEnabled() == null ? Boolean.TRUE : row.getReminderPushEnabled())
+                .detailLevel(detailLevel)
+                .showMessagePreview(row.getShowMessagePreview() == null ? Boolean.TRUE : row.getShowMessagePreview())
+                .showSenderAvatar(row.getShowSenderAvatar() == null ? Boolean.TRUE : row.getShowSenderAvatar())
+                .updatedAt(row.getUpdatedAt() == null ? 0L : row.getUpdatedAt())
+                .build();
     }
 
     private static void requireUserKey(String userKey) {
@@ -106,7 +155,7 @@ public class JimMobilePreferenceServiceImpl implements JimMobilePreferenceServic
 
     private static String normalizeEnum(String value, String fallback, String... allowed) {
         if (value == null) {
-            return fallback;
+            return fallback != null ? fallback : allowed[0];
         }
         String trimmed = value.trim();
         for (String option : allowed) {
@@ -123,6 +172,16 @@ public class JimMobilePreferenceServiceImpl implements JimMobilePreferenceServic
 
     private static String firstNonNull(String a, String b) {
         return a != null ? a : b;
+    }
+
+    private static boolean firstNonNull(Boolean a, Boolean b, Boolean fallback) {
+        if (a != null) {
+            return a;
+        }
+        if (b != null) {
+            return b;
+        }
+        return fallback != null && fallback;
     }
 
     private static String truncate(String value, int max) {

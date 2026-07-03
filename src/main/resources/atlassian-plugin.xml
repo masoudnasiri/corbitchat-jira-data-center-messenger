@@ -24,6 +24,7 @@
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimMobilePreference</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimMobileSession</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimMobileFeatureRule</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimMobileDevice</entity>
     </ao>
 
     <component-import key="activeObjects" interface="com.atlassian.activeobjects.external.ActiveObjects"/>
@@ -117,6 +118,30 @@
                class="com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureServiceImpl">
         <description>Mobile feature access-control rules for CorbitChat Mobile</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService</interface>
+    </component>
+
+    <component key="jimMobileDeviceService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMobileDeviceServiceImpl">
+        <description>Native mobile push device registration for CorbitHub Mobile</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimMobileDeviceService</interface>
+    </component>
+
+    <component key="jimMobileFcmClient"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMobileFcmClient">
+        <description>Firebase Cloud Messaging HTTP v1 client for CorbitHub Mobile push</description>
+    </component>
+
+    <component key="jimMobilePushService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMobilePushServiceImpl">
+        <description>Feature-aware native mobile push sender for CorbitHub Mobile</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimMobilePushService</interface>
+    </component>
+
+    <component key="jimMobileReminderScheduler"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMobileReminderScheduler"
+               public="true">
+        <description>Daily overdue/today reminder push sweep for CorbitHub Mobile</description>
+        <interface>com.atlassian.sal.api.lifecycle.LifecycleAware</interface>
     </component>
 
     <component key="jimMobilePreferenceService"
