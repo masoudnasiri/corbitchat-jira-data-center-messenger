@@ -8,6 +8,7 @@ import com.corbitlogic.jira.internalmessenger.ao.JimConversation;
 import com.corbitlogic.jira.internalmessenger.mobile.JimMobileFeatures;
 import com.corbitlogic.jira.internalmessenger.mobile.MobilePreferences;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
+import com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
 import com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService;
 import com.corbitlogic.jira.internalmessenger.service.JimMobilePreferenceService;
@@ -45,6 +46,7 @@ public class CorbitMobileBootstrapResource {
     private final JimConversationService conversationService;
     private final JimReadStateService readStateService;
     private final JimMobileFeatureService featureService;
+    private final JimAdminSettingsService adminSettingsService;
 
     @Inject
     public CorbitMobileBootstrapResource(JiraAuthenticationContext authenticationContext,
@@ -52,13 +54,15 @@ public class CorbitMobileBootstrapResource {
                                          JimMobilePreferenceService preferenceService,
                                          JimConversationService conversationService,
                                          JimReadStateService readStateService,
-                                         JimMobileFeatureService featureService) {
+                                         JimMobileFeatureService featureService,
+                                         JimAdminSettingsService adminSettingsService) {
         this.authenticationContext = authenticationContext;
         this.avatarService = avatarService;
         this.preferenceService = preferenceService;
         this.conversationService = conversationService;
         this.readStateService = readStateService;
         this.featureService = featureService;
+        this.adminSettingsService = adminSettingsService;
     }
 
     @GET
@@ -117,6 +121,13 @@ public class CorbitMobileBootstrapResource {
             body.put("mobileFeatureOrder", JimMobileFeatures.all());
             body.put("preferences", prefs.toMap());
             body.put("unread", computeUnread(user.getKey()));
+
+            // Branding polish: the admin-configured branding (same values the
+            // web chat header uses) so the app can brand its own surfaces.
+            Map<String, Object> branding = new LinkedHashMap<>();
+            branding.put("title", this.adminSettingsService.getBrandingTitle());
+            branding.put("logoUrl", this.adminSettingsService.getBrandingLogoUrl());
+            body.put("branding", branding);
 
             return JimRestResponses.okJson(body);
         } catch (Exception ex) {
