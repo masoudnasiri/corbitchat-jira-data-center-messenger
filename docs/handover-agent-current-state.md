@@ -39,17 +39,17 @@ destructively, or existing `/rest/jim/1.0/*` contracts.
 
 ### Current git state (IMPORTANT)
 
-Committed (local, NOT pushed):
+Committed (local, NOT pushed — GitHub push still blocked, see above):
 - Plugin: `e70b36c` (Sprint 07 Fix-1..4 attachments/voice/video/vcard),
-  `0190013` (branding endpoint + bootstrap block).
-- Mobile: `6e47a2e` (Sprint 07 media), `7b41c41` (branding + Hub rename).
+  `0190013` (branding endpoint + bootstrap block), `ebfb722` (Sprint 08
+  +Fix-1..3 group/project chat, mentions, forward), `d0db225` (docs refresh).
+- Mobile: `6e47a2e` (Sprint 07 media), `7b41c41` (branding + Hub rename),
+  `d0bbfa2` (Sprint 08 +Fix-1..3 group/project chat, mentions, Assistant, polish).
 
-Uncommitted (deliberately — commit ONLY after the owner accepts the sprint):
-- All **Sprint 08 + Fix-1 + Fix-2 + Fix-3** work in both repos (group chat,
-  project chat, chat filters, mentions, emoji panel, Jira Assistant,
-  attachment forwarding, push fan-out, notification icon, contrast,
-  scroll-to-latest). `dist/` is gitignored in both repos; never commit APKs,
-  jars, secrets, google-services.json, Firebase admin JSON, or keystores.
+Sprint 08 (+Fix-1..3) was accepted on-device (2026-07-04) and is now committed
+locally in both repos; it still needs to be **pushed** once a GitHub credential
+is available. `dist/` is gitignored in both repos; never commit APKs, jars,
+secrets, google-services.json, Firebase admin JSON, or keystores.
 
 ---
 
@@ -176,7 +176,7 @@ only the mention push); `voice` flag separates voice notes from audio files;
 | Sprints 00–06 (+fixes) | Done, committed & on both servers |
 | Sprint 07 + Fix-1..4 (attachments, voice+speed, video+compression, contact/location, crop editor, save/share, panel) | Done, accepted, committed locally (NOT pushed) |
 | Branding polish 1+2 (icon, server branding, login UX, "Hub" rename) | Done, accepted, committed locally (NOT pushed) |
-| Sprint 08 + Fix-1..3 (groups, project chat, filters, mentions, emoji panel, Assistant, attachment forward, push fan-out, notif icon, contrast, scroll-to-latest) | Done, deployed dev+prod, **UNCOMMITTED — awaiting owner acceptance** |
+| Sprint 08 + Fix-1..3 (groups, project chat, filters, mentions, emoji panel, Assistant, attachment forward, push fan-out, notif icon, contrast, scroll-to-latest) | Done, accepted, deployed dev+prod, committed locally (NOT pushed) |
 | Sprints 09–14 (roadmap: `docs/mobile-roadmap/`) | Planned docs only |
 
 Known limitations (documented, deliberate): no in-app video player (system
@@ -190,7 +190,9 @@ emoji recents are session-only, OSM map tiles need internet on the device.
    `docs/mobile-roadmap/README.md`.
 2. Run the §7 smoke against dev AND prod; confirm both report
    `1.0.0-mobile-s08-fix3`.
-3. Ask the owner whether Sprint 08 (+fixes) is accepted on-device. If yes:
-   create the closure commits in both repos (exclude `dist/`; sprint-per-
-   commit), then resolve the GitHub push credential with the owner and push.
-4. Continue with the next roadmap sprint only after closure.
+3. Sprint 08 (+Fix-1..3) is accepted and committed locally (2026-07-04).
+   Remaining closure step: resolve the GitHub push credential with the owner
+   and push both repos (plugin `feature/reply-composer-attachments`, mobile
+   `main`) — several local commits are ahead of origin.
+4. Then continue with the next roadmap sprint — Sprint 09 (issue comments &
+   reply-to-comment), guide at `docs/mobile-roadmap/sprint-09-comments-replies.md`.
