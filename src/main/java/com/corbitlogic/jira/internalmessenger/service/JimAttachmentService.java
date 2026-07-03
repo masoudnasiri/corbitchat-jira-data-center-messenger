@@ -203,6 +203,57 @@ public class JimAttachmentService {
         }
     }
 
+    /**
+     * Sprint 08 Fix-2 (attachment forwarding): clone every live attachment of
+     * [sourceMessageId] onto [targetMessage]. Each clone gets its OWN copy of
+     * the stored file plus a fresh AO row carrying the same metadata
+     * (filename, content type, kind, voice flag, dimensions), so the
+     * forwarded message renders/opens/saves identically — voice notes stay
+     * voice notes, videos stay videos, vCards stay contact cards. Access
+     * control is untouched: forwarded attachments belong to the TARGET
+     * conversation and are served only to its participants.
+     *
+     * <p>Callers verify read permission on the source message BEFORE calling
+     * (the forward flow does). Per-attachment failures are logged and
+     * skipped so one broken file cannot kill the whole forward.</p>
+     */
+    public List<JimAttachment> cloneAttachmentsForForward(int sourceMessageId, JimMessage targetMessage) {
+        List<JimAttachment> cloned = new ArrayList<JimAttachment>();
+        for (JimAttachment source : this.listAttachmentsForMessage(sourceMessageId)) {
+            try {
+                JimAttachmentStorageService.StoredAttachmentFile copy =
+                        this.storageService.copyStoredAttachment(source);
+                long now = System.currentTimeMillis();
+                JimAttachment row = (JimAttachment)this.activeObjects.executeInTransaction(() -> {
+                    JimAttachment attachment = (JimAttachment)this.activeObjects.create(JimAttachment.class, new DBParam[0]);
+                    attachment.setMessageId(targetMessage.getID());
+                    attachment.setConversationId(targetMessage.getConversationId());
+                    attachment.setUploaderUserKey(targetMessage.getSenderUserKey());
+                    attachment.setOriginalFilename(copy.getOriginalFilename());
+                    attachment.setStoredFilename(copy.getStoredFilename());
+                    attachment.setStoragePath(copy.getStoragePath());
+                    attachment.setContentType(copy.getContentType());
+                    attachment.setFileSize(copy.getFileSize());
+                    attachment.setFileKind(copy.getFileKind());
+                    attachment.setVoice(source.getVoice());
+                    attachment.setWidth(source.getWidth());
+                    attachment.setHeight(source.getHeight());
+                    attachment.setCreatedAt(now);
+                    attachment.setDeleted(0);
+                    attachment.save();
+                    return attachment;
+                });
+                cloned.add(row);
+                log.info("event=attachment stage=forward outcome=success sourceAttachmentId={} newAttachmentId={} targetMessageId={}",
+                        new Object[]{source.getID(), row.getID(), targetMessage.getID()});
+            } catch (Exception ex) {
+                log.warn("event=attachment stage=forward outcome=error sourceAttachmentId={} message={}",
+                        new Object[]{source.getID(), ex.getMessage()});
+            }
+        }
+        return cloned;
+    }
+
     public JimAttachment getAttachmentForUser(int attachmentId, String userKey) {
         JimValidation.requirePositiveId(attachmentId, "attachmentId");
         JimValidation.requireNonBlank(userKey, "userKey");

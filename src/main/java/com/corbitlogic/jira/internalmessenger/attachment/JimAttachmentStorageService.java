@@ -69,6 +69,30 @@ public class JimAttachmentStorageService {
         return new StoredAttachmentFile(sanitizedOriginal, storedFilename, relativePath, destination.length(), JimAttachmentPolicy.normalizeContentType(contentType), JimAttachmentPolicy.resolveFileKind(contentType));
     }
 
+    /**
+     * Sprint 08 Fix-2 (attachment forwarding): copy an existing stored
+     * attachment's bytes into a NEW stored file and return its descriptor.
+     * A physical copy (not a shared path) so deleting the source
+     * conversation's files (e.g. group delete) can never break the
+     * forwarded copy, and vice versa.
+     */
+    public StoredAttachmentFile copyStoredAttachment(JimAttachment source) throws IOException {
+        File sourceFile = this.resolveAttachmentFile(source);
+        String sanitizedOriginal = JimAttachmentPolicy.sanitizeOriginalFilename(source.getOriginalFilename());
+        String storedFilename = UUID.randomUUID().toString().replace("-", "") + this.buildStoredExtension(sanitizedOriginal);
+        String relativePath = this.buildRelativePath(storedFilename);
+        File destination = this.resolveRelativePath(relativePath);
+        File parent = destination.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IOException("Unable to create attachment storage directory: " + parent.getAbsolutePath());
+        }
+        Files.copy(sourceFile.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        log.info("event=attachment stage=forward_copy outcome=success sourceId={} storedFilename={} size={}",
+                new Object[]{source.getID(), storedFilename, destination.length()});
+        return new StoredAttachmentFile(sanitizedOriginal, storedFilename, relativePath,
+                destination.length(), source.getContentType(), source.getFileKind());
+    }
+
     public File resolveAttachmentFile(JimAttachment attachment) {
         if (attachment == null) {
             throw JimMessengerException.notFound("Attachment not found");

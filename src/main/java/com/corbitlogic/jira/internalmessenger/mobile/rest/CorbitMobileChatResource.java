@@ -15,15 +15,18 @@ import com.corbitlogic.jira.internalmessenger.mobile.JimMobileFeatures;
 import com.corbitlogic.jira.internalmessenger.model.JimConversationType;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestJsonMapper;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
+import com.corbitlogic.jira.internalmessenger.ao.JimGroupMember;
 import com.corbitlogic.jira.internalmessenger.service.JimAccessPolicyService;
 import com.corbitlogic.jira.internalmessenger.service.JimAttachmentService;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
+import com.corbitlogic.jira.internalmessenger.service.JimGroupService;
 import com.corbitlogic.jira.internalmessenger.service.JimLicenseService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 import com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService;
 import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
 import com.corbitlogic.jira.internalmessenger.service.JimPresenceService;
+import com.corbitlogic.jira.internalmessenger.service.JimProjectChatService;
 import com.corbitlogic.jira.internalmessenger.service.JimReactionService;
 import com.corbitlogic.jira.internalmessenger.service.JimReadStateService;
 import com.corbitlogic.jira.internalmessenger.service.JimUserSearchService;
@@ -62,8 +65,9 @@ import org.slf4j.LoggerFactory;
  * tokens on this path, so PAT, Jira cookie/basic, and mobile-session auth all
  * work consistently. The web {@code /rest/jim/1.0/*} endpoints are unchanged.</p>
  *
- * <p>Scope is 1:1 DIRECT chat only; group/project/system feeds are filtered out
- * of the conversation list and issue-link sends are not exposed here.</p>
+ * <p>Scope is DIRECT + GROUP chat (Sprint 08). Project chat and the SYSTEM
+ * (Assistant) feed are separate concepts and stay out of the conversation
+ * list; issue-link sends are not exposed here.</p>
  *
  * <p>{@code @AnonymousAllowed} lets the request past Jira's anonymous-REST gate;
  * each method still enforces {@code getLoggedInUser() != null} and returns 401
@@ -90,6 +94,8 @@ public class CorbitMobileChatResource {
     private final JimMobileFeatureService featureService;
     private final JimAttachmentService attachmentService;
     private final JimAttachmentStorageService attachmentStorageService;
+    private final JimGroupService groupService;
+    private final JimProjectChatService projectChatService;
 
     @Inject
     public CorbitMobileChatResource(JiraAuthenticationContext authenticationContext,
@@ -105,7 +111,9 @@ public class CorbitMobileChatResource {
                                     JimUserSearchService userSearchService,
                                     JimMobileFeatureService featureService,
                                     JimAttachmentService attachmentService,
-                                    JimAttachmentStorageService attachmentStorageService) {
+                                    JimAttachmentStorageService attachmentStorageService,
+                                    JimGroupService groupService,
+                                    JimProjectChatService projectChatService) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
@@ -120,6 +128,8 @@ public class CorbitMobileChatResource {
         this.featureService = featureService;
         this.attachmentService = attachmentService;
         this.attachmentStorageService = attachmentStorageService;
+        this.groupService = groupService;
+        this.projectChatService = projectChatService;
     }
 
     /**
@@ -137,7 +147,7 @@ public class CorbitMobileChatResource {
         return null;
     }
 
-    // --- Conversation list (DIRECT only) --------------------------------------
+    // --- Conversation list (DIRECT + GROUP, Sprint 08) ------------------------
 
     @GET
     @Path("/conversations")
@@ -155,15 +165,21 @@ public class CorbitMobileChatResource {
             ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
             this.presenceService.heartbeat(currentUserKey);
             List<JimConversation> all = this.conversationService.listConversationsForUser(currentUserKey);
-            List<JimConversation> direct = new ArrayList<>();
+            // Sprint 08 Fix-1: DIRECT + GROUP + PROJECT — the same set the web
+            // sidebar shows (project chats the user is a member of are
+            // group-type rows there). Only the SYSTEM/Assistant feed stays out.
+            List<JimConversation> visible = new ArrayList<>();
             for (JimConversation conversation : all) {
-                if (JimConversationType.DIRECT.name().equals(conversation.getConversationType())) {
-                    direct.add(conversation);
+                String type = conversation.getConversationType();
+                if (JimConversationType.DIRECT.name().equals(type)
+                        || JimConversationType.GROUP.name().equals(type)
+                        || JimConversationType.PROJECT.name().equals(type)) {
+                    visible.add(conversation);
                 }
             }
             List<Map<String, Object>> items = this.restJsonMapper.toConversationMaps(
-                    direct, currentUserKey, viewer, this.readStateService::getUnreadCount);
-            rewriteConversationAvatars(direct, items, currentUserKey);
+                    visible, currentUserKey, viewer, this.readStateService::getUnreadCount);
+            rewriteConversationAvatars(visible, items, currentUserKey);
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("conversations", items);
             return JimRestResponses.okJson(body);
@@ -254,6 +270,335 @@ public class CorbitMobileChatResource {
             return JimRestResponses.internalError(log,
                     "POST /rest/corbit-mobile/1.0/chat/conversations/direct", userKey, ex,
                     "internal_error", "An internal error occurred while creating the conversation.");
+        }
+    }
+
+    // --- Jira Assistant (Sprint 08 Fix-2) --------------------------------------
+    // The Assistant is the per-user SYSTEM conversation the web sidebar pins:
+    // typed event cards (MENTION/ASSIGNMENT/…) with issue metadata and the
+    // acknowledged ("actioned") state. Same services as the web; messages are
+    // listed/marked-read through the existing conversation endpoints.
+
+    @GET
+    @Path("/assistant")
+    public Response getAssistantConversation() {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimConversation conversation =
+                    this.conversationService.getOrCreateSystemConversation(currentUserKey);
+            int unreadCount = this.readStateService.getUnreadCount(conversation.getID(), currentUserKey);
+            Map<String, Object> convMap =
+                    this.restJsonMapper.toConversationMap(conversation, currentUserKey, viewer, unreadCount);
+            return JimRestResponses.okJson(convMap);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/chat/assistant", userKey, ex,
+                    "internal_error", "An internal error occurred while loading the Jira Assistant.");
+        }
+    }
+
+    /** Mark an Assistant card as acknowledged — mirrors POST /rest/jim/1.0/messages/{id}/action. */
+    @POST
+    @Path("/messages/{messageId}/action")
+    public Response markMessageActioned(@PathParam("messageId") int messageId) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimMessage message = this.messageService.markActioned(messageId, currentUserKey);
+            return okMessage(message, viewer, currentUserKey);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/messages/" + messageId + "/action",
+                    userKey, ex, "internal_error", "An internal error occurred while marking the message as seen.");
+        }
+    }
+
+    // --- Groups (Sprint 08) ----------------------------------------------------
+    // Thin wrappers over the SAME JimGroupService the web /rest/jim/1.0/groups
+    // resource uses: owner-only management, member limits, group event messages
+    // and Access Policy rules are all enforced in the service layer.
+
+    @POST
+    @Path("/conversations/group")
+    @Consumes({"application/json"})
+    public Response createGroup(Map<String, Object> requestBody) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        if (!this.licenseService.canUseMessaging()) {
+            return JimRestResponses.licenseBlocked();
+        }
+        String name = str(requestBody, "name");
+        if (name == null || name.trim().isEmpty()) {
+            return JimRestResponses.errorJson(400, "bad_request", "name is required");
+        }
+        List<String> memberKeys = strList(requestBody, "memberUserKeys");
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimConversation conversation = this.groupService.createGroup(currentUserKey, name, memberKeys);
+            int unreadCount = this.readStateService.getUnreadCount(conversation.getID(), currentUserKey);
+            Map<String, Object> convMap =
+                    this.restJsonMapper.toConversationMap(conversation, currentUserKey, viewer, unreadCount);
+            return JimRestResponses.okJson(convMap);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/conversations/group", userKey, ex,
+                    "internal_error", "An internal error occurred while creating the group.");
+        }
+    }
+
+    @DELETE
+    @Path("/conversations/{conversationId}/group")
+    public Response deleteGroup(@PathParam("conversationId") int conversationId) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            this.groupService.deleteGroup(conversationId, currentUserKey);
+            return JimRestResponses.okJson(JimRestResponses.singleEntry("ok", true));
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "DELETE /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/group",
+                    userKey, ex, "internal_error", "An internal error occurred while deleting the group.");
+        }
+    }
+
+    @GET
+    @Path("/conversations/{conversationId}/members")
+    public Response listGroupMembers(@PathParam("conversationId") int conversationId) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            List<JimGroupMember> members = this.groupService.listMembers(conversationId, currentUserKey);
+            List<Map<String, Object>> memberMaps = this.restJsonMapper.toGroupMemberMaps(members, viewer);
+            rewriteGroupMemberAvatars(memberMaps);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("members", memberMaps);
+            return JimRestResponses.okJson(body);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/members",
+                    userKey, ex, "internal_error", "An internal error occurred while loading group members.");
+        }
+    }
+
+    @POST
+    @Path("/conversations/{conversationId}/members")
+    @Consumes({"application/json"})
+    public Response addGroupMember(@PathParam("conversationId") int conversationId,
+                                   Map<String, Object> requestBody) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        String targetUserKey = str(requestBody, "userKey");
+        if (targetUserKey == null || targetUserKey.trim().isEmpty()) {
+            return JimRestResponses.errorJson(400, "bad_request", "userKey is required");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            this.groupService.addMember(conversationId, currentUserKey, targetUserKey.trim());
+            List<JimGroupMember> members = this.groupService.listMembers(conversationId, currentUserKey);
+            List<Map<String, Object>> memberMaps = this.restJsonMapper.toGroupMemberMaps(members, viewer);
+            rewriteGroupMemberAvatars(memberMaps);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("members", memberMaps);
+            return JimRestResponses.okJson(body);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/members",
+                    userKey, ex, "internal_error", "An internal error occurred while adding the group member.");
+        }
+    }
+
+    @DELETE
+    @Path("/conversations/{conversationId}/members/{memberUserKey}")
+    public Response removeGroupMember(@PathParam("conversationId") int conversationId,
+                                      @PathParam("memberUserKey") String memberUserKey) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            // Self-removal = leave group; owner-removal rules enforced in service.
+            this.groupService.removeMember(conversationId, currentUserKey, memberUserKey);
+            return JimRestResponses.okJson(JimRestResponses.singleEntry("ok", true));
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "DELETE /rest/corbit-mobile/1.0/chat/conversations/" + conversationId
+                            + "/members/" + memberUserKey,
+                    userKey, ex, "internal_error", "An internal error occurred while removing the group member.");
+        }
+    }
+
+    /**
+     * The official project chat for a project (Sprint 08 Fix-1) — mirrors
+     * {@code GET /rest/jim/1.0/projects/{key}/conversation}: Browse-Project
+     * gated, ensures the PROJECT conversation exists (lead = OWNER member),
+     * and reports membership so the client can show the same access notice
+     * the web shows to non-members. Never exposes messages to non-members —
+     * the message endpoints all run their own participant checks.
+     */
+    @GET
+    @Path("/projects/{projectKey}/conversation")
+    public Response getProjectConversation(@PathParam("projectKey") String projectKey) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            com.atlassian.jira.project.Project project =
+                    com.atlassian.jira.component.ComponentAccessor.getProjectManager()
+                            .getProjectObjByKey(projectKey != null ? projectKey.trim() : null);
+            if (project == null
+                    || !com.atlassian.jira.component.ComponentAccessor.getPermissionManager().hasPermission(
+                            com.atlassian.jira.permission.ProjectPermissions.BROWSE_PROJECTS, project, viewer)) {
+                return JimRestResponses.errorJson(404, "not_found",
+                        "Project not found or you do not have permission to view it");
+            }
+            JimConversation conversation = this.projectChatService.ensureProjectConversation(project);
+            if (conversation == null) {
+                return JimRestResponses.errorJson(500, "internal_error",
+                        "Unable to load the project chat");
+            }
+            boolean isMember = this.permissionService.isParticipant(conversation, currentUserKey);
+            boolean isLead = this.projectChatService.isProjectLead(conversation, currentUserKey);
+            int unreadCount = isMember
+                    ? this.readStateService.getUnreadCount(conversation.getID(), currentUserKey)
+                    : 0;
+            ApplicationUser lead = project.getProjectLead();
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("conversation",
+                    this.restJsonMapper.toConversationMap(conversation, currentUserKey, viewer, unreadCount));
+            payload.put("isMember", isMember);
+            payload.put("isLead", isLead);
+            payload.put("leadDisplayName", lead != null ? lead.getDisplayName() : null);
+            return JimRestResponses.okJson(payload);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/chat/projects/" + projectKey + "/conversation",
+                    userKey, ex, "internal_error", "An internal error occurred while loading the project chat.");
+        }
+    }
+
+    /**
+     * Per-member read receipts for the sender's own message in a group —
+     * mirrors {@code GET /rest/jim/1.0/conversations/{id}/messages/{mid}/receipts}
+     * including its rules (groups only, own messages only).
+     */
+    @GET
+    @Path("/conversations/{conversationId}/messages/{messageId}/receipts")
+    public Response getMessageReceipts(@PathParam("conversationId") int conversationId,
+                                       @PathParam("messageId") int messageId) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            JimConversation conversation =
+                    this.conversationService.getConversationForUser(conversationId, currentUserKey);
+            String type = conversation.getConversationType();
+            if (!JimConversationType.GROUP.name().equals(type)
+                    && !JimConversationType.PROJECT.name().equals(type)) {
+                return JimRestResponses.errorJson(400, "bad_request",
+                        "Message info is only available in group conversations");
+            }
+            JimMessage message = this.messageService.getMessageForParticipant(messageId, currentUserKey);
+            if (message.getConversationId() != conversationId) {
+                return JimRestResponses.errorJson(400, "bad_request",
+                        "Message does not belong to this conversation");
+            }
+            if (!currentUserKey.equals(message.getSenderUserKey())) {
+                return JimRestResponses.errorJson(403, "forbidden",
+                        "Message info is only available for your own messages");
+            }
+            List<Map<String, Object>> receipts =
+                    this.restJsonMapper.toMessageReceiptMaps(conversation, message, currentUserKey);
+            rewriteGroupMemberAvatars(receipts);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("receipts", receipts);
+            return JimRestResponses.okJson(body);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/chat/conversations/" + conversationId
+                            + "/messages/" + messageId + "/receipts",
+                    userKey, ex, "internal_error", "An internal error occurred while loading message info.");
         }
     }
 
@@ -731,6 +1076,11 @@ public class CorbitMobileChatResource {
         if (conversation == null || item == null) {
             return;
         }
+        // Groups have no single counterpart avatar; the mapper already set
+        // avatarUrl=null and the client renders a group glyph (Sprint 08).
+        if (!JimConversationType.DIRECT.name().equals(conversation.getConversationType())) {
+            return;
+        }
         String other = currentUserKey != null && currentUserKey.equals(conversation.getUserAKey())
                 ? conversation.getUserBKey()
                 : conversation.getUserAKey();
@@ -814,6 +1164,11 @@ public class CorbitMobileChatResource {
         }
     }
 
+    /** Group member / receipt maps carry a userKey — same avatar-proxy rewrite. */
+    private void rewriteGroupMemberAvatars(List<Map<String, Object>> members) {
+        rewriteUserSearchAvatars(members);
+    }
+
     // --- Helpers (mirror JimConversationResource semantics) -------------------
 
     private void enforceDirectChatPolicy(JimConversation conversation, String currentUserKey) {
@@ -847,6 +1202,22 @@ public class CorbitMobileChatResource {
         }
         Object value = map.get(key);
         return value == null ? null : value.toString();
+    }
+
+    private static List<String> strList(Map<String, Object> map, String key) {
+        List<String> out = new ArrayList<>();
+        if (map == null) {
+            return out;
+        }
+        Object value = map.get(key);
+        if (value instanceof List) {
+            for (Object o : (List<?>) value) {
+                if (o != null && !o.toString().trim().isEmpty()) {
+                    out.add(o.toString().trim());
+                }
+            }
+        }
+        return out;
     }
 
     private static Long asLong(Map<String, Object> map, String key) {

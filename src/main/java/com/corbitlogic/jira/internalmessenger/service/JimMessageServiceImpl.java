@@ -146,7 +146,26 @@ implements JimMessageService {
         if (!JimSenderType.USER.name().equals(source.getSenderType())) {
             throw JimMessengerException.badRequest("Only user messages can be forwarded");
         }
-        String normalizedBody = JimValidation.validateMessageBody(source.getBody());
+        // Sprint 08 Fix-2: forwarding carries the FULL message — attachments
+        // included. Attachment-only messages have an empty body, which is
+        // valid to forward as long as there is something to carry.
+        List<JimAttachment> sourceAttachments = this.attachmentService.listAttachmentsForMessage(sourceMessageId);
+        String rawBody = source.getBody() != null ? source.getBody().trim() : "";
+        if (rawBody.isEmpty() && sourceAttachments.isEmpty()) {
+            throw JimMessengerException.badRequest("This message has no content to forward");
+        }
+        String normalizedBody = rawBody.isEmpty() ? "" : JimValidation.validateMessageBody(rawBody);
+        // Conversation preview mirrors the send/upload paths: body when
+        // present, otherwise the first attachment's kind-aware label.
+        String preview = normalizedBody;
+        if (preview.isEmpty()) {
+            JimAttachment first = sourceAttachments.get(0);
+            preview = com.corbitlogic.jira.internalmessenger.attachment.JimAttachmentPolicy.buildPreviewText(
+                    null, first.getFileKind(), first.getOriginalFilename(),
+                    com.corbitlogic.jira.internalmessenger.attachment.JimAttachmentPolicy.isVoiceAttachment(
+                            first.getFileKind(), first.getVoice()));
+        }
+        final String touchPreview = preview;
         // Chain to the ULTIMATE original author so re-forwarding preserves the
         // true author rather than the last relayer.
         final long originMessageId = source.getForwardedFromMessageId() != null
@@ -175,11 +194,16 @@ implements JimMessageService {
             message.setForwardedFromDisplayName(originDisplayName);
             message.setForwardedAt(now);
             message.save();
-            this.conversationService.touchConversation(targetConversationId, normalizedBody, forwarderUserKey);
+            this.conversationService.touchConversation(targetConversationId, touchPreview, forwarderUserKey);
             return message;
         });
+        // Sprint 08 Fix-2: clone attachments (own file copies + rows) onto the
+        // forwarded message so images/files/videos/voice/contacts survive.
+        if (!sourceAttachments.isEmpty()) {
+            this.attachmentService.cloneAttachmentsForForward(sourceMessageId, created);
+        }
         this.notifyGroupMentionsSafely(targetConversationId, forwarderUserKey, normalizedBody, created.getID());
-        this.notifyDirectRecipientPushSafely(targetConversationId, forwarderUserKey, normalizedBody, created.getID());
+        this.notifyDirectRecipientPushSafely(targetConversationId, forwarderUserKey, touchPreview, created.getID());
         return created;
     }
 
@@ -193,28 +217,30 @@ implements JimMessageService {
 
     private void notifyDirectRecipientPushSafely(int conversationId, String senderUserKey, String preview, int messageId) {
         try {
-            String recipient;
             JimConversation conversation = this.conversationService.getConversation(conversationId);
-            if (!JimConversationType.DIRECT.name().equals(conversation.getConversationType())) {
+            String type = conversation.getConversationType();
+            // Sprint 08 Fix-3: GROUP/PROJECT chat messages fan out to every
+            // other member with the same preference-aware preview pipeline as
+            // direct messages (the recipient's detail level / preview toggle
+            // decides what is actually shown). Mentioned members are skipped
+            // here — they receive the dedicated MENTION notification instead,
+            // so nobody gets double-notified for one message.
+            if (JimConversationType.GROUP.name().equals(type)
+                    || JimConversationType.PROJECT.name().equals(type)) {
+                this.notifyGroupRecipientsPushSafely(conversation, senderUserKey, preview, messageId);
                 return;
             }
-            String string = recipient = senderUserKey.equals(conversation.getUserAKey()) ? conversation.getUserBKey() : conversation.getUserAKey();
+            if (!JimConversationType.DIRECT.name().equals(type)) {
+                return;
+            }
+            String recipient = senderUserKey.equals(conversation.getUserAKey())
+                    ? conversation.getUserBKey() : conversation.getUserAKey();
             if (recipient == null || recipient.equals(senderUserKey) || this.presenceService.isViewingConversation(recipient, conversationId)) {
                 return;
             }
             ApplicationUser sender = ComponentAccessor.getUserManager().getUserByKey(senderUserKey);
             String senderName = sender != null ? sender.getDisplayName() : "New message";
-            java.util.LinkedHashMap<String, String> chatPayload = new java.util.LinkedHashMap<String, String>();
-            chatPayload.put("title", senderName);
-            chatPayload.put("body", JimMessageServiceImpl.excerptForPush(preview));
-            chatPayload.put("tag", "jim-conv-" + conversationId);
-            chatPayload.put("type", "chat_message");
-            chatPayload.put("url", "/plugins/servlet/jim/chat");
-            chatPayload.put("conversationId", String.valueOf(conversationId));
-            if (messageId > 0) {
-                chatPayload.put("messageId", String.valueOf(messageId));
-            }
-            this.pushService.pushToUserAsync(recipient, chatPayload);
+            this.sendWebChatPush(recipient, senderName, JimMessageServiceImpl.excerptForPush(preview), conversationId, messageId);
             // Native mobile push (Sprint 05/05B): a SEPARATE channel from web push.
             // The raw preview is passed to the sender, which decides — per the
             // recipient's notification preferences — how much (if any) to include.
@@ -223,6 +249,67 @@ implements JimMessageService {
         catch (RuntimeException runtimeException) {
             // empty catch block
         }
+    }
+
+    /**
+     * Group/project message push (Sprint 08 Fix-3). Title is the group name;
+     * the candidate preview is "Sender: text" — whether the text is actually
+     * shown is decided per-recipient by the mobile push sender (detail level +
+     * message-preview toggle), so disabled previews stay private ("New
+     * message" only). Skips the sender, members currently viewing the
+     * conversation, and members mentioned in the body (they get the MENTION
+     * notification instead).
+     */
+    private void notifyGroupRecipientsPushSafely(JimConversation conversation, String senderUserKey,
+                                                 String preview, int messageId) {
+        try {
+            int conversationId = conversation.getID();
+            String groupName = conversation.getGroupName() != null && !conversation.getGroupName().trim().isEmpty()
+                    ? conversation.getGroupName().trim() : "Group chat";
+            UserManager jiraUserManager = ComponentAccessor.getUserManager();
+            ApplicationUser sender = jiraUserManager.getUserByKey(senderUserKey);
+            String senderName = sender != null ? sender.getDisplayName() : "New message";
+            String candidatePreview = senderName + ": " + (preview != null ? preview : "");
+            String body = preview != null ? preview : "";
+            JimGroupMember[] members = (JimGroupMember[])this.activeObjects.find(JimGroupMember.class,
+                    Query.select().where("CONVERSATION_ID = ?", new Object[]{conversationId}));
+            for (JimGroupMember member : members) {
+                String targetKey = member.getUserKey();
+                if (targetKey == null || targetKey.equals(senderUserKey)
+                        || this.presenceService.isViewingConversation(targetKey, conversationId)) {
+                    continue;
+                }
+                ApplicationUser target = jiraUserManager.getUserByKey(targetKey);
+                if (target == null || !target.isActive()) {
+                    continue;
+                }
+                // Mentioned members get the dedicated MENTION push instead.
+                if (target.getDisplayName() != null && body.contains("@" + target.getDisplayName())) {
+                    continue;
+                }
+                this.sendWebChatPush(targetKey, groupName,
+                        JimMessageServiceImpl.excerptForPush(candidatePreview), conversationId, messageId);
+                this.sendMobileChatPush(targetKey, senderUserKey, groupName, candidatePreview,
+                        conversationId, messageId);
+            }
+        }
+        catch (RuntimeException runtimeException) {
+            // empty catch block
+        }
+    }
+
+    private void sendWebChatPush(String recipient, String title, String excerpt, int conversationId, int messageId) {
+        java.util.LinkedHashMap<String, String> chatPayload = new java.util.LinkedHashMap<String, String>();
+        chatPayload.put("title", title);
+        chatPayload.put("body", excerpt);
+        chatPayload.put("tag", "jim-conv-" + conversationId);
+        chatPayload.put("type", "chat_message");
+        chatPayload.put("url", "/plugins/servlet/jim/chat");
+        chatPayload.put("conversationId", String.valueOf(conversationId));
+        if (messageId > 0) {
+            chatPayload.put("messageId", String.valueOf(messageId));
+        }
+        this.pushService.pushToUserAsync(recipient, chatPayload);
     }
 
     /**
