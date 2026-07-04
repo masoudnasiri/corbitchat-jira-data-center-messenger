@@ -178,13 +178,17 @@ public final class JimMobileIssueDetail {
         // Comments (viewer-visible only)
         map.put("comments", comments(issue, viewer, avatarService, rendererManager, fieldLayout));
 
-        // Attachments (metadata list)
-        map.put("attachments", attachments(issue, applicationProperties));
+        // Attachments (metadata + session-authed mobile URLs + per-item delete)
+        map.put("attachments", attachments(issue, viewer, applicationProperties));
 
         // Worklog (aggregate + unrestricted entries)
         map.put("worklog", worklog(issue, viewer, avatarService));
 
-        // Permission flags for FUTURE write actions (this sprint is read-only)
+        // Watch state (Sprint 10): whether watching is enabled + viewer's state.
+        map.put("watching", isWatching(issue, viewer));
+        map.put("watchCount", watchCount(issue));
+
+        // Permission flags for mobile write actions.
         map.put("permissions", permissions(issue, viewer));
 
         map.put("url", JimIssueUrlBuilder.buildBrowseUrl(applicationProperties, issue));
@@ -663,6 +667,7 @@ public final class JimMobileIssueDetail {
     // --- Attachments ----------------------------------------------------------
 
     private static List<Map<String, Object>> attachments(Issue issue,
+                                                         ApplicationUser viewer,
                                                          ApplicationProperties applicationProperties) {
         List<Map<String, Object>> out = new ArrayList<>();
         try {
@@ -670,19 +675,32 @@ public final class JimMobileIssueDetail {
             if (list == null) {
                 return out;
             }
+            PermissionManager pm = ComponentAccessor.getPermissionManager();
+            boolean deleteAll = has(pm, ProjectPermissions.DELETE_ALL_ATTACHMENTS, issue, viewer);
+            boolean deleteOwn = has(pm, ProjectPermissions.DELETE_OWN_ATTACHMENTS, issue, viewer);
             String base = baseUrl(applicationProperties);
+            String key = issue.getKey();
             for (Attachment a : list) {
                 if (out.size() >= MAX_ATTACHMENTS) {
                     break;
                 }
                 Map<String, Object> m = new LinkedHashMap<>();
+                String mime = a.getMimetype();
+                String kind = fileKindOf(mime);
+                boolean own = a.getAuthorObject() != null && viewer != null
+                        && viewer.getKey().equals(a.getAuthorObject().getKey());
                 m.put("id", a.getId());
                 m.put("filename", JimSanitizer.sanitizeText(a.getFilename()));
-                m.put("mimeType", a.getMimetype());
+                m.put("mimeType", mime);
+                m.put("fileKind", kind);
                 m.put("size", a.getFilesize());
                 m.put("created", a.getCreated() != null ? a.getCreated().getTime() : null);
                 m.put("author", a.getAuthorObject() != null
                         ? a.getAuthorObject().getDisplayName() : null);
+                String mobileBase = "/rest/corbit-mobile/1.0/issues/" + key + "/attachments/" + a.getId();
+                m.put("downloadUrl", mobileBase + "/download");
+                m.put("previewUrl", "IMAGE".equals(kind) ? mobileBase + "/preview" : null);
+                m.put("canDelete", deleteAll || (deleteOwn && own));
                 if (base != null && a.getFilename() != null) {
                     m.put("url", base + "/secure/attachment/" + a.getId() + "/"
                             + a.getFilename());
@@ -694,6 +712,39 @@ public final class JimMobileIssueDetail {
         } catch (Exception ignored) {
         }
         return out;
+    }
+
+    // --- Watch (Sprint 10) ----------------------------------------------------
+
+    private static boolean watchingEnabled() {
+        try {
+            return ComponentAccessor.getApplicationProperties()
+                    .getOption(com.atlassian.jira.config.properties.APKeys.JIRA_OPTION_WATCHING);
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    private static Boolean isWatching(Issue issue, ApplicationUser viewer) {
+        if (!watchingEnabled() || viewer == null) {
+            return null;
+        }
+        try {
+            return ComponentAccessor.getWatcherManager().isWatching(viewer, issue);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private static Integer watchCount(Issue issue) {
+        if (!watchingEnabled()) {
+            return null;
+        }
+        try {
+            return ComponentAccessor.getWatcherManager().getWatcherCount(issue);
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     // --- Worklog --------------------------------------------------------------
@@ -748,6 +799,11 @@ public final class JimMobileIssueDetail {
         m.put("canLogWork", has(pm, ProjectPermissions.WORK_ON_ISSUES, issue, viewer));
         m.put("canAddAttachment", has(pm, ProjectPermissions.CREATE_ATTACHMENTS, issue, viewer));
         m.put("canDelete", has(pm, ProjectPermissions.DELETE_ISSUES, issue, viewer));
+        // Sprint 10 additions
+        m.put("canDeleteAttachment",
+                has(pm, ProjectPermissions.DELETE_ALL_ATTACHMENTS, issue, viewer)
+                        || has(pm, ProjectPermissions.DELETE_OWN_ATTACHMENTS, issue, viewer));
+        m.put("canWatch", watchingEnabled());
         return m;
     }
 

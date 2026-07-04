@@ -3,19 +3,35 @@ package com.corbitlogic.jira.internalmessenger.mobile.rest;
 import com.atlassian.jira.avatar.AvatarService;
 import com.atlassian.jira.bc.issue.search.SearchService;
 import com.atlassian.jira.component.ComponentAccessor;
+import com.atlassian.jira.bc.JiraServiceContext;
+import com.atlassian.jira.bc.JiraServiceContextImpl;
+import com.atlassian.jira.bc.issue.IssueService;
+import com.atlassian.jira.bc.issue.worklog.WorklogInputParameters;
+import com.atlassian.jira.bc.issue.worklog.WorklogInputParametersImpl;
+import com.atlassian.jira.bc.issue.worklog.WorklogResult;
+import com.atlassian.jira.bc.issue.worklog.WorklogService;
+import com.atlassian.jira.config.ConstantsManager;
 import com.atlassian.jira.config.properties.ApplicationProperties;
 import com.atlassian.jira.issue.Issue;
+import com.atlassian.jira.issue.IssueInputParameters;
 import com.atlassian.jira.issue.MutableIssue;
 import com.atlassian.jira.issue.attachment.Attachment;
 import com.atlassian.jira.issue.attachment.CreateAttachmentParamsBean;
 import com.atlassian.jira.issue.comments.Comment;
 import com.atlassian.jira.issue.comments.CommentManager;
+import com.atlassian.jira.issue.priority.Priority;
+import com.atlassian.jira.issue.resolution.Resolution;
 import com.atlassian.jira.issue.search.SearchResults;
+import com.atlassian.jira.issue.status.Status;
 import com.atlassian.jira.permission.ProjectPermissions;
 import com.atlassian.jira.security.JiraAuthenticationContext;
 import com.atlassian.jira.user.ApplicationUser;
 import com.atlassian.jira.util.AttachmentUtils;
+import com.atlassian.jira.util.ErrorCollection;
 import com.atlassian.jira.web.bean.PagerFilter;
+import com.atlassian.jira.workflow.IssueWorkflowManager;
+import com.atlassian.jira.workflow.JiraWorkflow;
+import com.opensymphony.workflow.loader.ActionDescriptor;
 import com.atlassian.plugins.rest.common.security.AnonymousAllowed;
 import com.atlassian.query.Query;
 import com.corbitlogic.jira.internalmessenger.attachment.JimAttachmentStorageService;
@@ -28,7 +44,9 @@ import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
 import com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -36,10 +54,12 @@ import java.util.Map;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
+import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
 import javax.ws.rs.HeaderParam;
 import javax.ws.rs.POST;
+import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
@@ -511,6 +531,552 @@ public class CorbitMobileIssueResource {
     private static boolean isInlineType(String contentType) {
         String ct = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
         return ct.startsWith("image/") || ct.startsWith("audio/") || ct.startsWith("video/");
+    }
+
+    // ====================================================================
+    //  Sprint 10 — issue actions (all run AS the mobile user, so Jira
+    //  permission/workflow/field rules apply automatically).
+    // ====================================================================
+
+    /** Available workflow transitions for the viewer (condition + permission aware). */
+    @GET
+    @Path("/{issueKey}/transitions")
+    public Response getTransitions(@PathParam("issueKey") String issueKey) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.ISSUE_DETAIL)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.ISSUE_DETAIL);
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            List<Map<String, Object>> list = new ArrayList<>();
+            IssueWorkflowManager iwm = ComponentAccessor.getComponentOfType(IssueWorkflowManager.class);
+            Collection<ActionDescriptor> actions = iwm.getAvailableActions(issue, viewer);
+            JiraWorkflow wf = null;
+            try {
+                wf = ComponentAccessor.getWorkflowManager().getWorkflow(issue);
+            } catch (Exception ignored) {
+            }
+            List<ActionDescriptor> sorted = new ArrayList<>(
+                    actions == null ? Collections.<ActionDescriptor>emptyList() : actions);
+            sorted.sort((a, b) -> Integer.compare(a.getId(), b.getId()));
+            for (ActionDescriptor a : sorted) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", a.getId());
+                m.put("name", a.getName());
+                String view = a.getView();
+                m.put("hasScreen", view != null && !view.trim().isEmpty());
+                if (wf != null && a.getUnconditionalResult() != null) {
+                    try {
+                        int stepId = a.getUnconditionalResult().getStep();
+                        if (stepId > 0) {
+                            Status st = wf.getLinkedStatusObject(wf.getDescriptor().getStep(stepId));
+                            if (st != null) {
+                                Map<String, Object> to = new LinkedHashMap<>();
+                                to.put("name", st.getName());
+                                to.put("category", st.getStatusCategory() != null
+                                        ? st.getStatusCategory().getKey() : null);
+                                m.put("to", to);
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+                list.add(m);
+            }
+            return JimRestResponses.okJson(JimRestResponses.singleEntry("transitions", list));
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/issues/{issueKey}/transitions",
+                    viewer.getKey(), ex, "internal_error",
+                    "An internal error occurred while loading transitions.");
+        }
+    }
+
+    /** Execute a workflow transition. Body: {"id":31,"comment":"...","resolution":"Done"}. */
+    @POST
+    @Path("/{issueKey}/transitions")
+    @Consumes({"application/json"})
+    public Response doTransition(@PathParam("issueKey") String issueKey,
+                                 Map<String, Object> body) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.ISSUE_DETAIL)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.ISSUE_DETAIL);
+        }
+        Integer actionId = intOrNull(body != null ? body.get("id") : null);
+        if (actionId == null) {
+            return JimRestResponses.errorJson(400, "bad_request", "A transition id is required.");
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            IssueService issueService = ComponentAccessor.getIssueService();
+            IssueInputParameters iip = issueService.newIssueInputParameters();
+            String comment = trimToNull(body.get("comment"));
+            if (comment != null) {
+                iip.setComment(comment);
+            }
+            String resolution = trimToNull(body.get("resolution"));
+            if (resolution != null) {
+                String resId = resolutionId(resolution);
+                if (resId != null) {
+                    iip.setResolutionId(resId);
+                }
+            }
+            IssueService.TransitionValidationResult tvr =
+                    issueService.validateTransition(viewer, issue.getId(), actionId, iip);
+            if (!tvr.isValid()) {
+                return validationError(tvr.getErrorCollection());
+            }
+            IssueService.IssueResult res = issueService.transition(viewer, tvr);
+            if (!res.isValid()) {
+                return validationError(res.getErrorCollection());
+            }
+            return detail(issue.getKey(), viewer);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/issues/{issueKey}/transitions",
+                    viewer.getKey(), ex, "internal_error",
+                    "An internal error occurred while transitioning the issue.");
+        }
+    }
+
+    /** Field metadata the mobile edit form needs (allowed values Jira controls). */
+    @GET
+    @Path("/{issueKey}/editmeta")
+    public Response getEditMeta(@PathParam("issueKey") String issueKey) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.ISSUE_DETAIL)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.ISSUE_DETAIL);
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            ConstantsManager cm = ComponentAccessor.getConstantsManager();
+            List<Map<String, Object>> priorities = new ArrayList<>();
+            for (Priority p : cm.getPriorities()) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", p.getId());
+                m.put("name", p.getName());
+                m.put("iconUrl", p.getIconUrl());
+                priorities.add(m);
+            }
+            List<Map<String, Object>> resolutions = new ArrayList<>();
+            for (Resolution r : cm.getResolutions()) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", r.getId());
+                m.put("name", r.getName());
+                resolutions.add(m);
+            }
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("priorities", priorities);
+            out.put("resolutions", resolutions);
+            return JimRestResponses.okJson(out);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/issues/{issueKey}/editmeta",
+                    viewer.getKey(), ex, "internal_error",
+                    "An internal error occurred while loading edit metadata.");
+        }
+    }
+
+    /** Edit a curated set of fields. Body may contain summary/description/priority. */
+    @PUT
+    @Path("/{issueKey}")
+    @Consumes({"application/json"})
+    public Response editIssue(@PathParam("issueKey") String issueKey,
+                              Map<String, Object> body) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.ISSUE_DETAIL)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.ISSUE_DETAIL);
+        }
+        if (body == null || body.isEmpty()) {
+            return JimRestResponses.errorJson(400, "bad_request", "No fields to update.");
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            if (!ComponentAccessor.getPermissionManager()
+                    .hasPermission(ProjectPermissions.EDIT_ISSUES, (Issue) issue, viewer)) {
+                return JimRestResponses.errorJson(403, "no_permission",
+                        "You do not have permission to edit this issue.");
+            }
+            IssueService issueService = ComponentAccessor.getIssueService();
+            IssueInputParameters iip = issueService.newIssueInputParameters();
+            boolean any = false;
+            if (body.containsKey("summary")) {
+                String summary = trimToNull(body.get("summary"));
+                if (summary == null) {
+                    return JimRestResponses.errorJson(400, "bad_request", "Summary cannot be empty.");
+                }
+                iip.setSummary(summary);
+                any = true;
+            }
+            if (body.containsKey("description")) {
+                String desc = body.get("description") == null ? "" : String.valueOf(body.get("description"));
+                iip.setDescription(desc);
+                any = true;
+            }
+            if (body.containsKey("priority")) {
+                String pr = trimToNull(body.get("priority"));
+                if (pr != null) {
+                    iip.setPriorityId(pr);
+                    any = true;
+                }
+            }
+            if (!any) {
+                return JimRestResponses.errorJson(400, "bad_request", "No editable fields provided.");
+            }
+            IssueService.UpdateValidationResult uvr =
+                    issueService.validateUpdate(viewer, issue.getId(), iip);
+            if (!uvr.isValid()) {
+                return validationError(uvr.getErrorCollection());
+            }
+            issueService.update(viewer, uvr);
+            return detail(issue.getKey(), viewer);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "PUT /rest/corbit-mobile/1.0/issues/{issueKey}",
+                    viewer.getKey(), ex, "internal_error",
+                    "An internal error occurred while updating the issue.");
+        }
+    }
+
+    /** Assign / unassign. Body: {"name":"jdoe"} | {"name":null} (unassign) | {"name":"-1"} (default). */
+    @POST
+    @Path("/{issueKey}/assignee")
+    @Consumes({"application/json"})
+    public Response setAssignee(@PathParam("issueKey") String issueKey,
+                                Map<String, Object> body) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.ISSUE_DETAIL)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.ISSUE_DETAIL);
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            if (!ComponentAccessor.getPermissionManager()
+                    .hasPermission(ProjectPermissions.ASSIGN_ISSUES, (Issue) issue, viewer)) {
+                return JimRestResponses.errorJson(403, "no_permission",
+                        "You do not have permission to assign this issue.");
+            }
+            // null → unassigned; "-1" → automatic; otherwise a username.
+            String assigneeId = body != null && body.containsKey("name")
+                    ? trimToNull(body.get("name")) : null;
+            IssueService issueService = ComponentAccessor.getIssueService();
+            IssueService.AssignValidationResult avr =
+                    issueService.validateAssign(viewer, issue.getId(), assigneeId);
+            if (!avr.isValid()) {
+                return validationError(avr.getErrorCollection());
+            }
+            issueService.assign(viewer, avr);
+            return detail(issue.getKey(), viewer);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/issues/{issueKey}/assignee",
+                    viewer.getKey(), ex, "internal_error",
+                    "An internal error occurred while assigning the issue.");
+        }
+    }
+
+    /** Start watching the issue (viewer only). */
+    @PUT
+    @Path("/{issueKey}/watch")
+    public Response startWatching(@PathParam("issueKey") String issueKey) {
+        return watch(issueKey, true);
+    }
+
+    /** Stop watching the issue (viewer only). */
+    @DELETE
+    @Path("/{issueKey}/watch")
+    public Response stopWatching(@PathParam("issueKey") String issueKey) {
+        return watch(issueKey, false);
+    }
+
+    private Response watch(String issueKey, boolean start) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.ISSUE_DETAIL)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.ISSUE_DETAIL);
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            boolean watchingEnabled = ComponentAccessor.getApplicationProperties()
+                    .getOption(com.atlassian.jira.config.properties.APKeys.JIRA_OPTION_WATCHING);
+            if (!watchingEnabled) {
+                return JimRestResponses.errorJson(400, "watching_disabled",
+                        "Watching is disabled on this Jira instance.");
+            }
+            if (start) {
+                ComponentAccessor.getWatcherManager().startWatching(viewer, issue);
+            } else {
+                ComponentAccessor.getWatcherManager().stopWatching(viewer, issue);
+            }
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("watching", ComponentAccessor.getWatcherManager().isWatching(viewer, issue));
+            out.put("watchCount", ComponentAccessor.getWatcherManager().getWatcherCount(issue));
+            return JimRestResponses.okJson(out);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "PUT/DELETE /rest/corbit-mobile/1.0/issues/{issueKey}/watch",
+                    viewer.getKey(), ex, "internal_error",
+                    "An internal error occurred while updating your watch state.");
+        }
+    }
+
+    /** Log work. Body: {"timeSpent":"2h 30m","comment":"...","startedEpochMs":123}. */
+    @POST
+    @Path("/{issueKey}/worklog")
+    @Consumes({"application/json"})
+    public Response addWorklog(@PathParam("issueKey") String issueKey,
+                               Map<String, Object> body) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.ISSUE_DETAIL)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.ISSUE_DETAIL);
+        }
+        String timeSpent = trimToNull(body != null ? body.get("timeSpent") : null);
+        if (timeSpent == null) {
+            return JimRestResponses.errorJson(400, "bad_request", "timeSpent is required (e.g. \"2h 30m\").");
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            if (!ComponentAccessor.getPermissionManager()
+                    .hasPermission(ProjectPermissions.WORK_ON_ISSUES, (Issue) issue, viewer)) {
+                return JimRestResponses.errorJson(403, "no_permission",
+                        "You do not have permission to log work on this issue.");
+            }
+            WorklogService worklogService = ComponentAccessor.getComponent(WorklogService.class);
+            JiraServiceContext ctx = new JiraServiceContextImpl(viewer);
+            String comment = trimToNull(body.get("comment"));
+            Long startedMs = longOrNull(body.get("startedEpochMs"));
+            WorklogInputParametersImpl.Builder builder = WorklogInputParametersImpl.issue(issue)
+                    .timeSpent(timeSpent);
+            if (comment != null) {
+                builder.comment(comment);
+            }
+            // Jira's validateCreate requires an explicit start date; default to now.
+            builder.startDate(startedMs != null ? new Date(startedMs) : new Date());
+            WorklogInputParameters params = builder.build();
+            WorklogResult wr = worklogService.validateCreate(ctx, params);
+            if (wr == null || ctx.getErrorCollection().hasAnyErrors()) {
+                return validationError(ctx.getErrorCollection());
+            }
+            worklogService.createAndAutoAdjustRemainingEstimate(ctx, wr, true);
+            if (ctx.getErrorCollection().hasAnyErrors()) {
+                return validationError(ctx.getErrorCollection());
+            }
+            return detail(issue.getKey(), viewer);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/issues/{issueKey}/worklog",
+                    viewer.getKey(), ex, "internal_error",
+                    "An internal error occurred while logging work.");
+        }
+    }
+
+    /** Add an issue-level attachment (multipart, single file). */
+    @POST
+    @Path("/{issueKey}/attachments")
+    @Consumes({"multipart/form-data"})
+    public Response addIssueAttachment(@PathParam("issueKey") String issueKey,
+                                       @Context HttpServletRequest request) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.ISSUE_DETAIL)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.ISSUE_DETAIL);
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            if (!ComponentAccessor.getPermissionManager()
+                    .hasPermission(ProjectPermissions.CREATE_ATTACHMENTS, (Issue) issue, viewer)) {
+                return JimRestResponses.errorJson(403, "no_permission",
+                        "You do not have permission to attach files to this issue.");
+            }
+            File tempDirectory = this.attachmentStorageService.createUploadTempDirectory();
+            JimMultipartParser.ParsedMultipartForm form =
+                    JimMultipartParser.parse(request, tempDirectory);
+            if (form.getFile() == null || !form.getFile().exists() || form.getFile().length() == 0L) {
+                return JimRestResponses.errorJson(400, "bad_request", "A non-empty file is required.");
+            }
+            uploadIssueAttachment(issue, viewer, form);
+            return detail(issue.getKey(), viewer);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST (multipart) /rest/corbit-mobile/1.0/issues/{issueKey}/attachments",
+                    viewer.getKey(), ex, "internal_error",
+                    "An internal error occurred while uploading the attachment.");
+        }
+    }
+
+    /** Delete an issue attachment (delete-all, or delete-own if the viewer uploaded it). */
+    @DELETE
+    @Path("/{issueKey}/attachments/{attachmentId}")
+    public Response deleteIssueAttachment(@PathParam("issueKey") String issueKey,
+                                          @PathParam("attachmentId") long attachmentId) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.ISSUE_DETAIL)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.ISSUE_DETAIL);
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            Attachment attachment;
+            try {
+                attachment = ComponentAccessor.getAttachmentManager().getAttachment(attachmentId);
+            } catch (Exception notFound) {
+                attachment = null;
+            }
+            if (attachment == null || attachment.getIssueObject() == null
+                    || !issue.getId().equals(attachment.getIssueObject().getId())) {
+                return JimRestResponses.errorJson(404, "not_found", "Attachment not found on this issue.");
+            }
+            com.atlassian.jira.security.PermissionManager pm = ComponentAccessor.getPermissionManager();
+            boolean own = attachment.getAuthorObject() != null
+                    && viewer.getKey().equals(attachment.getAuthorObject().getKey());
+            boolean allowed = pm.hasPermission(ProjectPermissions.DELETE_ALL_ATTACHMENTS, (Issue) issue, viewer)
+                    || (own && pm.hasPermission(ProjectPermissions.DELETE_OWN_ATTACHMENTS, (Issue) issue, viewer));
+            if (!allowed) {
+                return JimRestResponses.errorJson(403, "no_permission",
+                        "You do not have permission to delete this attachment.");
+            }
+            ComponentAccessor.getAttachmentManager().deleteAttachment(attachment);
+            return detail(issue.getKey(), viewer);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "DELETE /rest/corbit-mobile/1.0/issues/{issueKey}/attachments/{id}",
+                    viewer.getKey(), ex, "internal_error",
+                    "An internal error occurred while deleting the attachment.");
+        }
+    }
+
+    // --- Sprint 10 helpers ----------------------------------------------------
+
+    private MutableIssue loadBrowsable(String issueKey, ApplicationUser viewer) {
+        if (issueKey == null || issueKey.trim().isEmpty()) {
+            return null;
+        }
+        MutableIssue issue = ComponentAccessor.getIssueManager().getIssueByCurrentKey(issueKey.trim());
+        if (issue == null) {
+            return null;
+        }
+        if (!ComponentAccessor.getPermissionManager()
+                .hasPermission(ProjectPermissions.BROWSE_PROJECTS, (Issue) issue, viewer)) {
+            return null;
+        }
+        return issue;
+    }
+
+    private Response detail(String key, ApplicationUser viewer) {
+        Issue fresh = ComponentAccessor.getIssueManager().getIssueByCurrentKey(key);
+        if (fresh == null) {
+            return notFound();
+        }
+        return JimRestResponses.okJson(JimMobileIssueDetail.toDetailMap(
+                fresh, viewer, this.avatarService, this.applicationProperties));
+    }
+
+    private static Response notFound() {
+        return JimRestResponses.errorJson(404, "not_found",
+                "Issue not found or you do not have permission to view it.");
+    }
+
+    private static Response validationError(ErrorCollection ec) {
+        List<String> parts = new ArrayList<>();
+        if (ec != null) {
+            if (ec.getErrorMessages() != null) {
+                parts.addAll(ec.getErrorMessages());
+            }
+            if (ec.getErrors() != null) {
+                for (Map.Entry<String, String> e : ec.getErrors().entrySet()) {
+                    if (e.getValue() != null) {
+                        parts.add(e.getValue());
+                    }
+                }
+            }
+        }
+        String msg = parts.isEmpty() ? "The action could not be completed." : String.join(" ", parts);
+        return JimRestResponses.errorJson(400, "validation_error", msg);
+    }
+
+    private static String resolutionId(String idOrName) {
+        try {
+            ConstantsManager cm = ComponentAccessor.getConstantsManager();
+            for (Resolution r : cm.getResolutions()) {
+                if (idOrName.equals(r.getId()) || idOrName.equalsIgnoreCase(r.getName())) {
+                    return r.getId();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private static Integer intOrNull(Object v) {
+        if (v == null) {
+            return null;
+        }
+        try {
+            return (int) Math.round(Double.parseDouble(String.valueOf(v).trim()));
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private static Long longOrNull(Object v) {
+        if (v == null) {
+            return null;
+        }
+        try {
+            return (long) Math.floor(Double.parseDouble(String.valueOf(v).trim()));
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     private static Comment findVisibleComment(CommentManager cm, Issue issue,
