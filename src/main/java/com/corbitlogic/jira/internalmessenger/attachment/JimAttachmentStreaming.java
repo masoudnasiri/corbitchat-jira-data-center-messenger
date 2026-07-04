@@ -32,6 +32,19 @@ public final class JimAttachmentStreaming {
         String contentType = JimAttachmentPolicy.normalizeContentType(attachment.getContentType());
         String filename = JimAttachmentPolicy.sanitizeOriginalFilename(attachment.getOriginalFilename());
         String dispositionType = resolveDispositionType(attachment, inlinePreview);
+        return stream(file, contentType, filename, dispositionType, rangeHeader);
+    }
+
+    /**
+     * Same byte-range aware streaming as {@link #stream(JimAttachment, File,
+     * boolean, String)} but for an arbitrary already-resolved,
+     * permission-checked file (used by the mobile BFF to serve <em>Jira issue</em>
+     * attachments referenced by comment bodies). The caller supplies the
+     * content type, display filename and disposition ({@code "inline"} for image/
+     * audio/video previews, else {@code "attachment"}).
+     */
+    public static Response stream(File file, String contentType, String filename,
+                                  String dispositionType, String rangeHeader) {
         long fileLength = file.length();
         long[] range = parseRange(rangeHeader, fileLength);
         if (range == null) {

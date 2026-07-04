@@ -415,26 +415,8 @@ public final class JimMobileIssueDetail {
                 String rendererType = rendererType(fieldLayout, IssueFieldConstants.COMMENT);
                 int start = Math.max(0, visible.size() - MAX_COMMENTS);
                 for (int i = start; i < visible.size(); i++) {
-                    Comment c = visible.get(i);
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", c.getId());
-                    m.put("author", personMap(c.getAuthorApplicationUser(), viewer, avatarService));
-                    m.put("created", c.getCreated() != null ? c.getCreated().getTime() : null);
-                    m.put("updated", c.getUpdated() != null ? c.getUpdated().getTime() : null);
-                    String rendered = null;
-                    try {
-                        if (rendererManager != null && rendererType != null && c.getBody() != null) {
-                            String html = rendererManager.getRenderedContent(rendererType,
-                                    c.getBody(), issue.getIssueRenderContext());
-                            if (html != null && !html.isEmpty()) {
-                                rendered = bound(html, MAX_RENDERED_CHARS);
-                            }
-                        }
-                    } catch (Exception ignored) {
-                    }
-                    m.put("renderedBody", rendered);
-                    m.put("body", bound(JimSanitizer.sanitizeText(c.getBody()), MAX_TEXT_CHARS));
-                    items.add(m);
+                    items.add(singleCommentMap(issue, visible.get(i), viewer, avatarService,
+                            rendererManager, rendererType));
                 }
             }
         } catch (Exception ignored) {
@@ -442,6 +424,240 @@ public final class JimMobileIssueDetail {
         out.put("total", total);
         out.put("items", items);
         return out;
+    }
+
+    /**
+     * Shape a single comment exactly like the ones embedded in the issue-detail
+     * payload — same {@code id/author/created/updated/renderedBody/body} keys.
+     * Reused by the mobile BFF comment/reply write endpoints (Sprint 09) so an
+     * added comment round-trips in the identical JSON shape as a loaded one.
+     */
+    private static Map<String, Object> singleCommentMap(Issue issue,
+                                                        Comment c,
+                                                        ApplicationUser viewer,
+                                                        AvatarService avatarService,
+                                                        RendererManager rendererManager,
+                                                        String rendererType) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", c.getId());
+        m.put("author", personMap(c.getAuthorApplicationUser(), viewer, avatarService));
+        m.put("created", c.getCreated() != null ? c.getCreated().getTime() : null);
+        m.put("updated", c.getUpdated() != null ? c.getUpdated().getTime() : null);
+        String rendered = null;
+        try {
+            if (rendererManager != null && rendererType != null && c.getBody() != null) {
+                String html = rendererManager.getRenderedContent(rendererType,
+                        c.getBody(), issue.getIssueRenderContext());
+                if (html != null && !html.isEmpty()) {
+                    rendered = bound(html, MAX_RENDERED_CHARS);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        m.put("renderedBody", rendered);
+        m.put("body", bound(JimSanitizer.sanitizeText(c.getBody()), MAX_TEXT_CHARS));
+        m.put("attachments", commentAttachments(issue, c));
+        return m;
+    }
+
+    /**
+     * Issue attachments referenced by a comment body (Sprint 09 Fix-1). A comment
+     * "attachment" is a normal Jira issue attachment linked via a wiki token —
+     * {@code !name|thumbnail!} (image) or {@code [^name]} (file) — exactly as the
+     * web reply composer produces. We resolve those tokens to the issue's
+     * attachments by filename and expose session-authenticated mobile URLs so the
+     * app can render/open them without Jira's cookie-authed {@code /secure/attachment}.
+     */
+    private static List<Map<String, Object>> commentAttachments(Issue issue, Comment c) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (c == null || c.getBody() == null || c.getBody().isEmpty()) {
+            return out;
+        }
+        try {
+            List<String> names = extractAttachmentTokenNames(c.getBody());
+            if (names.isEmpty()) {
+                return out;
+            }
+            List<Attachment> all = ComponentAccessor.getAttachmentManager().getAttachments(issue);
+            if (all == null || all.isEmpty()) {
+                return out;
+            }
+            // Latest attachment wins for a given filename (duplicates allowed in Jira).
+            Map<String, Attachment> byName = new LinkedHashMap<>();
+            for (Attachment a : all) {
+                if (a.getFilename() != null) {
+                    byName.put(a.getFilename(), a);
+                }
+            }
+            String key = issue.getKey();
+            java.util.Set<Long> seen = new java.util.HashSet<>();
+            for (String name : names) {
+                Attachment a = byName.get(name);
+                if (a == null || !seen.add(a.getId())) {
+                    continue;
+                }
+                out.add(commentAttachmentMap(key, a));
+                if (out.size() >= 20) {
+                    break;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    private static Map<String, Object> commentAttachmentMap(String issueKey, Attachment a) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        String mime = a.getMimetype();
+        String kind = fileKindOf(mime);
+        m.put("id", a.getId());
+        m.put("fileName", JimSanitizer.sanitizeText(a.getFilename()));
+        m.put("contentType", mime);
+        m.put("fileSize", a.getFilesize());
+        m.put("fileKind", kind);
+        String base = "/rest/corbit-mobile/1.0/issues/" + issueKey + "/attachments/" + a.getId();
+        m.put("downloadUrl", base + "/download");
+        m.put("previewUrl", "IMAGE".equals(kind) ? base + "/preview" : null);
+        return m;
+    }
+
+    private static String fileKindOf(String mime) {
+        String ct = mime == null ? "" : mime.toLowerCase(java.util.Locale.ROOT);
+        if (ct.startsWith("image/")) {
+            return "IMAGE";
+        }
+        if (ct.startsWith("video/")) {
+            return "VIDEO";
+        }
+        if (ct.startsWith("audio/")) {
+            return "AUDIO";
+        }
+        return "FILE";
+    }
+
+    /**
+     * Extract filenames from Jira wiki attachment tokens in a comment body:
+     * {@code !name.png|thumbnail!} / {@code !name.png!} (images) and
+     * {@code [^name.ext]} (files). Order-preserving.
+     */
+    private static List<String> extractAttachmentTokenNames(String body) {
+        List<String> names = new ArrayList<>();
+        java.util.regex.Matcher fileM =
+                java.util.regex.Pattern.compile("\\[\\^([^\\]\\r\\n]+)]").matcher(body);
+        while (fileM.find()) {
+            String n = fileM.group(1).trim();
+            if (!n.isEmpty()) {
+                names.add(n);
+            }
+        }
+        java.util.regex.Matcher imgM = java.util.regex.Pattern
+                .compile("!([^!|\\r\\n]+?)(?:\\|[^!\\r\\n]*)?!").matcher(body);
+        while (imgM.find()) {
+            String n = imgM.group(1).trim();
+            // Only treat as an attachment token when it looks like a filename
+            // (has an extension) — avoids matching stray '!emphasis!' text.
+            if (!n.isEmpty() && n.matches(".*\\.[A-Za-z0-9]{1,8}$")) {
+                names.add(n);
+            }
+        }
+        return names;
+    }
+
+    /**
+     * Public single-comment projection for the mobile BFF write endpoints.
+     * Resolves the renderer for the issue's comment field itself so callers do
+     * not need Jira field-layout internals.
+     */
+    public static Map<String, Object> commentMap(Issue issue,
+                                                 Comment c,
+                                                 ApplicationUser viewer,
+                                                 AvatarService avatarService) {
+        RendererManager rendererManager = ComponentAccessor.getComponent(RendererManager.class);
+        FieldLayout fieldLayout = safeFieldLayout(issue);
+        String rendererType = rendererType(fieldLayout, IssueFieldConstants.COMMENT);
+        return singleCommentMap(issue, c, viewer, avatarService, rendererManager, rendererType);
+    }
+
+    /**
+     * Plain-text excerpt of a comment for quoting in a reply body — mirrors the
+     * web reply composer, which quotes the parent's rendered (visible) text, not
+     * its wiki markup. Falls back to sanitized raw text when rendering fails.
+     * Bounded and ellipsized to {@code maxChars}.
+     */
+    public static String commentExcerpt(Issue issue, Comment c, int maxChars) {
+        if (c == null) {
+            return "";
+        }
+        // When the parent is itself a reply, quote only its OWN message — strip
+        // any leading mention + {quote} so replying to a reply does not chain the
+        // whole ancestor context into the new quote.
+        String raw = stripLeadingReplyContext(c.getBody());
+        String source = null;
+        try {
+            RendererManager rendererManager = ComponentAccessor.getComponent(RendererManager.class);
+            String rendererType = rendererType(safeFieldLayout(issue), IssueFieldConstants.COMMENT);
+            if (rendererManager != null && rendererType != null && raw != null) {
+                String html = rendererManager.getRenderedContent(rendererType,
+                        raw, issue.getIssueRenderContext());
+                if (html != null && !html.isEmpty()) {
+                    source = htmlToPlain(html);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        if (source == null || source.isEmpty()) {
+            source = JimSanitizer.sanitizeText(raw);
+        }
+        if (source == null) {
+            return "";
+        }
+        String collapsed = source.replaceAll("\\s+", " ").trim();
+        if (collapsed.length() <= maxChars) {
+            return collapsed;
+        }
+        return collapsed.substring(0, maxChars).trim() + "\u2026";
+    }
+
+    /**
+     * Strip a leading reply context — an optional {@code [~mention]} followed by
+     * a leading {@code {quote}…{quote}} block — from a comment body so that when
+     * we quote a parent that is itself a reply, we quote only the parent's own
+     * words (no nested/chained ancestor quote). Non-reply bodies are unchanged.
+     */
+    private static String stripLeadingReplyContext(String body) {
+        if (body == null || body.isEmpty()) {
+            return body;
+        }
+        String s = body;
+        java.util.regex.Matcher mention = java.util.regex.Pattern
+                .compile("^\\s*\\[~[^\\]]+]\\s*").matcher(s);
+        if (mention.find()) {
+            s = s.substring(mention.end());
+        }
+        java.util.regex.Matcher quote = java.util.regex.Pattern
+                .compile("^\\s*\\{quote}[\\s\\S]*?\\{quote}\\s*").matcher(s);
+        if (quote.find()) {
+            s = s.substring(quote.end());
+        }
+        return s.trim().isEmpty() ? body : s;
+    }
+
+    private static String htmlToPlain(String html) {
+        if (html == null) {
+            return "";
+        }
+        String noTags = html.replaceAll("(?is)<(script|style)[^>]*>.*?</\\1>", " ")
+                .replaceAll("(?is)<br\\s*/?>", " ")
+                .replaceAll("(?is)</p>", " ")
+                .replaceAll("<[^>]+>", " ");
+        return noTags
+                .replace("&nbsp;", " ")
+                .replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'")
+                .replace("&apos;", "'");
     }
 
     // --- Attachments ----------------------------------------------------------
