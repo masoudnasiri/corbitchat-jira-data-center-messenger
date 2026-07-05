@@ -1,12 +1,20 @@
 package com.corbitlogic.jira.internalmessenger.mobile;
 
 import com.atlassian.jira.config.properties.ApplicationProperties;
+import com.atlassian.jira.jql.builder.JqlClauseBuilder;
 import com.atlassian.jira.jql.builder.JqlQueryBuilder;
 import com.atlassian.jira.project.Project;
+import com.atlassian.jira.security.roles.ProjectRole;
+import com.atlassian.jira.security.roles.ProjectRoleActors;
+import com.atlassian.jira.security.roles.ProjectRoleManager;
 import com.atlassian.jira.user.ApplicationUser;
-import com.corbitlogic.jira.internalmessenger.util.JimSanitizer;
 import com.atlassian.query.Query;
+import com.atlassian.query.operator.Operator;
+import com.atlassian.query.order.SortOrder;
+import com.corbitlogic.jira.internalmessenger.util.JimSanitizer;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -72,6 +80,112 @@ public final class JimMobileProjects {
         b.where().project(project.getId()).and().unresolved()
                 .and().assigneeIsCurrentUser().endWhere();
         return b.buildQuery();
+    }
+
+    /** The only issue-scope tokens the Issues tab may request. */
+    public static boolean isValidScope(String scope) {
+        return "open".equals(scope) || "all".equals(scope) || "mine".equals(scope);
+    }
+
+    /**
+     * Project-scoped issue list query for the Issues tab (Sprint 11). Scope is a
+     * whitelisted token ({@code open|all|mine}) and {@code q} is an optional free
+     * text term applied via a bound {@code text ~} condition (never raw JQL — the
+     * term crosses the boundary only as a {@link JqlClauseBuilder} string literal,
+     * so it cannot alter the query structure). Always ordered by most-recently
+     * updated. The search itself runs through {@code SearchService} for the
+     * caller, enforcing Browse-Project / issue security.
+     */
+    public static Query issuesQuery(Project project, String scope, String q) {
+        JqlQueryBuilder builder = JqlQueryBuilder.newBuilder();
+        JqlClauseBuilder w = builder.where().project(project.getId());
+        if ("mine".equals(scope)) {
+            w.and().unresolved().and().assigneeIsCurrentUser();
+        } else if (!"all".equals(scope)) {
+            w.and().unresolved();
+        }
+        String text = boundTerm(q);
+        if (text != null) {
+            w.and().addStringCondition("text", Operator.LIKE, text);
+        }
+        w.endWhere();
+        builder.orderBy().updatedDate(SortOrder.DESC).endOrderBy();
+        return builder.buildQuery();
+    }
+
+    /** Recent-activity query: the project's most recently updated issues. */
+    public static Query activityQuery(Project project) {
+        JqlQueryBuilder builder = JqlQueryBuilder.newBuilder();
+        builder.where().project(project.getId()).endWhere();
+        builder.orderBy().updatedDate(SortOrder.DESC).endOrderBy();
+        return builder.buildQuery();
+    }
+
+    /**
+     * Real Jira project membership grouped by project role (Sprint 11). Only
+     * non-empty roles are returned. This exposes actual project role members —
+     * not chat members — and must be gated by Browse Project at the call site.
+     */
+    public static List<Map<String, Object>> roleMembers(Project project,
+                                                        ProjectRoleManager projectRoleManager) {
+        List<Map<String, Object>> roles = new ArrayList<>();
+        if (projectRoleManager == null) {
+            return roles;
+        }
+        try {
+            for (ProjectRole role : projectRoleManager.getProjectRoles()) {
+                if (role == null) {
+                    continue;
+                }
+                List<Map<String, Object>> users = new ArrayList<>();
+                try {
+                    ProjectRoleActors actors = projectRoleManager.getProjectRoleActors(role, project);
+                    if (actors != null && actors.getApplicationUsers() != null) {
+                        for (ApplicationUser u : actors.getApplicationUsers()) {
+                            if (u == null) {
+                                continue;
+                            }
+                            Map<String, Object> m = new LinkedHashMap<>();
+                            m.put("name", u.getName());
+                            m.put("displayName", u.getDisplayName());
+                            m.put("avatarUrl", JimMobileAvatars.userPath(u));
+                            m.put("active", u.isActive());
+                            users.add(m);
+                        }
+                    }
+                } catch (Exception ignore) {
+                    // A single unreadable role must not drop the others.
+                }
+                if (!users.isEmpty()) {
+                    Map<String, Object> r = new LinkedHashMap<>();
+                    r.put("id", role.getId());
+                    r.put("name", JimSanitizer.sanitizeText(role.getName()));
+                    r.put("count", users.size());
+                    r.put("members", users);
+                    roles.add(r);
+                }
+            }
+        } catch (Throwable t) {
+            return roles;
+        }
+        return roles;
+    }
+
+    private static String boundTerm(String q) {
+        if (q == null) {
+            return null;
+        }
+        String t = q.trim();
+        if (t.isEmpty()) {
+            return null;
+        }
+        // Keep it a plain term: drop characters that could confuse the text
+        // index / clause literal. Length-bounded to avoid abuse.
+        t = t.replaceAll("[\"'\\\\]", " ").trim();
+        if (t.isEmpty()) {
+            return null;
+        }
+        return t.length() > 100 ? t.substring(0, 100) : t;
     }
 
     private static String projectTypeKey(Project project) {

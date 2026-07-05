@@ -1,5 +1,6 @@
 package com.corbitlogic.jira.internalmessenger.mobile.rest;
 
+import com.atlassian.jira.avatar.AvatarService;
 import com.atlassian.jira.bc.issue.search.SearchService;
 import com.atlassian.jira.config.properties.ApplicationProperties;
 import com.atlassian.jira.security.JiraAuthenticationContext;
@@ -13,9 +14,12 @@ import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import javax.inject.Inject;
+import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,16 +49,19 @@ public class CorbitMobileBoardResource {
 
     private final JiraAuthenticationContext authenticationContext;
     private final SearchService searchService;
+    private final AvatarService avatarService;
     private final ApplicationProperties applicationProperties;
     private final JimMobileFeatureService featureService;
 
     @Inject
     public CorbitMobileBoardResource(JiraAuthenticationContext authenticationContext,
                                      SearchService searchService,
+                                     AvatarService avatarService,
                                      ApplicationProperties applicationProperties,
                                      JimMobileFeatureService featureService) {
         this.authenticationContext = authenticationContext;
         this.searchService = searchService;
+        this.avatarService = avatarService;
         this.applicationProperties = applicationProperties;
         this.featureService = featureService;
     }
@@ -91,5 +98,87 @@ public class CorbitMobileBoardResource {
             body.put("boards", java.util.Collections.emptyList());
             return JimRestResponses.okJson(body);
         }
+    }
+
+    /**
+     * Board header/meta — {@code GET /boards/{id}}. Returns board name, type,
+     * project chip and (Scrum boards only) the usable sprint scopes. A missing
+     * or non-visible board returns 404 so the endpoint never reveals board ids.
+     */
+    @GET
+    @Path("/{id}")
+    public Response board(@PathParam("id") long id) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.BOARDS)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.BOARDS);
+        }
+        try {
+            if (!JimMobileBoards.isAvailable()) {
+                return boardsUnavailable();
+            }
+            Map<String, Object> meta = JimMobileBoards.boardMeta(
+                    id, viewer, this.searchService, this.applicationProperties);
+            if (meta == null) {
+                return notFound();
+            }
+            return JimRestResponses.okJson(meta);
+        } catch (Throwable t) {
+            log.warn("Board {} meta unavailable for {}: {}", id, viewer.getKey(), t.toString());
+            return notFound();
+        }
+    }
+
+    /**
+     * Board issues grouped by status — {@code GET /boards/{id}/issues?sprint=}.
+     * The {@code sprint} scope is one of {@code active|future|closed|all}
+     * (default {@code all}); unknown/unusable scopes fall back to {@code all}.
+     */
+    @GET
+    @Path("/{id}/issues")
+    public Response boardIssues(@PathParam("id") long id,
+                                @QueryParam("sprint") @DefaultValue("all") String sprint,
+                                @QueryParam("mine") @DefaultValue("false") boolean mine) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.BOARDS)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.BOARDS);
+        }
+        try {
+            if (!JimMobileBoards.isAvailable()) {
+                return boardsUnavailable();
+            }
+            Map<String, Object> body = JimMobileBoards.boardColumns(
+                    id, sprint, mine, viewer, this.searchService, this.avatarService,
+                    this.applicationProperties);
+            if (body == null) {
+                return notFound();
+            }
+            return JimRestResponses.okJson(body);
+        } catch (Throwable t) {
+            log.warn("Board {} issues unavailable for {}: {}", id, viewer.getKey(), t.toString());
+            return notFound();
+        }
+    }
+
+    private static Response unauthenticated() {
+        return JimRestResponses.errorJson(401, "NOT_AUTHENTICATED",
+                "You must be signed in to use CorbitChat Mobile.");
+    }
+
+    private static Response notFound() {
+        return JimRestResponses.errorJson(404, "not_found",
+                "Board not found or you do not have permission to view it.");
+    }
+
+    private static Response boardsUnavailable() {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("agileAvailable", false);
+        return JimRestResponses.errorJson(404, "agile_unavailable",
+                "Jira Software boards are not available on this server.");
     }
 }
