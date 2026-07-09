@@ -18,7 +18,9 @@ import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
 import com.corbitlogic.jira.internalmessenger.ao.JimGroupMember;
 import com.corbitlogic.jira.internalmessenger.service.JimAccessPolicyService;
 import com.corbitlogic.jira.internalmessenger.service.JimAttachmentService;
+import com.corbitlogic.jira.internalmessenger.service.JimChatAuditService;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
+import com.corbitlogic.jira.internalmessenger.service.JimMessageUserStateService;
 import com.corbitlogic.jira.internalmessenger.service.JimGroupService;
 import com.corbitlogic.jira.internalmessenger.service.JimLicenseService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
@@ -96,6 +98,8 @@ public class CorbitMobileChatResource {
     private final JimAttachmentStorageService attachmentStorageService;
     private final JimGroupService groupService;
     private final JimProjectChatService projectChatService;
+    private final JimMessageUserStateService userStateService;
+    private final JimChatAuditService auditService;
 
     @Inject
     public CorbitMobileChatResource(JiraAuthenticationContext authenticationContext,
@@ -113,7 +117,9 @@ public class CorbitMobileChatResource {
                                     JimAttachmentService attachmentService,
                                     JimAttachmentStorageService attachmentStorageService,
                                     JimGroupService groupService,
-                                    JimProjectChatService projectChatService) {
+                                    JimProjectChatService projectChatService,
+                                    JimMessageUserStateService userStateService,
+                                    JimChatAuditService auditService) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
@@ -130,6 +136,8 @@ public class CorbitMobileChatResource {
         this.attachmentStorageService = attachmentStorageService;
         this.groupService = groupService;
         this.projectChatService = projectChatService;
+        this.userStateService = userStateService;
+        this.auditService = auditService;
     }
 
     /**
@@ -625,6 +633,18 @@ public class CorbitMobileChatResource {
                     this.conversationService.getConversationForUser(conversationId, currentUserKey);
             List<JimMessage> messages =
                     this.messageService.listMessages(conversationId, limit, beforeMessageId);
+            // Sprint 12: drop messages the viewer chose "Delete for me".
+            java.util.Set<Integer> hidden =
+                    this.userStateService.hiddenMessageIds(currentUserKey, conversationId);
+            if (!hidden.isEmpty()) {
+                List<JimMessage> visible = new ArrayList<>();
+                for (JimMessage m : messages) {
+                    if (!hidden.contains(m.getID())) {
+                        visible.add(m);
+                    }
+                }
+                messages = visible;
+            }
             List<Map<String, Object>> messageMaps =
                     this.restJsonMapper.toMessageMaps(messages, viewer, conversation, currentUserKey);
             rewriteMessageAvatars(messageMaps);
@@ -859,6 +879,67 @@ public class CorbitMobileChatResource {
             return JimRestResponses.internalError(log,
                     "DELETE /rest/corbit-mobile/1.0/chat/messages/" + messageId, userKey, ex,
                     "internal_error", "An internal error occurred while deleting the message.");
+        }
+    }
+
+    /** Delete-for-me: hide a single message for the current user only (Sprint 12). */
+    @POST
+    @Path("/messages/{messageId}/hide")
+    public Response hideMessage(@PathParam("messageId") int messageId) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        try {
+            JimMessage message = this.messageService.getMessageForParticipant(messageId, userKey);
+            this.userStateService.hide(messageId, message.getConversationId(), userKey);
+            this.auditService.record(userKey, "message.hideForMe", messageId,
+                    message.getConversationId(), null, null);
+            return JimRestResponses.okJson(JimRestResponses.singleEntry("ok", true));
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/messages/" + messageId + "/hide", userKey, ex,
+                    "internal_error", "An internal error occurred while hiding the message.");
+        }
+    }
+
+    /** Delete-for-me in bulk: hide several messages for the current user only. */
+    @POST
+    @Path("/messages/hide")
+    @Consumes({"application/json"})
+    public Response hideMessages(Map<String, Object> requestBody) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Object idsRaw = requestBody == null ? null : requestBody.get("ids");
+        if (!(idsRaw instanceof List)) {
+            return JimRestResponses.errorJson(400, "bad_request", "ids array is required");
+        }
+        try {
+            List<Integer> ids = new ArrayList<>();
+            int conversationId = -1;
+            for (Object o : (List<?>) idsRaw) {
+                int id = o instanceof Number ? ((Number) o).intValue()
+                        : Integer.parseInt(String.valueOf(o));
+                JimMessage message = this.messageService.getMessageForParticipant(id, userKey);
+                conversationId = message.getConversationId();
+                ids.add(id);
+            }
+            if (conversationId >= 0) {
+                this.userStateService.hideAll(ids, conversationId, userKey);
+                this.auditService.record(userKey, "message.hideForMe.bulk", null,
+                        conversationId, null, "count=" + ids.size());
+            }
+            return JimRestResponses.okJson(JimRestResponses.singleEntry("ok", true));
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/messages/hide", userKey, ex,
+                    "internal_error", "An internal error occurred while hiding messages.");
         }
     }
 

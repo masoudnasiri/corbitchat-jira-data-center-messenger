@@ -101,5 +101,30 @@ extends Entity {
 
     @Mutator(value="PROJECT_KEY")
     public void setProjectKey(String var1);
+
+    /**
+     * Sprint 12 governance: 1 when a group has been soft-archived ("deleted" by
+     * its owner). Archived groups are hidden from normal users but ALL history
+     * (messages, members, attachments, reactions, audit) is retained for
+     * complaint review. Additive/nullable — legacy rows read as not-archived.
+     */
+    @Accessor(value="ARCHIVED")
+    public Integer getArchived();
+
+    @Mutator(value="ARCHIVED")
+    public void setArchived(Integer var1);
+
+    @Accessor(value="ARCHIVED_AT")
+    public Long getArchivedAt();
+
+    @Mutator(value="ARCHIVED_AT")
+    public void setArchivedAt(Long var1);
+
+    @StringLength(value=255)
+    @Accessor(value="ARCHIVED_BY_USER_KEY")
+    public String getArchivedByUserKey();
+
+    @Mutator(value="ARCHIVED_BY_USER_KEY")
+    public void setArchivedByUserKey(String var1);
 }
 

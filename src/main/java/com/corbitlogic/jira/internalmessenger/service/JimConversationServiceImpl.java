@@ -115,6 +115,8 @@ implements JimConversationService {
         for (JimGroupMember membership : memberships = (JimGroupMember[])this.activeObjects.find(JimGroupMember.class, Query.select().where("USER_KEY = ?", new Object[]{userKey}))) {
             JimConversation conversation = (JimConversation)this.activeObjects.get(JimConversation.class, membership.getConversationId());
             if (conversation == null || !JimConversationType.GROUP.name().equals(conversation.getConversationType())) continue;
+            // Sprint 12: soft-archived ("deleted") groups are hidden from normal users.
+            if (conversation.getArchived() != null && conversation.getArchived() != 0) continue;
             conversations.add(conversation);
         }
         conversations.sort(Comparator.comparing(JimConversation::getLastMessageAt, Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(JimConversation::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(JimConversation::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
@@ -154,6 +156,12 @@ implements JimConversationService {
         JimValidation.requireNonBlank(userKey, "userKey");
         JimConversation conversation = this.getConversation(conversationId);
         this.permissionService.requireParticipant(conversation, userKey);
+        // Sprint 12: a soft-archived ("deleted") group is unavailable to normal
+        // users (its data is retained for the hidden reviewer, which reads via a
+        // separate path that does not call this method).
+        if (conversation.getArchived() != null && conversation.getArchived() != 0) {
+            throw JimMessengerException.notFound("Conversation not found");
+        }
         return conversation;
     }
 

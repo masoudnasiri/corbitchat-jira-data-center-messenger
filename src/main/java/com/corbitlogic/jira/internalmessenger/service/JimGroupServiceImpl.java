@@ -56,13 +56,15 @@ implements JimGroupService {
     private final JimConversationService conversationService;
     private final JimAttachmentStorageService attachmentStorageService;
     private final UserManager userManager;
+    private final JimChatAuditService auditService;
 
-    public JimGroupServiceImpl(ActiveObjects activeObjects, JimPermissionService permissionService, JimConversationService conversationService, JimAttachmentStorageService attachmentStorageService, UserManager userManager) {
+    public JimGroupServiceImpl(ActiveObjects activeObjects, JimPermissionService permissionService, JimConversationService conversationService, JimAttachmentStorageService attachmentStorageService, UserManager userManager, JimChatAuditService auditService) {
         this.activeObjects = activeObjects;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
         this.attachmentStorageService = attachmentStorageService;
         this.userManager = userManager;
+        this.auditService = auditService;
     }
 
     @Override
@@ -102,35 +104,26 @@ implements JimGroupService {
         }
         this.requireAuthenticatedSameUser(userKey);
         this.requireOwner(conversation, userKey);
+        // Sprint 12 governance: SOFT-ARCHIVE instead of hard delete. Nothing is
+        // removed — messages, members, attachments (files + rows), reactions,
+        // read-state and audit are all retained for complaint review. The group
+        // is flagged archived so it disappears from normal users' lists and is
+        // unavailable to them, while the hidden reviewer can still inspect it
+        // and its (soft-deleted / hidden) messages.
         this.activeObjects.executeInTransaction(() -> {
-            JimGroupMember[] members;
-            JimReadState[] readStates;
-            JimMessage[] messages;
-            for (JimMessage message : messages = (JimMessage[])this.activeObjects.find(JimMessage.class, Query.select().where("CONVERSATION_ID = ?", new Object[]{conversationId}))) {
-                JimAttachment[] attachments;
-                JimReaction[] reactions = (JimReaction[])this.activeObjects.find(JimReaction.class, Query.select().where("MESSAGE_ID = ?", new Object[]{message.getID()}));
-                if (reactions.length > 0) {
-                    this.activeObjects.delete((RawEntity[])reactions);
-                }
-                for (JimAttachment attachment : attachments = (JimAttachment[])this.activeObjects.find(JimAttachment.class, Query.select().where("MESSAGE_ID = ?", new Object[]{message.getID()}))) {
-                    this.deleteAttachmentFileQuietly(attachment);
-                }
-                if (attachments.length <= 0) continue;
-                this.activeObjects.delete((RawEntity[])attachments);
-            }
-            if (messages.length > 0) {
-                this.activeObjects.delete((RawEntity[])messages);
-            }
-            if ((readStates = (JimReadState[])this.activeObjects.find(JimReadState.class, Query.select().where("CONVERSATION_ID = ?", new Object[]{conversationId}))).length > 0) {
-                this.activeObjects.delete((RawEntity[])readStates);
-            }
-            if ((members = (JimGroupMember[])this.activeObjects.find(JimGroupMember.class, Query.select().where("CONVERSATION_ID = ?", new Object[]{conversationId}))).length > 0) {
-                this.activeObjects.delete((RawEntity[])members);
-            }
-            this.activeObjects.delete(new RawEntity[]{conversation});
-            log.info("event=group stage=delete outcome=success conversationId={} owner={}", (Object)conversationId, (Object)userKey);
+            long now = System.currentTimeMillis();
+            conversation.setArchived(1);
+            conversation.setArchivedAt(now);
+            conversation.setArchivedByUserKey(userKey);
+            conversation.save();
+            // Immutable in-chat audit trail entry.
+            this.addGroupEventMessage(conversationId,
+                    this.displayName(userKey) + " deleted the group");
             return null;
         });
+        this.auditService.record(userKey, "group.archive", null, conversationId,
+                null, "group soft-archived (history retained)");
+        log.info("event=group stage=archive outcome=success conversationId={} owner={}", (Object)conversationId, (Object)userKey);
     }
 
     @Override

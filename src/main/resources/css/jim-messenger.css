@@ -256,6 +256,93 @@
     color: #ffffff;
 }
 
+/* Sprint 12: tappable phone numbers (tel:) inside message bubbles. */
+#jim-messenger-app .jim-message-text .jim-phone-link {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    white-space: nowrap;
+}
+#jim-messenger-app .jim-message-text .jim-phone-link:hover {
+    text-decoration-style: solid;
+}
+#jim-messenger-app .jim-message-row-own .jim-message-text .jim-phone-link {
+    color: #ffffff;
+}
+
+/* Sprint 12: Corbit Easter egg — a premium luminous shimmer on trigger words.
+   Render-time decoration only; message text is never modified or made
+   unreadable. Respects reduced-motion (static glow instead of animation). */
+#jim-messenger-app .jim-easter-egg {
+    font-weight: 700;
+    background: linear-gradient(90deg, #0d6e6e, #2cb5b5, #e07a2f, #2cb5b5, #0d6e6e);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: #0d6e6e; /* fallback where background-clip:text is unsupported */
+    text-shadow: 0 0 6px rgba(44, 181, 181, 0.45);
+    animation: jimCorbitShimmer 2.6s ease-in-out infinite;
+}
+@keyframes jimCorbitShimmer {
+    0%   { background-position: 0% 50%; text-shadow: 0 0 4px rgba(44,181,181,0.35); }
+    50%  { background-position: 100% 50%; text-shadow: 0 0 10px rgba(224,122,47,0.55); }
+    100% { background-position: 0% 50%; text-shadow: 0 0 4px rgba(44,181,181,0.35); }
+}
+@media (prefers-reduced-motion: reduce) {
+    #jim-messenger-app .jim-easter-egg {
+        animation: none;
+        background-position: 0% 50%;
+        text-shadow: 0 0 6px rgba(44, 181, 181, 0.5);
+    }
+}
+
+/* Sprint 12: multi-select toolbar + selected message highlight. */
+#jim-messenger-app .jim-selection-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    background: #0d6e6e;
+    color: #ffffff;
+    border-radius: 8px;
+}
+#jim-messenger-app .jim-selection-count {
+    flex: 1 1 auto;
+    font-weight: 600;
+}
+#jim-messenger-app .jim-selection-toolbar button {
+    border: none;
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font: inherit;
+}
+#jim-messenger-app .jim-selection-cancel {
+    background: transparent;
+    color: #ffffff;
+    font-size: 16px;
+    padding: 4px 8px;
+}
+#jim-messenger-app .jim-selection-delete {
+    background: #ffffff;
+    color: #0d6e6e;
+    font-weight: 600;
+}
+#jim-messenger-app .jim-selection-delete[disabled] {
+    opacity: 0.5;
+    cursor: default;
+}
+#jim-messenger-app .jim-message-bubble-selected {
+    background: rgba(13, 110, 110, 0.14);
+    border-radius: 10px;
+    outline: 2px solid rgba(13, 110, 110, 0.55);
+}
+
 /* Bidirectional text inside text-bearing elements.
 
    - Composer textarea, conversation sidebar title/preview and reply preview

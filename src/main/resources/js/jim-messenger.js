@@ -105,6 +105,9 @@
         deleteConfirmMessageId: null,
         reactionPickerMessageId: null,
         pinnedMessage: null,
+        // Sprint 12: multi-select mode for bulk "Delete for me".
+        selectionMode: false,
+        selectedIds: [],
         activeTab: 'all',
         groupSelectedMembers: [],
         groupSearchTimer: null,
@@ -699,7 +702,75 @@
                 html = html.split(token).join('<span class="' + mentionClass + '">' + token + '</span>');
             }
         }
-        return linkifyHtml(html);
+        var out = linkifyHtml(html);
+        // Sprint 12: phone numbers become tel: links (outside existing anchors),
+        // then the Corbit Easter-egg glow decorates trigger words (including
+        // inside links so corbitlogic.com stays clickable AND glows). Both run
+        // only on text between tags, so escaping/attributes are never touched.
+        out = mapTextSegments(out, decoratePhonesText, true);
+        out = mapTextSegments(out, decorateEasterEggText, false);
+        return out;
+    }
+
+    /**
+     * Applies fn to the visible TEXT segments of an HTML string only (never to
+     * tags/attributes). When skipAnchors is true, text inside <a>...</a> is left
+     * untouched (used for phone detection so URLs are not re-parsed).
+     */
+    function mapTextSegments(html, fn, skipAnchors) {
+        if (!html) {
+            return html;
+        }
+        var parts = html.split(/(<[^>]+>)/g);
+        var insideAnchor = false;
+        var result = '';
+        for (var k = 0; k < parts.length; k++) {
+            var part = parts[k];
+            if (part.charAt(0) === '<' && part.charAt(part.length - 1) === '>') {
+                if (/^<a\b/i.test(part)) {
+                    insideAnchor = true;
+                } else if (/^<\/a>/i.test(part)) {
+                    insideAnchor = false;
+                }
+                result += part;
+            } else if (part) {
+                result += (skipAnchors && insideAnchor) ? part : fn(part);
+            }
+        }
+        return result;
+    }
+
+    // Conservative phone matcher: a boundary (start / space / open paren), then
+    // an optional + and 6+ phone characters ending in a digit. Digit count and
+    // date-shape checks reject issue keys, dates, times and long numeric IDs.
+    var PHONE_RE = /(^|[\s(])(\+?\d[\d\s().\-]{5,}\d)/g;
+    function decoratePhonesText(text) {
+        return text.replace(PHONE_RE, function (whole, pre, num) {
+            var trimmed = num.replace(/\s+$/, '');
+            var digits = trimmed.replace(/\D/g, '');
+            if (digits.length < 7 || digits.length > 15) {
+                return whole;
+            }
+            // Reject date shapes (YYYY-MM-DD, DD-MM-YYYY, D/M/YY...) and plain
+            // long IDs (12+ digits with no +).
+            if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(trimmed) || /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/.test(trimmed)) {
+                return whole;
+            }
+            if (trimmed.charAt(0) !== '+' && digits.length > 12) {
+                return whole;
+            }
+            var tel = (trimmed.charAt(0) === '+' ? '+' : '') + digits;
+            return pre + '<a href="tel:' + tel + '" class="jim-phone-link">' + trimmed + '</a>';
+        });
+    }
+
+    // Corbit Easter egg: case-insensitive trigger words get a glow span. Render-
+    // time only; the stored body is never modified.
+    var EASTER_RE = /(corbit\s*logic|corbitlogic\.com|corbitlogic|corbit)/gi;
+    function decorateEasterEggText(text) {
+        return text.replace(EASTER_RE, function (match) {
+            return '<span class="jim-easter-egg">' + match + '</span>';
+        });
     }
 
     /**
@@ -2354,6 +2425,11 @@
             (message.pinned ? 'unpin' : 'pin') + '" data-message-id="' + message.id + '">' +
             (message.pinned ? 'Unpin' : 'Pin') + '</button>');
 
+        // Sprint 12: Delete-for-me (any message, own or others') + enter
+        // multi-select mode. These never hard-delete; they hide per-user only.
+        actions.push('<button type="button" class="jim-message-action jim-hide-action" data-action="hide-for-me" data-message-id="' + message.id + '">Delete for me</button>');
+        actions.push('<button type="button" class="jim-message-action jim-select-action" data-action="select-msg" data-message-id="' + message.id + '">Select</button>');
+
         if (isOwnMessage(message)) {
             var conversationForInfo = state.selectedConversation;
             if (conversationForInfo && (isGroupConversation(conversationForInfo) || conversationForInfo.isProjectChat)) {
@@ -2785,8 +2861,13 @@
             ? '<div class="jim-message-meta">' + editedLabel + bubbleTime + '</div>'
             : '';
 
+        // Sprint 12: mark selected bubbles in multi-select mode.
+        var selectedClass = (state.selectionMode && state.selectedIds
+            && state.selectedIds.indexOf(message.id) >= 0)
+            ? ' jim-message-bubble-selected' : '';
+
         return '' +
-            '<div class="jim-message-bubble-wrapper" data-message-id="' + message.id + '">' +
+            '<div class="jim-message-bubble-wrapper' + selectedClass + '" data-message-id="' + message.id + '">' +
             '  <div class="' + bubbleClass + '">' +
             (!message.deleted && !isEditing ? renderReplyPreview(message) : '') +
             contentHtml +
@@ -2849,6 +2930,9 @@
               '<span aria-hidden="true">&#10003;</span> Mark as seen</button>'
             : '<span class="jim-system-card-actioned-pill" title="You marked this as seen">' +
               '<span aria-hidden="true">&#10003;</span> Acknowledged</span>';
+        // Sprint 12: hide this Assistant item for me only (per-user; auditable).
+        ackButton += '<button type="button" class="jim-system-card-ack-btn aui-button aui-button-link" ' +
+            'data-action="hide-for-me" data-message-id="' + message.id + '">Delete for me</button>';
 
         var eventType = normalizeEventType(message) || 'system';
         var isUnread = !!(message.id && state.initiallyUnreadIds[message.id]);
@@ -3187,6 +3271,66 @@
         focusMessageInput();
     }
 
+    // --- Sprint 12: multi-select + bulk delete-for-me -----------------------
+
+    function enterSelectionMode(messageId) {
+        state.selectionMode = true;
+        state.selectedIds = messageId ? [messageId] : [];
+        state.reactionPickerMessageId = null;
+        renderMessages();
+    }
+
+    function exitSelectionMode() {
+        state.selectionMode = false;
+        state.selectedIds = [];
+        renderMessages();
+    }
+
+    function toggleSelectMessage(messageId) {
+        if (!messageId) {
+            return;
+        }
+        var idx = state.selectedIds.indexOf(messageId);
+        if (idx >= 0) {
+            state.selectedIds.splice(idx, 1);
+        } else {
+            state.selectedIds.push(messageId);
+        }
+        if (state.selectedIds.length === 0) {
+            state.selectionMode = false;
+        }
+        renderMessages();
+    }
+
+    function bulkHideForMe() {
+        if (!state.selectedIds || state.selectedIds.length === 0) {
+            return;
+        }
+        var ids = state.selectedIds.slice();
+        JimApi.hideMessages(ids).then(function () {
+            exitSelectionMode();
+            return loadMessages(state.selectedConversationId, false, false);
+        }).then(function () {
+            loadConversations();
+        }).catch(function (error) {
+            logError('bulkHideForMe', error);
+            showError(error && error.message ? error.message : 'Unable to delete the selected messages for you.');
+        });
+    }
+
+    function renderSelectionToolbarHtml() {
+        if (!state.selectionMode) {
+            return '';
+        }
+        var count = state.selectedIds ? state.selectedIds.length : 0;
+        return '<div class="jim-selection-toolbar" role="toolbar" aria-label="Selection actions">' +
+            '<button type="button" class="jim-selection-cancel" data-action="selection-cancel" aria-label="Cancel selection">✕</button>' +
+            '<span class="jim-selection-count">' + count + ' selected</span>' +
+            '<button type="button" class="jim-selection-delete" data-action="bulk-hide-for-me"' +
+            (count === 0 ? ' disabled' : '') + '>Delete for me</button>' +
+            '</div>';
+    }
+
     function scrollToReplyTarget(messageId) {
         if (!els.messageList || !messageId) {
             return;
@@ -3266,11 +3410,25 @@
             }
 
             var replyPreview = target.closest('.jim-reply-preview');
-            if (replyPreview) {
+            if (replyPreview && !state.selectionMode) {
                 event.preventDefault();
                 var replyTargetId = parseInt(replyPreview.getAttribute('data-reply-target-id'), 10);
                 scrollToReplyTarget(replyTargetId);
                 return;
+            }
+
+            // Sprint 12: in multi-select mode a click toggles the message's
+            // selection (except clicks on the selection toolbar's own buttons).
+            if (state.selectionMode) {
+                var toolbarBtn = target.closest('[data-action="bulk-hide-for-me"], [data-action="selection-cancel"]');
+                if (!toolbarBtn) {
+                    var selRow = target.closest('[data-message-id]');
+                    if (selRow) {
+                        event.preventDefault();
+                        toggleSelectMessage(parseInt(selRow.getAttribute('data-message-id'), 10));
+                        return;
+                    }
+                }
             }
 
             var actionEl = target.closest('[data-action]');
@@ -3285,6 +3443,18 @@
             if (action === 'load-older') {
                 event.preventDefault();
                 loadOlderMessages();
+                return;
+            }
+
+            // Sprint 12: selection-toolbar buttons (no message id).
+            if (action === 'selection-cancel') {
+                event.preventDefault();
+                exitSelectionMode();
+                return;
+            }
+            if (action === 'bulk-hide-for-me') {
+                event.preventDefault();
+                bulkHideForMe();
                 return;
             }
 
@@ -3312,6 +3482,23 @@
             if (action === 'react') {
                 state.reactionPickerMessageId = state.reactionPickerMessageId === messageId ? null : messageId;
                 renderMessages();
+                return;
+            }
+            // Sprint 12: Delete-for-me (single) — hide this message for me only.
+            if (action === 'hide-for-me') {
+                JimApi.hideMessage(messageId).then(function () {
+                    return loadMessages(state.selectedConversationId, false, false);
+                }).then(function () {
+                    loadConversations();
+                }).catch(function (error) {
+                    logError('hideMessage', error);
+                    showError(error && error.message ? error.message : 'Unable to hide message.');
+                });
+                return;
+            }
+            // Sprint 12: enter multi-select mode starting with this message.
+            if (action === 'select-msg') {
+                enterSelectionMode(messageId);
                 return;
             }
             if (action === 'pin' || action === 'unpin') {
@@ -3481,7 +3668,7 @@
               '</button>' +
               '</div>'
             : '';
-        var html = '<div class="jim-message-list-inner">' + loadOlderHtml + renderMessageGroups(state.messages) + '</div>';
+        var html = '<div class="jim-message-list-inner">' + renderSelectionToolbarHtml() + loadOlderHtml + renderMessageGroups(state.messages) + '</div>';
         if (html !== state.renderedMessagesHtml) {
             var savedAudio = captureAudioPlayback();
             els.messageList.innerHTML = html;

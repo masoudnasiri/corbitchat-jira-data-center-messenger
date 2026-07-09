@@ -491,7 +491,10 @@ implements JimMessageService {
             message.setDeleted(1);
             message.setDeletedAt(now);
             message.setDeletedByUserKey(deleterUserKey);
-            message.setBody("");
+            // Sprint 12 governance: the body is RETAINED in the row for audit /
+            // hidden-reviewer complaint review. Normal participants never see it
+            // (JimRestJsonMapper returns "" and the conversation preview shows
+            // "Message deleted", both driven by the deleted flag, not the body).
             message.save();
             this.refreshConversationPreviewIfNeeded(conversationId, messageId);
             return message;

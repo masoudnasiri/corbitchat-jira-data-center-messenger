@@ -1,0 +1,336 @@
+package com.corbitlogic.jira.internalmessenger.mobile.rest;
+
+import com.atlassian.activeobjects.external.ActiveObjects;
+import com.atlassian.jira.user.ApplicationUser;
+import com.atlassian.jira.user.util.UserManager;
+import com.atlassian.plugins.rest.common.security.AnonymousAllowed;
+import com.corbitlogic.jira.internalmessenger.ao.JimAttachment;
+import com.corbitlogic.jira.internalmessenger.ao.JimChatAudit;
+import com.corbitlogic.jira.internalmessenger.ao.JimConversation;
+import com.corbitlogic.jira.internalmessenger.ao.JimGroupMember;
+import com.corbitlogic.jira.internalmessenger.ao.JimMessage;
+import com.corbitlogic.jira.internalmessenger.ao.JimMessageUserState;
+import com.corbitlogic.jira.internalmessenger.mobile.MobileSessionSupport;
+import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
+import com.corbitlogic.jira.internalmessenger.service.JimChatAuditService;
+import com.corbitlogic.jira.internalmessenger.service.JimMobileSessionService;
+import com.corbitlogic.jira.internalmessenger.service.JimReviewerService;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import javax.inject.Inject;
+import javax.servlet.http.HttpServletRequest;
+import javax.ws.rs.Consumes;
+import javax.ws.rs.GET;
+import javax.ws.rs.POST;
+import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
+import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
+import javax.ws.rs.DefaultValue;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.Response;
+import net.java.ao.Query;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Hidden chat-reviewer READ-ONLY API (Sprint 12). Mounted under
+ * {@code /rest/corbit-mobile/1.0/reviewer}. Authenticated ONLY by a reviewer
+ * session (the plugin-owned {@code pluginuser}); a normal user's session key is
+ * never the reviewer sentinel, so normal sessions get 403 here. The reviewer
+ * can read every conversation, including soft-deleted messages (with their
+ * retained body) and per-user "delete for me" state, for complaint review.
+ *
+ * <p>Strictly read-only: the only write is the reviewer's own password change.
+ * The reviewer is never a participant, emits no presence/typing, triggers no
+ * notifications, and never mutates read/unread state. Every access is audited.</p>
+ */
+@Path("/reviewer")
+@Produces({"application/json"})
+@AnonymousAllowed
+public class CorbitMobileReviewerResource {
+
+    private static final Logger log = LoggerFactory.getLogger(CorbitMobileReviewerResource.class);
+
+    private final ActiveObjects activeObjects;
+    private final UserManager userManager;
+    private final JimMobileSessionService sessionService;
+    private final JimReviewerService reviewerService;
+    private final JimChatAuditService auditService;
+
+    @Inject
+    public CorbitMobileReviewerResource(ActiveObjects activeObjects,
+                                        UserManager userManager,
+                                        JimMobileSessionService sessionService,
+                                        JimReviewerService reviewerService,
+                                        JimChatAuditService auditService) {
+        this.activeObjects = activeObjects;
+        this.userManager = userManager;
+        this.sessionService = sessionService;
+        this.reviewerService = reviewerService;
+        this.auditService = auditService;
+    }
+
+    /** Quick check that the caller holds a valid reviewer session. */
+    @GET
+    @Path("/status")
+    public Response status(@Context HttpServletRequest request) {
+        if (!isReviewer(request)) {
+            return forbidden();
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("reviewer", true);
+        body.put("configured", this.reviewerService.isConfigured());
+        return JimRestResponses.okJson(body);
+    }
+
+    /** All conversations across all users (governance view). */
+    @GET
+    @Path("/conversations")
+    public Response conversations(@Context HttpServletRequest request) {
+        if (!isReviewer(request)) {
+            return forbidden();
+        }
+        this.auditService.record(JimReviewerService.SESSION_USER_KEY, "reviewer.access",
+                null, null, null, "conversations");
+        try {
+            JimConversation[] rows = this.activeObjects.find(JimConversation.class,
+                    Query.select().order("LAST_MESSAGE_AT DESC"));
+            List<Map<String, Object>> items = new ArrayList<>();
+            for (JimConversation c : rows) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", c.getID());
+                m.put("type", c.getConversationType());
+                m.put("groupName", c.getGroupName());
+                m.put("projectKey", c.getProjectKey());
+                m.put("createdAt", c.getCreatedAt());
+                m.put("lastMessageAt", c.getLastMessageAt());
+                m.put("lastMessagePreview", c.getLastMessagePreview());
+                boolean archived = c.getArchived() != null && c.getArchived() != 0;
+                m.put("archived", archived);
+                m.put("archivedAt", c.getArchivedAt());
+                m.put("archivedByUserKey", c.getArchivedByUserKey());
+                m.put("participants", participantsFor(c));
+                items.add(m);
+            }
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("conversations", items);
+            return JimRestResponses.okJson(body);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/reviewer/conversations",
+                    JimReviewerService.SESSION_USER_KEY, ex, "internal_error",
+                    "Unable to load conversations.");
+        }
+    }
+
+    /** All messages in a conversation, including soft-deleted, with governance metadata. */
+    @GET
+    @Path("/conversations/{conversationId}/messages")
+    public Response messages(@Context HttpServletRequest request,
+                             @PathParam("conversationId") int conversationId) {
+        if (!isReviewer(request)) {
+            return forbidden();
+        }
+        this.auditService.record(JimReviewerService.SESSION_USER_KEY, "reviewer.access",
+                null, conversationId, null, "messages");
+        try {
+            JimMessage[] rows = this.activeObjects.find(JimMessage.class,
+                    Query.select().where("CONVERSATION_ID = ?", conversationId).order("CREATED_AT ASC"));
+            List<Map<String, Object>> items = new ArrayList<>();
+            for (JimMessage msg : rows) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", msg.getID());
+                m.put("senderType", msg.getSenderType());
+                m.put("senderUserKey", msg.getSenderUserKey());
+                m.put("senderDisplayName", displayName(msg.getSenderUserKey()));
+                // Reviewer sees the RETAINED body even for soft-deleted messages.
+                m.put("body", msg.getBody());
+                m.put("bodyFormat", msg.getBodyFormat());
+                m.put("eventType", msg.getEventType());
+                m.put("createdAt", msg.getCreatedAt());
+                m.put("edited", isTrue(msg.getEdited()));
+                m.put("editedAt", msg.getEditedAt());
+                boolean deleted = msg.getDeleted() != null && msg.getDeleted() != 0;
+                m.put("deleted", deleted);
+                m.put("deletedAt", msg.getDeletedAt());
+                m.put("deletedByUserKey", msg.getDeletedByUserKey());
+                m.put("replyToMessageId", msg.getReplyToMessageId());
+                m.put("attachments", attachmentsFor(msg.getID()));
+                m.put("hiddenForUsers", hiddenForUsers(msg.getID()));
+                items.add(m);
+            }
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("conversationId", conversationId);
+            body.put("messages", items);
+            return JimRestResponses.okJson(body);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/reviewer/conversations/" + conversationId + "/messages",
+                    JimReviewerService.SESSION_USER_KEY, ex, "internal_error",
+                    "Unable to load messages.");
+        }
+    }
+
+    /** Recent governance audit entries. */
+    @GET
+    @Path("/audit")
+    public Response audit(@Context HttpServletRequest request,
+                          @QueryParam("limit") @DefaultValue("100") int limit) {
+        if (!isReviewer(request)) {
+            return forbidden();
+        }
+        try {
+            List<Map<String, Object>> items = new ArrayList<>();
+            for (JimChatAudit a : this.auditService.recent(limit)) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("actorUserKey", a.getActorUserKey());
+                m.put("action", a.getAction());
+                m.put("messageId", a.getMessageId());
+                m.put("conversationId", a.getConversationId());
+                m.put("targetUserKey", a.getTargetUserKey());
+                m.put("details", a.getDetails());
+                m.put("createdAt", a.getCreatedAt());
+                items.add(m);
+            }
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("audit", items);
+            return JimRestResponses.okJson(body);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/reviewer/audit",
+                    JimReviewerService.SESSION_USER_KEY, ex, "internal_error",
+                    "Unable to load audit log.");
+        }
+    }
+
+    /** Reviewer changes their own password (through the app/PWA). */
+    @POST
+    @Path("/change-password")
+    @Consumes({"application/json"})
+    public Response changePassword(@Context HttpServletRequest request, Map<String, Object> body) {
+        if (!isReviewer(request)) {
+            return forbidden();
+        }
+        String current = str(body, "currentPassword");
+        String next = str(body, "newPassword");
+        if (current == null || next == null) {
+            return JimRestResponses.errorJson(400, "bad_request",
+                    "currentPassword and newPassword are required");
+        }
+        try {
+            boolean ok = this.reviewerService.changePassword(current, next);
+            if (!ok) {
+                return JimRestResponses.errorJson(401, "invalid_current_password",
+                        "Current password is incorrect.");
+            }
+            this.auditService.record(JimReviewerService.SESSION_USER_KEY, "reviewer.changePassword",
+                    null, null, null, null);
+            return JimRestResponses.okJson(JimRestResponses.singleEntry("ok", true));
+        } catch (IllegalArgumentException ex) {
+            return JimRestResponses.errorJson(400, "weak_password", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/reviewer/change-password",
+                    JimReviewerService.SESSION_USER_KEY, ex, "internal_error",
+                    "Unable to change password.");
+        }
+    }
+
+    // --- helpers --------------------------------------------------------------
+
+    private boolean isReviewer(HttpServletRequest request) {
+        String token = MobileSessionSupport.extractSessionToken(request);
+        if (token == null) {
+            token = MobileSessionSupport.extractCookieToken(request);
+        }
+        if (token == null) {
+            return false;
+        }
+        try {
+            String userKey = this.sessionService.validate(token);
+            return JimReviewerService.SESSION_USER_KEY.equals(userKey);
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    private List<String> participantsFor(JimConversation c) {
+        List<String> keys = new ArrayList<>();
+        String type = c.getConversationType();
+        if (type != null && ("GROUP".equalsIgnoreCase(type) || "PROJECT".equalsIgnoreCase(type))) {
+            JimGroupMember[] members = this.activeObjects.find(JimGroupMember.class,
+                    Query.select().where("CONVERSATION_ID = ?", c.getID()));
+            for (JimGroupMember member : members) {
+                keys.add(describe(member.getUserKey()));
+            }
+        } else {
+            if (c.getUserAKey() != null) keys.add(describe(c.getUserAKey()));
+            if (c.getUserBKey() != null) keys.add(describe(c.getUserBKey()));
+        }
+        return keys;
+    }
+
+    private List<Map<String, Object>> attachmentsFor(int messageId) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        JimAttachment[] rows = this.activeObjects.find(JimAttachment.class,
+                Query.select().where("MESSAGE_ID = ?", messageId));
+        for (JimAttachment a : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", a.getID());
+            m.put("fileName", a.getOriginalFilename());
+            m.put("contentType", a.getContentType());
+            m.put("fileSize", a.getFileSize());
+            m.put("fileKind", a.getFileKind());
+            m.put("voice", a.getVoice());
+            list.add(m);
+        }
+        return list;
+    }
+
+    private List<String> hiddenForUsers(int messageId) {
+        List<String> users = new ArrayList<>();
+        JimMessageUserState[] rows = this.activeObjects.find(JimMessageUserState.class,
+                Query.select().where("MESSAGE_ID = ? AND HIDDEN = ?", messageId, 1));
+        for (JimMessageUserState row : rows) {
+            users.add(describe(row.getUserKey()));
+        }
+        return users;
+    }
+
+    private String describe(String userKey) {
+        String name = displayName(userKey);
+        return name != null ? name + " (" + userKey + ")" : userKey;
+    }
+
+    private String displayName(String userKey) {
+        if (userKey == null) {
+            return null;
+        }
+        try {
+            ApplicationUser user = this.userManager.getUserByKey(userKey);
+            return user != null ? user.getDisplayName() : userKey;
+        } catch (Exception ex) {
+            return userKey;
+        }
+    }
+
+    private static boolean isTrue(Integer v) {
+        return v != null && v != 0;
+    }
+
+    private static Response forbidden() {
+        return JimRestResponses.errorJson(403, "reviewer_required",
+                "Reviewer authentication is required.");
+    }
+
+    private static String str(Map<String, Object> map, String key) {
+        if (map == null) {
+            return null;
+        }
+        Object v = map.get(key);
+        return v == null ? null : v.toString();
+    }
+}

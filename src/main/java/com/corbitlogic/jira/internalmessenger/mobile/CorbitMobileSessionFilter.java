@@ -13,6 +13,7 @@ import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,14 +63,40 @@ public class CorbitMobileSessionFilter implements Filter {
         }
         HttpServletRequest httpRequest = (HttpServletRequest) request;
 
+        // Sensitive-by-default: mobile BFF payloads (profile, issues, chat, ...)
+        // must never be cached by browsers or intermediaries.
+        if (response instanceof HttpServletResponse) {
+            ((HttpServletResponse) response).setHeader("Cache-Control", "no-store");
+        }
+
         // Do not override an existing authentication (PAT / Jira cookie).
         if (this.authenticationContext.getLoggedInUser() != null) {
             chain.doFilter(request, response);
             return;
         }
 
+        // Native clients send the token in a header. The Flutter Web PWA has no
+        // JavaScript-readable token; the browser sends it automatically as an
+        // HttpOnly cookie. Header wins; cookie is the fallback.
         String rawToken = MobileSessionSupport.extractSessionToken(httpRequest);
+        boolean viaCookie = false;
         if (rawToken == null) {
+            rawToken = MobileSessionSupport.extractCookieToken(httpRequest);
+            viaCookie = rawToken != null;
+        }
+        if (rawToken == null) {
+            chain.doFilter(request, response);
+            return;
+        }
+
+        // CSRF defense for the cookie session: a state-changing request must also
+        // carry the custom PWA marker header. A cross-site attacker cannot add it
+        // without a CORS preflight this API never answers, so a forged cookie
+        // request stays anonymous (resources return 401/403). Header auth and
+        // safe methods are exempt.
+        if (viaCookie
+                && MobileSessionSupport.isStateChangingMethod(httpRequest.getMethod())
+                && !MobileSessionSupport.hasPwaMarker(httpRequest)) {
             chain.doFilter(request, response);
             return;
         }

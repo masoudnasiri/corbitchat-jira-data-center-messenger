@@ -26,11 +26,16 @@ import com.corbitlogic.jira.internalmessenger.dto.EditMessageRequestDto;
 import com.corbitlogic.jira.internalmessenger.dto.ReactionRequestDto;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestJsonMapper;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
+import com.corbitlogic.jira.internalmessenger.service.JimChatAuditService;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
+import com.corbitlogic.jira.internalmessenger.service.JimMessageUserStateService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
 import com.corbitlogic.jira.internalmessenger.service.JimReactionService;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import javax.inject.Inject;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
@@ -53,15 +58,76 @@ public class JimMessageResource {
     private final JimMessageService messageService;
     private final JimReactionService reactionService;
     private final JimRestJsonMapper restJsonMapper;
+    private final JimMessageUserStateService userStateService;
+    private final JimChatAuditService auditService;
 
     @Inject
-    public JimMessageResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReactionService reactionService, JimRestJsonMapper restJsonMapper) {
+    public JimMessageResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReactionService reactionService, JimRestJsonMapper restJsonMapper, JimMessageUserStateService userStateService, JimChatAuditService auditService) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
         this.messageService = messageService;
         this.reactionService = reactionService;
         this.restJsonMapper = restJsonMapper;
+        this.userStateService = userStateService;
+        this.auditService = auditService;
+    }
+
+    /** Delete-for-me: hide a single message for the current user only (Sprint 12). */
+    @POST
+    @Path(value="/{messageId}/hide")
+    public Response hideMessage(@PathParam(value="messageId") int messageId) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            JimMessage message = this.messageService.getMessageForParticipant(messageId, userKey);
+            this.userStateService.hide(messageId, message.getConversationId(), userKey);
+            this.auditService.record(userKey, "message.hideForMe", messageId,
+                    message.getConversationId(), null, null);
+            return JimRestResponses.okJson(JimRestResponses.singleEntry("ok", true));
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST /rest/jim/1.0/messages/" + messageId + "/hide", userKey, ex, "internal_error", "An internal error occurred while hiding the message.");
+        }
+    }
+
+    /** Delete-for-me in bulk: hide several messages for the current user only. */
+    @POST
+    @Path(value="/hide")
+    @Consumes(value={"application/json"})
+    public Response hideMessages(Map<String, Object> request) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        Object idsRaw = request == null ? null : request.get("ids");
+        if (!(idsRaw instanceof List)) {
+            return JimRestResponses.errorJson(400, "bad_request", "ids array is required");
+        }
+        try {
+            List<Integer> ids = new ArrayList<>();
+            int conversationId = -1;
+            for (Object o : (List<?>) idsRaw) {
+                int id = o instanceof Number ? ((Number) o).intValue() : Integer.parseInt(String.valueOf(o));
+                // Participant check per message; all must be in one conversation.
+                JimMessage message = this.messageService.getMessageForParticipant(id, userKey);
+                conversationId = message.getConversationId();
+                ids.add(id);
+            }
+            if (conversationId >= 0) {
+                this.userStateService.hideAll(ids, conversationId, userKey);
+                this.auditService.record(userKey, "message.hideForMe.bulk", null,
+                        conversationId, null, "count=" + ids.size());
+            }
+            return JimRestResponses.okJson(JimRestResponses.singleEntry("ok", true));
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST /rest/jim/1.0/messages/hide", userKey, ex, "internal_error", "An internal error occurred while hiding messages.");
+        }
     }
 
     @PUT

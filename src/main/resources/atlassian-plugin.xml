@@ -25,6 +25,12 @@
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimMobileSession</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimMobileFeatureRule</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimMobileDevice</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimMessageUserState</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimCommentReaction</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimReviewer</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimChatAudit</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimActivity</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimLastSeen</entity>
     </ao>
 
     <component-import key="activeObjects" interface="com.atlassian.activeobjects.external.ActiveObjects"/>
@@ -183,6 +189,24 @@
                class="com.corbitlogic.jira.internalmessenger.service.JimReadStateServiceImpl">
         <description>Read state tracking for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimReadStateService</interface>
+    </component>
+
+    <component key="jimMessageUserStateService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMessageUserStateServiceImpl">
+        <description>Per-user message visibility overlay (delete-for-me) for CorbitChat (Sprint 12)</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimMessageUserStateService</interface>
+    </component>
+
+    <component key="jimChatAuditService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimChatAuditServiceImpl">
+        <description>Governance audit trail for CorbitChat chat actions (Sprint 12)</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimChatAuditService</interface>
+    </component>
+
+    <component key="jimReviewerService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimReviewerServiceImpl">
+        <description>Plugin-owned hidden chat-reviewer account (Sprint 12)</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimReviewerService</interface>
     </component>
 
     <component key="jimUserSearchService"

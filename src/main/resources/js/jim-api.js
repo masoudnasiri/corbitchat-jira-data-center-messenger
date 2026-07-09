@@ -121,6 +121,16 @@
             return request('DELETE', '/messages/' + messageId);
         },
 
+        // Sprint 12: "Delete for me" — hides a message for the current user only
+        // (never hard-deletes; stays visible to others). Single + bulk.
+        hideMessage: function (messageId) {
+            return request('POST', '/messages/' + messageId + '/hide');
+        },
+
+        hideMessages: function (messageIds) {
+            return request('POST', '/messages/hide', { ids: messageIds });
+        },
+
         toggleReaction: function (messageId, emoji) {
             return request('POST', '/messages/' + messageId + '/reactions', { emoji: emoji });
         },
