@@ -16,9 +16,13 @@ import com.corbitlogic.jira.internalmessenger.service.JimChatAuditService;
 import com.corbitlogic.jira.internalmessenger.service.JimMobileSessionService;
 import com.corbitlogic.jira.internalmessenger.service.JimReviewerService;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
@@ -174,6 +178,160 @@ public class CorbitMobileReviewerResource {
         }
     }
 
+    /**
+     * PERSON-CENTRIC landing (s12e-fix3): one row per real Jira user who is a
+     * direct participant, a (current or retained) group/project member, or the
+     * author of any message. Excludes the reviewer account. Sorted by latest
+     * related chat activity. This is the reviewer's primary entry point so a
+     * complaint review starts from a person, not scattered per-conversation rows.
+     */
+    @GET
+    @Path("/people")
+    public Response people(@Context HttpServletRequest request) {
+        if (!isReviewer(request)) {
+            return forbidden();
+        }
+        this.auditService.record(JimReviewerService.SESSION_USER_KEY, "reviewer.access",
+                null, null, null, "people");
+        try {
+            JimConversation[] convs = this.activeObjects.find(JimConversation.class, Query.select());
+            Map<Integer, JimConversation> convById = new HashMap<>();
+            for (JimConversation c : convs) {
+                convById.put(c.getID(), c);
+            }
+            // person userKey -> set of related conversation ids
+            Map<String, Set<Integer>> rel = new LinkedHashMap<>();
+            for (JimConversation c : convs) {
+                if (isGroupOrProject(c.getConversationType())) {
+                    JimGroupMember[] members = this.activeObjects.find(JimGroupMember.class,
+                            Query.select().where("CONVERSATION_ID = ?", c.getID()));
+                    for (JimGroupMember m : members) {
+                        addRelation(rel, m.getUserKey(), c.getID());
+                    }
+                } else {
+                    addRelation(rel, c.getUserAKey(), c.getID());
+                    addRelation(rel, c.getUserBKey(), c.getID());
+                }
+            }
+            // Authorship: covers people who sent messages even if later removed
+            // from a group (historical participation).
+            JimMessage[] userMsgs = this.activeObjects.find(JimMessage.class,
+                    Query.select().where("SENDER_TYPE = ?", "USER"));
+            for (JimMessage msg : userMsgs) {
+                addRelation(rel, msg.getSenderUserKey(), msg.getConversationId());
+            }
+
+            List<Map<String, Object>> people = new ArrayList<>();
+            for (Map.Entry<String, Set<Integer>> e : rel.entrySet()) {
+                String key = e.getKey();
+                if (key == null || this.reviewerService.isReviewerUserKey(key)) {
+                    continue; // never list the hidden reviewer
+                }
+                ApplicationUser u = this.userManager.getUserByKey(key);
+                if (u == null) {
+                    continue; // only real Jira users/people
+                }
+                long last = 0L;
+                int archived = 0;
+                for (Integer cid : e.getValue()) {
+                    JimConversation c = convById.get(cid);
+                    if (c == null) continue;
+                    if (c.getLastMessageAt() != null && c.getLastMessageAt() > last) {
+                        last = c.getLastMessageAt();
+                    }
+                    if (isArchived(c)) archived++;
+                }
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("userKey", key);
+                row.put("username", u.getName());
+                row.put("displayName", u.getDisplayName());
+                row.put("conversationCount", e.getValue().size());
+                row.put("lastActivityAt", last);
+                row.put("archivedCount", archived);
+                people.add(row);
+            }
+            people.sort(Comparator.comparingLong((Map<String, Object> m) ->
+                    ((Number) m.getOrDefault("lastActivityAt", 0L)).longValue()).reversed());
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("people", people);
+            return JimRestResponses.okJson(body);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/reviewer/people",
+                    JimReviewerService.SESSION_USER_KEY, ex, "internal_error",
+                    "Unable to load people.");
+        }
+    }
+
+    /** All conversations related to one person (direct, group, project, archived, authored). */
+    @GET
+    @Path("/people/{userKey}/conversations")
+    public Response personConversations(@Context HttpServletRequest request,
+                                        @PathParam("userKey") String userKey) {
+        if (!isReviewer(request)) {
+            return forbidden();
+        }
+        this.auditService.record(JimReviewerService.SESSION_USER_KEY, "reviewer.access",
+                null, null, userKey, "person.conversations");
+        try {
+            JimConversation[] convs = this.activeObjects.find(JimConversation.class, Query.select());
+            Set<Integer> cids = new LinkedHashSet<>();
+            for (JimConversation c : convs) {
+                if (isGroupOrProject(c.getConversationType())) {
+                    JimGroupMember[] members = this.activeObjects.find(JimGroupMember.class,
+                            Query.select().where("CONVERSATION_ID = ? AND USER_KEY = ?", c.getID(), userKey));
+                    if (members.length > 0) {
+                        cids.add(c.getID());
+                    }
+                } else if (userKey.equals(c.getUserAKey()) || userKey.equals(c.getUserBKey())) {
+                    cids.add(c.getID());
+                }
+            }
+            // Authored conversations (historical participation after removal).
+            JimMessage[] authored = this.activeObjects.find(JimMessage.class,
+                    Query.select().where("SENDER_TYPE = ? AND SENDER_USER_KEY = ?", "USER", userKey));
+            for (JimMessage msg : authored) {
+                cids.add(msg.getConversationId());
+            }
+
+            List<Map<String, Object>> items = new ArrayList<>();
+            for (JimConversation c : convs) {
+                if (!cids.contains(c.getID())) continue;
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", c.getID());
+                m.put("type", c.getConversationType());
+                m.put("groupName", c.getGroupName());
+                m.put("projectKey", c.getProjectKey());
+                m.put("createdAt", c.getCreatedAt());
+                m.put("lastMessageAt", c.getLastMessageAt());
+                m.put("lastMessagePreview", c.getLastMessagePreview());
+                m.put("archived", isArchived(c));
+                m.put("archivedAt", c.getArchivedAt());
+                m.put("participants", participantsFor(c));
+                items.add(m);
+            }
+            items.sort(Comparator.comparingLong((Map<String, Object> m) -> {
+                Object v = m.get("lastMessageAt");
+                return v instanceof Number ? ((Number) v).longValue() : 0L;
+            }).reversed());
+
+            ApplicationUser u = this.userManager.getUserByKey(userKey);
+            Map<String, Object> person = new LinkedHashMap<>();
+            person.put("userKey", userKey);
+            person.put("username", u != null ? u.getName() : null);
+            person.put("displayName", u != null ? u.getDisplayName() : userKey);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("person", person);
+            body.put("conversations", items);
+            return JimRestResponses.okJson(body);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/reviewer/people/" + userKey + "/conversations",
+                    JimReviewerService.SESSION_USER_KEY, ex, "internal_error",
+                    "Unable to load the person's conversations.");
+        }
+    }
+
     /** Recent governance audit entries. */
     @GET
     @Path("/audit")
@@ -239,6 +397,21 @@ public class CorbitMobileReviewerResource {
         } catch (Exception ex) {
             return false;
         }
+    }
+
+    private static void addRelation(Map<String, Set<Integer>> rel, String userKey, int conversationId) {
+        if (userKey == null || userKey.trim().isEmpty()) {
+            return;
+        }
+        rel.computeIfAbsent(userKey, k -> new LinkedHashSet<>()).add(conversationId);
+    }
+
+    private static boolean isGroupOrProject(String type) {
+        return type != null && ("GROUP".equalsIgnoreCase(type) || "PROJECT".equalsIgnoreCase(type));
+    }
+
+    private static boolean isArchived(JimConversation c) {
+        return c.getArchived() != null && c.getArchived() != 0;
     }
 
     private List<String> participantsFor(JimConversation c) {
