@@ -63,6 +63,10 @@ implements JimUserSearchService {
         ArrayList<UserSearchResultDto> results = new ArrayList<UserSearchResultDto>();
         for (ApplicationUser user : users) {
             if (user == null || !user.isActive() || !seenKeys.add(user.getKey()) || !user.getKey().equals(viewerKey) && !this.accessPolicyService.canSearch(viewerKey, user.getKey())) continue;
+            // s12e-fix2: never surface the hidden reviewer (pluginuser) in chat
+            // user search / mention / member-add pickers, even though it is now a
+            // real Jira user. It cannot be started as a chat, mentioned, or added.
+            if (JimReviewerService.USERNAME.equalsIgnoreCase(user.getUsername())) continue;
             results.add(this.toUserSearchResult(user, viewer));
             if (results.size() < 20) continue;
             break;

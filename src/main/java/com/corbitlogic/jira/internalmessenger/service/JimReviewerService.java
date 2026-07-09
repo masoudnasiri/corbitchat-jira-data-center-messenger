@@ -26,6 +26,15 @@ public interface JimReviewerService {
     boolean isReviewerUsername(String username);
 
     /**
+     * True when the given Jira user key belongs to the reviewer account
+     * ({@code pluginuser}). As of s12e-fix2 the reviewer is a REAL Jira user
+     * authenticated through Jira/Crowd, so identity is resolved by user key →
+     * username. The legacy plugin-owned sentinel key is also treated as the
+     * reviewer for backward compatibility with any older issued session.
+     */
+    boolean isReviewerUserKey(String userKey);
+
+    /**
      * Seed the reviewer row from {@link #INITIAL_PASSWORD_PROP} if it does not
      * exist yet. No-op if already seeded or the property is absent.
      */

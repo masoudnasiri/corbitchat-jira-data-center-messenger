@@ -57,14 +57,16 @@ implements JimGroupService {
     private final JimAttachmentStorageService attachmentStorageService;
     private final UserManager userManager;
     private final JimChatAuditService auditService;
+    private final JimReviewerService reviewerService;
 
-    public JimGroupServiceImpl(ActiveObjects activeObjects, JimPermissionService permissionService, JimConversationService conversationService, JimAttachmentStorageService attachmentStorageService, UserManager userManager, JimChatAuditService auditService) {
+    public JimGroupServiceImpl(ActiveObjects activeObjects, JimPermissionService permissionService, JimConversationService conversationService, JimAttachmentStorageService attachmentStorageService, UserManager userManager, JimChatAuditService auditService, JimReviewerService reviewerService) {
         this.activeObjects = activeObjects;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
         this.attachmentStorageService = attachmentStorageService;
         this.userManager = userManager;
         this.auditService = auditService;
+        this.reviewerService = reviewerService;
     }
 
     @Override
@@ -72,6 +74,9 @@ implements JimGroupService {
         JimValidation.requireNonBlank(creatorUserKey, "creatorUserKey");
         String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
         this.permissionService.requireSameUser(authenticatedUserKey, creatorUserKey);
+        if (this.reviewerService.isReviewerUserKey(authenticatedUserKey)) {
+            throw JimMessengerException.forbidden("The reviewer account is read-only and cannot modify chat data.");
+        }
         this.permissionService.requireActiveUser(creatorUserKey);
         String normalizedName = this.normalizeGroupName(name);
         Set<String> normalizedMembers = this.normalizeMemberKeys(creatorUserKey, memberUserKeys);
@@ -210,6 +215,10 @@ implements JimGroupService {
         JimValidation.requireNonBlank(userKey, "userKey");
         String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
         this.permissionService.requireSameUser(authenticatedUserKey, userKey);
+        // s12e-fix2: the reviewer (pluginuser) is read-only — no group mutations.
+        if (this.reviewerService.isReviewerUserKey(authenticatedUserKey)) {
+            throw JimMessengerException.forbidden("The reviewer account is read-only and cannot modify chat data.");
+        }
     }
 
     private JimConversation requireGroupConversation(int conversationId) {

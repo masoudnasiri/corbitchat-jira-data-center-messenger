@@ -55,11 +55,13 @@ implements JimReactionService {
     private final ActiveObjects activeObjects;
     private final JimMessageService messageService;
     private final JimPermissionService permissionService;
+    private final JimReviewerService reviewerService;
 
-    public JimReactionServiceImpl(ActiveObjects activeObjects, JimMessageService messageService, JimPermissionService permissionService) {
+    public JimReactionServiceImpl(ActiveObjects activeObjects, JimMessageService messageService, JimPermissionService permissionService, JimReviewerService reviewerService) {
         this.activeObjects = activeObjects;
         this.messageService = messageService;
         this.permissionService = permissionService;
+        this.reviewerService = reviewerService;
     }
 
     @Override
@@ -68,6 +70,9 @@ implements JimReactionService {
         JimValidation.requireNonBlank(userKey, "userKey");
         String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
         this.permissionService.requireSameUser(authenticatedUserKey, userKey);
+        if (this.reviewerService.isReviewerUserKey(authenticatedUserKey)) {
+            throw JimMessengerException.forbidden("The reviewer account is read-only and cannot modify chat data.");
+        }
         if (emoji == null || !ALLOWED_EMOJI.contains(emoji)) {
             throw JimMessengerException.badRequest("Unsupported reaction emoji");
         }

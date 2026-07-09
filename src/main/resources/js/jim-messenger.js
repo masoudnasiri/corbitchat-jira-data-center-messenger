@@ -3302,13 +3302,37 @@
         renderMessages();
     }
 
+    // Sprint 12 fix2: drop messages from the in-memory list immediately after a
+    // "Delete for me" so they vanish at once. Required because loadMessages()
+    // MERGES the server response into state.messages (to preserve lazy-loaded
+    // older pages across polls), which would otherwise retain a message the
+    // server has now filtered out for this viewer.
+    function removeMessagesFromState(ids) {
+        if (!ids || !ids.length || !state.messages || !state.messages.length) {
+            return;
+        }
+        var remove = {};
+        for (var r = 0; r < ids.length; r++) {
+            remove[ids[r]] = true;
+        }
+        var kept = [];
+        for (var m = 0; m < state.messages.length; m++) {
+            if (!state.messages[m] || !remove[state.messages[m].id]) {
+                kept.push(state.messages[m]);
+            }
+        }
+        state.messages = kept;
+    }
+
     function bulkHideForMe() {
         if (!state.selectedIds || state.selectedIds.length === 0) {
             return;
         }
         var ids = state.selectedIds.slice();
         JimApi.hideMessages(ids).then(function () {
+            removeMessagesFromState(ids);
             exitSelectionMode();
+            renderMessages();
             return loadMessages(state.selectedConversationId, false, false);
         }).then(function () {
             loadConversations();
@@ -3487,6 +3511,8 @@
             // Sprint 12: Delete-for-me (single) — hide this message for me only.
             if (action === 'hide-for-me') {
                 JimApi.hideMessage(messageId).then(function () {
+                    removeMessagesFromState([messageId]);
+                    renderMessages();
                     return loadMessages(state.selectedConversationId, false, false);
                 }).then(function () {
                     loadConversations();

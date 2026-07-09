@@ -1,6 +1,8 @@
 package com.corbitlogic.jira.internalmessenger.service;
 
 import com.atlassian.activeobjects.external.ActiveObjects;
+import com.atlassian.jira.user.ApplicationUser;
+import com.atlassian.jira.user.util.UserManager;
 import com.corbitlogic.jira.internalmessenger.ao.JimReviewer;
 import java.security.SecureRandom;
 import java.security.spec.KeySpec;
@@ -21,16 +23,35 @@ public class JimReviewerServiceImpl implements JimReviewerService {
     private static final int MIN_PASSWORD_LEN = 8;
 
     private final ActiveObjects activeObjects;
+    private final UserManager userManager;
     private final SecureRandom random = new SecureRandom();
 
     @Inject
-    public JimReviewerServiceImpl(ActiveObjects activeObjects) {
+    public JimReviewerServiceImpl(ActiveObjects activeObjects, UserManager userManager) {
         this.activeObjects = activeObjects;
+        this.userManager = userManager;
     }
 
     @Override
     public boolean isReviewerUsername(String username) {
         return username != null && USERNAME.equalsIgnoreCase(username.trim());
+    }
+
+    @Override
+    public boolean isReviewerUserKey(String userKey) {
+        if (userKey == null) {
+            return false;
+        }
+        // Backward compat: any legacy plugin-owned reviewer session.
+        if (SESSION_USER_KEY.equals(userKey)) {
+            return true;
+        }
+        try {
+            ApplicationUser user = this.userManager.getUserByKey(userKey);
+            return user != null && isReviewerUsername(user.getUsername());
+        } catch (Exception ex) {
+            return false;
+        }
     }
 
     @Override

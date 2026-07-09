@@ -214,29 +214,11 @@ public class CorbitMobileReviewerResource {
         if (!isReviewer(request)) {
             return forbidden();
         }
-        String current = str(body, "currentPassword");
-        String next = str(body, "newPassword");
-        if (current == null || next == null) {
-            return JimRestResponses.errorJson(400, "bad_request",
-                    "currentPassword and newPassword are required");
-        }
-        try {
-            boolean ok = this.reviewerService.changePassword(current, next);
-            if (!ok) {
-                return JimRestResponses.errorJson(401, "invalid_current_password",
-                        "Current password is incorrect.");
-            }
-            this.auditService.record(JimReviewerService.SESSION_USER_KEY, "reviewer.changePassword",
-                    null, null, null, null);
-            return JimRestResponses.okJson(JimRestResponses.singleEntry("ok", true));
-        } catch (IllegalArgumentException ex) {
-            return JimRestResponses.errorJson(400, "weak_password", ex.getMessage());
-        } catch (Exception ex) {
-            return JimRestResponses.internalError(log,
-                    "POST /rest/corbit-mobile/1.0/reviewer/change-password",
-                    JimReviewerService.SESSION_USER_KEY, ex, "internal_error",
-                    "Unable to change password.");
-        }
+        // s12e-fix2: the reviewer is now a REAL Jira user, so its password is
+        // owned by Jira's directory (possibly LDAP/SSO). The plugin must not keep
+        // a second internal password. Direct the reviewer to change it in Jira.
+        return JimRestResponses.errorJson(400, "managed_in_jira",
+                "The reviewer password is managed in Jira. Change it from your Jira account settings.");
     }
 
     // --- helpers --------------------------------------------------------------
@@ -251,7 +233,9 @@ public class CorbitMobileReviewerResource {
         }
         try {
             String userKey = this.sessionService.validate(token);
-            return JimReviewerService.SESSION_USER_KEY.equals(userKey);
+            // s12e-fix2: reviewer is a real Jira user; authorize by user key →
+            // username (legacy sentinel key still accepted for old sessions).
+            return this.reviewerService.isReviewerUserKey(userKey);
         } catch (Exception ex) {
             return false;
         }

@@ -90,46 +90,12 @@ public class CorbitMobileAuthResource {
                     "Username/password login requires HTTPS.");
         }
 
-        // Hidden reviewer (Sprint 12): a plugin-owned account, NOT a Jira user.
-        // Authenticated only here (app/PWA), never against Jira directories, and
-        // issued a reviewer-flagged session whose sentinel key resolves to no
-        // Jira user (so it works only on read-only /reviewer endpoints).
-        if (this.reviewerService.isReviewerUsername(username)) {
-            this.reviewerService.ensureSeeded();
-            if (!this.reviewerService.authenticate(password)) {
-                return JimRestResponses.errorJson(401, "INVALID_CREDENTIALS",
-                        "Incorrect username or password.");
-            }
-            try {
-                JimMobileSessionService.IssuedSession issued =
-                        this.sessionService.create(JimReviewerService.SESSION_USER_KEY, device);
-                Map<String, Object> userMap = new LinkedHashMap<>();
-                userMap.put("key", JimReviewerService.SESSION_USER_KEY);
-                userMap.put("name", JimReviewerService.USERNAME);
-                userMap.put("displayName", "Chat Reviewer");
-                Map<String, Object> result = new LinkedHashMap<>();
-                result.put("ok", true);
-                result.put("token", issued.getRawToken());
-                result.put("expiresAt", issued.getExpiresAt());
-                result.put("reviewer", true);
-                result.put("user", userMap);
-                if (httpResponse != null) {
-                    boolean secure = MobileSessionSupport.isSecureRequest(request);
-                    long maxAgeSeconds =
-                            (issued.getExpiresAt() - System.currentTimeMillis()) / 1000L;
-                    httpResponse.addHeader("Set-Cookie", MobileSessionSupport.buildSessionSetCookie(
-                            issued.getRawToken(), maxAgeSeconds, secure));
-                    httpResponse.setHeader("Cache-Control", "no-store");
-                }
-                this.auditService.record(JimReviewerService.SESSION_USER_KEY, "reviewer.login",
-                        null, null, null, "device=" + (device == null ? "" : device));
-                return JimRestResponses.okJson(result);
-            } catch (Exception ex) {
-                return JimRestResponses.internalError(log,
-                        "POST /rest/corbit-mobile/1.0/auth/login", "(reviewer)", ex,
-                        "LOGIN_ERROR", "Could not complete sign-in. Please try again.");
-            }
-        }
+        // s12e-fix2: the hidden reviewer (pluginuser) is now a REAL Jira user.
+        // It authenticates through the SAME Jira/Crowd path as everyone else
+        // below (no plugin-owned password, no sentinel session key), so its
+        // session resolves to a real ApplicationUser and bootstrap never 401s.
+        // We only flag reviewer=true in the response so the client opens the
+        // read-only reviewer shell instead of the normal app shell.
 
         // Validate credentials against Jira's user directories. Never log them.
         try {
@@ -162,11 +128,19 @@ public class CorbitMobileAuthResource {
             userMap.put("name", user.getName());
             userMap.put("displayName", user.getDisplayName());
 
+            boolean isReviewer = this.reviewerService.isReviewerUsername(user.getName());
+
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("ok", true);
             result.put("token", issued.getRawToken());
             result.put("expiresAt", issued.getExpiresAt());
             result.put("user", userMap);
+            // s12e-fix2: real Jira reviewer user → route client to read-only shell.
+            if (isReviewer) {
+                result.put("reviewer", true);
+                this.auditService.record(user.getKey(), "reviewer.login",
+                        null, null, null, "device=" + (device == null ? "" : device));
+            }
 
             // PWA-01: also set the token as an HttpOnly cookie so the Flutter Web
             // client never has to store it in JavaScript-readable storage. Native
