@@ -46,6 +46,7 @@ import com.corbitlogic.jira.internalmessenger.service.JimLicenseService;
 import com.corbitlogic.jira.internalmessenger.service.JimAttachmentService;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
+import com.corbitlogic.jira.internalmessenger.service.JimMessageUserStateService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
 import com.corbitlogic.jira.internalmessenger.service.JimPresenceService;
@@ -86,9 +87,10 @@ public class JimConversationResource {
     private final JimRestJsonMapper restJsonMapper;
     private final JimAccessPolicyService accessPolicyService;
     private final JimLicenseService licenseService;
+    private final JimMessageUserStateService userStateService;
 
     @Inject
-    public JimConversationResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimAttachmentStorageService attachmentStorageService, JimPresenceService presenceService, JimRestJsonMapper restJsonMapper, JimAccessPolicyService accessPolicyService, JimLicenseService licenseService, JimPluginBootstrap pluginBootstrap) {
+    public JimConversationResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimAttachmentStorageService attachmentStorageService, JimPresenceService presenceService, JimRestJsonMapper restJsonMapper, JimAccessPolicyService accessPolicyService, JimLicenseService licenseService, JimMessageUserStateService userStateService, JimPluginBootstrap pluginBootstrap) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
@@ -100,6 +102,7 @@ public class JimConversationResource {
         this.restJsonMapper = restJsonMapper;
         this.accessPolicyService = accessPolicyService;
         this.licenseService = licenseService;
+        this.userStateService = userStateService;
     }
 
     private void enforceDirectChatPolicy(JimConversation conversation, String currentUserKey) {
@@ -245,6 +248,19 @@ public class JimConversationResource {
             this.presenceService.heartbeatConversation(currentUserKey, conversationId);
             JimConversation conversation = this.conversationService.getConversationForUser(conversationId, currentUserKey);
             List<JimMessage> messages = this.messageService.listMessages(conversationId, limit, beforeMessageId);
+            // Sprint 12 hotfix: exclude messages the viewer chose "Delete for me"
+            // (per-user hidden overlay). This web endpoint builds the list
+            // directly, so the filter must be applied here too (matches mobile).
+            java.util.Set<Integer> hidden = this.userStateService.hiddenMessageIds(currentUserKey, conversationId);
+            if (!hidden.isEmpty()) {
+                java.util.List<JimMessage> visible = new java.util.ArrayList<JimMessage>();
+                for (JimMessage m : messages) {
+                    if (!hidden.contains(m.getID())) {
+                        visible.add(m);
+                    }
+                }
+                messages = visible;
+            }
             LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
             body.put("messages", this.restJsonMapper.toMessageMaps(messages, viewer, conversation, currentUserKey));
             return JimRestResponses.okJson(body);
