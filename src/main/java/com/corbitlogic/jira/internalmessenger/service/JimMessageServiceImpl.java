@@ -65,9 +65,8 @@ implements JimMessageService {
     private final JimPushService pushService;
     private final JimAdminSettingsService adminSettingsService;
     private final JimMobilePushService mobilePushService;
-    private final JimReviewerService reviewerService;
 
-    public JimMessageServiceImpl(ActiveObjects activeObjects, JimConversationService conversationService, JimPermissionService permissionService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimPresenceService presenceService, JimPushService pushService, JimAdminSettingsService adminSettingsService, JimMobilePushService mobilePushService, JimReviewerService reviewerService) {
+    public JimMessageServiceImpl(ActiveObjects activeObjects, JimConversationService conversationService, JimPermissionService permissionService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimPresenceService presenceService, JimPushService pushService, JimAdminSettingsService adminSettingsService, JimMobilePushService mobilePushService) {
         this.activeObjects = activeObjects;
         this.conversationService = conversationService;
         this.permissionService = permissionService;
@@ -77,19 +76,6 @@ implements JimMessageService {
         this.pushService = pushService;
         this.adminSettingsService = adminSettingsService;
         this.mobilePushService = mobilePushService;
-        this.reviewerService = reviewerService;
-    }
-
-    /**
-     * s12e-fix2: the hidden reviewer ({@code pluginuser}) is strictly read-only.
-     * Block every chat mutation server-side regardless of entry point (web or
-     * mobile BFF) so a reviewer session can never send/edit/delete/react/pin/
-     * forward, even by calling the API directly.
-     */
-    private void assertNotReviewer(String userKey) {
-        if (this.reviewerService.isReviewerUserKey(userKey)) {
-            throw JimMessengerException.forbidden("The reviewer account is read-only and cannot modify chat data.");
-        }
     }
 
     private boolean pushAllowedForEvent(JimEventType eventType) {
@@ -112,7 +98,6 @@ implements JimMessageService {
         this.validateSendUserMessageRequest(conversationId, senderUserKey, body);
         String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
         this.permissionService.requireSameUser(authenticatedUserKey, senderUserKey);
-        this.assertNotReviewer(authenticatedUserKey);
         this.conversationService.getConversationForUser(conversationId, senderUserKey);
         if (replyToMessageId != null) {
             this.validateReplyToMessage(conversationId, replyToMessageId);
@@ -149,7 +134,6 @@ implements JimMessageService {
         JimValidation.requireNonBlank(forwarderUserKey, "forwarderUserKey");
         String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
         this.permissionService.requireSameUser(authenticatedUserKey, forwarderUserKey);
-        this.assertNotReviewer(authenticatedUserKey);
         // Forwarder must participate in the TARGET conversation...
         this.conversationService.getConversationForUser(targetConversationId, forwarderUserKey);
         // ...and must be allowed to read the SOURCE message (participant of its
@@ -462,7 +446,6 @@ implements JimMessageService {
         JimValidation.requireNonBlank(editorUserKey, "editorUserKey");
         String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
         this.permissionService.requireSameUser(authenticatedUserKey, editorUserKey);
-        this.assertNotReviewer(authenticatedUserKey);
         JimMessage message = this.getMessageForParticipant(messageId, editorUserKey);
         this.requireUserOwnedMessage(message, editorUserKey);
         if (JimMessageFlags.isDeleted(message)) {
@@ -493,7 +476,6 @@ implements JimMessageService {
         JimValidation.requireNonBlank(deleterUserKey, "deleterUserKey");
         String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
         this.permissionService.requireSameUser(authenticatedUserKey, deleterUserKey);
-        this.assertNotReviewer(authenticatedUserKey);
         JimMessage message = this.getMessageForParticipant(messageId, deleterUserKey);
         this.requireUserOwnedMessage(message, deleterUserKey);
         if (JimMessageFlags.isDeleted(message)) {
@@ -686,7 +668,6 @@ implements JimMessageService {
         JimValidation.requireNonBlank(userKey, "userKey");
         String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
         this.permissionService.requireSameUser(authenticatedUserKey, userKey);
-        this.assertNotReviewer(authenticatedUserKey);
         JimMessage message = this.getMessageForParticipant(messageId, userKey);
         if (JimMessageFlags.isDeleted(message)) {
             throw JimMessengerException.badRequest("Deleted messages cannot be pinned");

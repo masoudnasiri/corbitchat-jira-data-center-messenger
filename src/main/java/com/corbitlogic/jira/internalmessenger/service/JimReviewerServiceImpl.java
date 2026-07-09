@@ -32,9 +32,21 @@ public class JimReviewerServiceImpl implements JimReviewerService {
         this.userManager = userManager;
     }
 
+    /**
+     * s12e-reviewerfix: the reviewer is a REAL Jira user (default {@code m.nasiri}),
+     * configurable via the {@code corbitchat.reviewer.username} JVM property. It is
+     * NOT a plugin-owned account and is otherwise a normal chatting user — the
+     * read-only guarantee comes from the reviewer app + read-only /reviewer/*
+     * endpoints, not from blocking this user's normal mutations.
+     */
+    private String reviewerUsername() {
+        String u = System.getProperty("corbitchat.reviewer.username");
+        return (u != null && !u.trim().isEmpty()) ? u.trim() : "m.nasiri";
+    }
+
     @Override
     public boolean isReviewerUsername(String username) {
-        return username != null && USERNAME.equalsIgnoreCase(username.trim());
+        return username != null && reviewerUsername().equalsIgnoreCase(username.trim());
     }
 
     @Override
