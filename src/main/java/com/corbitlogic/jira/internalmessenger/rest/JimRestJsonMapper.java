@@ -167,9 +167,14 @@ public class JimRestJsonMapper {
         item.put("eventType", message.getEventType());
         item.put("issueKey", message.getIssueKey());
         item.put("issueUrl", message.getIssueUrl());
-        // issueSummary + status/type/priority are set ONLY when the VIEWER can
-        // browse the issue (see enrichIssueDetails) so a linked issue never
-        // leaks its summary to a recipient without permission.
+        // Jira Assistant/system event cards (ASSIGNMENT/MENTION/COMMENT) keep
+        // their stored summary as before — they notify a user about an issue
+        // they are already involved in. For USER "attach issue" (ISSUE_LINK)
+        // cards the summary is instead gated per-viewer in enrichIssueDetails
+        // so it never leaks to a recipient who cannot browse the issue.
+        if (!JimEventType.ISSUE_LINK.name().equals(message.getEventType())) {
+            item.put("issueSummary", JimSanitizer.sanitizeText(message.getIssueSummary()));
+        }
         this.enrichIssueDetails(item, message, viewer);
         item.put("actorUserKey", message.getActorUserKey());
         item.put("actorDisplayName", JimSanitizer.sanitizeText(message.getActorDisplayName()));
