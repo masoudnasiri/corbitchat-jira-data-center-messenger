@@ -2809,7 +2809,9 @@
                 : '') +
             '<div class="jim-issue-chat-card-main">' +
             keyHtml +
-            '<span class="jim-issue-chat-card-summary">' + escapeHtml(message.issueSummary || '') + '</span>' +
+            (message.issueAccessible === false
+                ? '<span class="jim-issue-chat-card-summary jim-issue-chat-card-noperm">You don\u2019t have permission to view this issue.</span>'
+                : '<span class="jim-issue-chat-card-summary">' + escapeHtml(message.issueSummary || '') + '</span>') +
             '</div>' +
             (url
                 ? '<a class="jim-issue-chat-card-open" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">Open issue &#8594;</a>'

@@ -771,7 +771,10 @@ public class CorbitMobileChatResource {
             return featureBlocked;
         }
         String body = str(requestBody, "body");
-        if (body == null || body.trim().isEmpty()) {
+        String issueKey = str(requestBody, "issueKey");
+        issueKey = issueKey == null ? "" : issueKey.trim();
+        // Parity with web: an issue-link message may have no text body.
+        if ((body == null || body.trim().isEmpty()) && issueKey.isEmpty()) {
             return JimRestResponses.errorJson(400, "bad_request", "body is required");
         }
         if (!this.licenseService.canUseMessaging()) {
@@ -784,8 +787,26 @@ public class CorbitMobileChatResource {
                     this.conversationService.getConversationForUser(conversationId, currentUserKey);
             enforceDirectChatPolicy(conversation, currentUserKey);
             Long replyToMessageId = asLong(requestBody, "replyToMessageId");
-            JimMessage message =
-                    this.messageService.sendUserMessage(conversationId, currentUserKey, body, replyToMessageId);
+            JimMessage message;
+            if (!issueKey.isEmpty()) {
+                // Attach a Jira issue as a card. Permission-checked against the
+                // SENDER; the linked issue is re-checked per VIEWER at render time.
+                com.atlassian.jira.issue.MutableIssue issue =
+                        com.atlassian.jira.component.ComponentAccessor.getIssueManager().getIssueByCurrentKey(issueKey);
+                if (issue == null || !com.atlassian.jira.component.ComponentAccessor.getPermissionManager()
+                        .hasPermission(com.atlassian.jira.permission.ProjectPermissions.BROWSE_PROJECTS,
+                                (com.atlassian.jira.issue.Issue) issue, viewer)) {
+                    return JimRestResponses.errorJson(404, "not_found",
+                            "Issue not found or you do not have permission to view it");
+                }
+                String issueUrl = com.corbitlogic.jira.internalmessenger.util.JimIssueUrlBuilder.buildBrowseUrl(
+                        com.atlassian.jira.component.ComponentAccessor.getApplicationProperties(),
+                        (com.atlassian.jira.issue.Issue) issue);
+                message = this.messageService.sendIssueLinkMessage(conversationId, currentUserKey,
+                        issue.getKey(), issue.getSummary(), issueUrl, body);
+            } else {
+                message = this.messageService.sendUserMessage(conversationId, currentUserKey, body, replyToMessageId);
+            }
             Map<String, Object> messageMap =
                     this.restJsonMapper.toMessageMap(message, viewer, conversation, currentUserKey);
             rewriteMessageAvatar(messageMap);

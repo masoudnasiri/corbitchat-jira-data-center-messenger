@@ -166,8 +166,10 @@ public class JimRestJsonMapper {
         item.put("bodyFormat", message.getBodyFormat());
         item.put("eventType", message.getEventType());
         item.put("issueKey", message.getIssueKey());
-        item.put("issueSummary", JimSanitizer.sanitizeText(message.getIssueSummary()));
         item.put("issueUrl", message.getIssueUrl());
+        // issueSummary + status/type/priority are set ONLY when the VIEWER can
+        // browse the issue (see enrichIssueDetails) so a linked issue never
+        // leaks its summary to a recipient without permission.
         this.enrichIssueDetails(item, message, viewer);
         item.put("actorUserKey", message.getActorUserKey());
         item.put("actorDisplayName", JimSanitizer.sanitizeText(message.getActorDisplayName()));
@@ -213,11 +215,15 @@ public class JimRestJsonMapper {
         if (!JimEventType.ISSUE_LINK.name().equals(message.getEventType()) || message.getIssueKey() == null || message.getIssueKey().isEmpty()) {
             return;
         }
+        // Default: not accessible → clients render a safe "no permission / unavailable"
+        // card with just the key, never the stored summary.
+        item.put("issueAccessible", false);
         try {
             MutableIssue issue = ComponentAccessor.getIssueManager().getIssueByCurrentKey(message.getIssueKey());
             if (issue == null || !ComponentAccessor.getPermissionManager().hasPermission(ProjectPermissions.BROWSE_PROJECTS, (Issue)issue, viewer)) {
                 return;
             }
+            item.put("issueAccessible", true);
             if (issue.getIssueType() != null) {
                 item.put("issueTypeName", issue.getIssueType().getName());
             }

@@ -156,6 +156,62 @@ public class CorbitMobileIssueResource {
     }
 
     /**
+     * Permission-aware issue PICKER for "attach Jira issue to chat" (parity with
+     * the web composer). Free text/key from the client is turned into a SAFE
+     * server-built JQL ({@code key = ...} for issue-key input, otherwise
+     * {@code summary ~ "text*"}); the client never sends raw JQL. Results run
+     * through {@code SearchService.search(viewer, ...)}, so Browse-Project +
+     * issue security are enforced and only issues the caller may browse appear.
+     */
+    @GET
+    @Path("/picker")
+    public Response picker(@QueryParam("query") String query,
+                           @QueryParam("maxResults") @DefaultValue("20") int maxResults) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.CHAT)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.CHAT);
+        }
+        String q = query == null ? "" : query.trim();
+        if (q.length() < 2) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("issues", new ArrayList<Map<String, Object>>());
+            return JimRestResponses.okJson(body);
+        }
+        int max = JimMobileIssues.normalizePageSize(maxResults);
+        try {
+            com.atlassian.jira.jql.builder.JqlQueryBuilder qb =
+                    com.atlassian.jira.jql.builder.JqlQueryBuilder.newBuilder();
+            boolean looksLikeKey = q.matches("(?i)[A-Z][A-Z0-9]+-\\d+");
+            String like = q + "*";
+            if (looksLikeKey) {
+                qb.where().issue().eq(q.toUpperCase()).or().summary().like(like);
+            } else {
+                qb.where().summary().like(like);
+            }
+            qb.orderBy().updatedDate(com.atlassian.query.order.SortOrder.DESC);
+            com.atlassian.query.Query jql = qb.buildQuery();
+            PagerFilter<Issue> pager = new PagerFilter<>(max);
+            SearchResults<Issue> results = this.searchService.search(viewer, jql, pager);
+            List<Map<String, Object>> issues = new ArrayList<>();
+            for (Issue issue : results.getResults()) {
+                issues.add(JimMobileIssues.toIssueMap(issue, viewer, this.avatarService, this.applicationProperties));
+            }
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("query", q);
+            body.put("issues", issues);
+            return JimRestResponses.okJson(body);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/issues/picker",
+                    viewer.getKey(), ex, "internal_error",
+                    "An internal error occurred while searching issues.");
+        }
+    }
+
+    /**
      * Full, read-only issue detail —
      * {@code GET /rest/corbit-mobile/1.0/issues/{issueKey}}.
      *
