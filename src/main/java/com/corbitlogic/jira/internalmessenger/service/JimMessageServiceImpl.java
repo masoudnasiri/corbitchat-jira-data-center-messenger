@@ -335,6 +335,7 @@ implements JimMessageService {
                     .genericBody("New message")
                     .dedupeKey("chat|" + conversationId + "|" + messageId + "|" + recipient)
                     .extra("conversationId", String.valueOf(conversationId))
+                    .extra("messageId", String.valueOf(messageId))
                     .build();
             this.mobilePushService.sendToUser(recipient, event);
         } catch (RuntimeException ex) {
