@@ -92,6 +92,15 @@ public class JimMobilePushServiceImpl implements JimMobilePushService {
                 log.debug("event=mobilepush stage=prefs_gate outcome=blocked category={}", event.getCategory());
                 return;
             }
+            // Sprint 12: quiet hours. Evaluated in the RECIPIENT's Jira time zone
+            // (server-side, not just hidden in the app). Mentions override quiet
+            // hours so urgent @mentions still reach the user.
+            if (isQuietHoursSuppressed(user, prefs, event.getCategory())) {
+                this.skippedPrefsCount.incrementAndGet();
+                this.lastSendOutcome = "quiet_hours";
+                log.debug("event=mobilepush stage=quiet_hours outcome=suppressed category={}", event.getCategory());
+                return;
+            }
             List<JimMobileDevice> devices = this.deviceService.activeDevices(userKey);
             if (devices.isEmpty()) {
                 return;
@@ -194,6 +203,67 @@ public class JimMobilePushServiceImpl implements JimMobilePushService {
         } catch (RuntimeException ex) {
             // Never block a push because prefs could not be read; use safe defaults.
             return MobilePreferences.defaults();
+        }
+    }
+
+    /**
+     * True when the recipient's quiet-hours window is active now (in THEIR Jira
+     * time zone) and the event category is not an override. Quiet hours are
+     * stored as {@code "HH:mm-HH:mm"} (null/blank = disabled) and may wrap past
+     * midnight. Mentions always override so urgent @mentions still deliver.
+     */
+    private boolean isQuietHoursSuppressed(ApplicationUser user, MobilePreferences prefs, String category) {
+        if (prefs == null) {
+            return false;
+        }
+        // Override categories are never suppressed by quiet hours.
+        if (MobilePushEvent.CAT_MENTION.equals(category)) {
+            return false;
+        }
+        String window = prefs.getQuietHours();
+        if (window == null || window.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            String[] parts = window.trim().split("-");
+            if (parts.length != 2) {
+                return false;
+            }
+            int startMin = parseHhmm(parts[0]);
+            int endMin = parseHhmm(parts[1]);
+            if (startMin < 0 || endMin < 0 || startMin == endMin) {
+                return false;
+            }
+            java.util.TimeZone tz;
+            try {
+                com.atlassian.jira.timezone.TimeZoneManager tzm =
+                        com.atlassian.jira.component.ComponentAccessor.getComponent(
+                                com.atlassian.jira.timezone.TimeZoneManager.class);
+                tz = (tzm != null && user != null) ? tzm.getTimeZoneforUser(user) : java.util.TimeZone.getDefault();
+            } catch (Exception ex) {
+                tz = java.util.TimeZone.getDefault();
+            }
+            java.util.Calendar now = java.util.Calendar.getInstance(tz);
+            int nowMin = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE);
+            boolean inWindow = startMin < endMin
+                    ? (nowMin >= startMin && nowMin < endMin)      // same-day window
+                    : (nowMin >= startMin || nowMin < endMin);     // wraps past midnight
+            return inWindow;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    private static int parseHhmm(String s) {
+        try {
+            String[] hm = s.trim().split(":");
+            if (hm.length != 2) return -1;
+            int h = Integer.parseInt(hm[0].trim());
+            int m = Integer.parseInt(hm[1].trim());
+            if (h < 0 || h > 23 || m < 0 || m > 59) return -1;
+            return h * 60 + m;
+        } catch (Exception ex) {
+            return -1;
         }
     }
 
