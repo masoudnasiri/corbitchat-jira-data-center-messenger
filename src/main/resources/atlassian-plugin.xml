@@ -209,6 +209,12 @@
         <interface>com.corbitlogic.jira.internalmessenger.service.JimReviewerService</interface>
     </component>
 
+    <component key="jimActivityService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimActivityServiceImpl">
+        <description>Ephemeral chat activity (typing/recording/uploading) with TTL (Sprint 12 polish)</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimActivityService</interface>
+    </component>
+
     <component key="jimUserSearchService"
                class="com.corbitlogic.jira.internalmessenger.service.JimUserSearchServiceImpl">
         <description>Active user search for CorbitChat</description>

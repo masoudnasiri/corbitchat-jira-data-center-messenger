@@ -45,6 +45,8 @@ import com.corbitlogic.jira.internalmessenger.service.JimAccessPolicyService;
 import com.corbitlogic.jira.internalmessenger.service.JimLicenseService;
 import com.corbitlogic.jira.internalmessenger.service.JimAttachmentService;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
+import com.corbitlogic.jira.internalmessenger.ao.JimActivity;
+import com.corbitlogic.jira.internalmessenger.service.JimActivityService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessageUserStateService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
@@ -88,9 +90,10 @@ public class JimConversationResource {
     private final JimAccessPolicyService accessPolicyService;
     private final JimLicenseService licenseService;
     private final JimMessageUserStateService userStateService;
+    private final JimActivityService activityService;
 
     @Inject
-    public JimConversationResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimAttachmentStorageService attachmentStorageService, JimPresenceService presenceService, JimRestJsonMapper restJsonMapper, JimAccessPolicyService accessPolicyService, JimLicenseService licenseService, JimMessageUserStateService userStateService, JimPluginBootstrap pluginBootstrap) {
+    public JimConversationResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimAttachmentStorageService attachmentStorageService, JimPresenceService presenceService, JimRestJsonMapper restJsonMapper, JimAccessPolicyService accessPolicyService, JimLicenseService licenseService, JimMessageUserStateService userStateService, JimActivityService activityService, JimPluginBootstrap pluginBootstrap) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
@@ -103,6 +106,24 @@ public class JimConversationResource {
         this.accessPolicyService = accessPolicyService;
         this.licenseService = licenseService;
         this.userStateService = userStateService;
+        this.activityService = activityService;
+    }
+
+    private java.util.List<java.util.Map<String, Object>> activitiesFor(int conversationId, String viewerKey) {
+        java.util.List<java.util.Map<String, Object>> out = new java.util.ArrayList<java.util.Map<String, Object>>();
+        for (JimActivity a : this.activityService.activeFor(conversationId, viewerKey)) {
+            java.util.Map<String, Object> m = new LinkedHashMap<String, Object>();
+            m.put("userKey", a.getUserKey());
+            String name = a.getUserKey();
+            try {
+                com.atlassian.jira.user.ApplicationUser u = com.atlassian.jira.component.ComponentAccessor.getUserManager().getUserByKey(a.getUserKey());
+                if (u != null) name = u.getDisplayName();
+            } catch (Exception ignored) {}
+            m.put("displayName", name);
+            m.put("activity", a.getActivity());
+            out.add(m);
+        }
+        return out;
     }
 
     private void enforceDirectChatPolicy(JimConversation conversation, String currentUserKey) {
@@ -263,6 +284,7 @@ public class JimConversationResource {
             }
             LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
             body.put("messages", this.restJsonMapper.toMessageMaps(messages, viewer, conversation, currentUserKey));
+            body.put("activities", this.activitiesFor(conversationId, currentUserKey));
             return JimRestResponses.okJson(body);
         }
         catch (JimMessengerException ex) {
@@ -270,6 +292,53 @@ public class JimConversationResource {
         }
         catch (Exception ex) {
             return JimRestResponses.internalError(log, "GET /rest/jim/1.0/conversations/" + conversationId + "/messages", userKey, ex, "internal_error", "An internal error occurred while loading messages.");
+        }
+    }
+
+    @GET
+    @Path(value="/{conversationId}/activity")
+    public Response getActivity(@PathParam(value="conversationId") int conversationId) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            this.conversationService.getConversationForUser(conversationId, currentUserKey);
+            LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("activities", this.activitiesFor(conversationId, currentUserKey));
+            return JimRestResponses.okJson(body);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log, "GET /rest/jim/1.0/conversations/" + conversationId + "/activity", userKey, ex, "internal_error", "Unable to load activity.");
+        }
+    }
+
+    @POST
+    @Path(value="/{conversationId}/activity")
+    @Consumes(value={"application/json"})
+    public Response postActivity(@PathParam(value="conversationId") int conversationId, Map<String, Object> requestBody) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            this.conversationService.getConversationForUser(conversationId, currentUserKey);
+            Object act = requestBody == null ? null : requestBody.get("activity");
+            boolean clear = requestBody != null && Boolean.TRUE.equals(requestBody.get("clear"));
+            String activity = act == null ? null : String.valueOf(act);
+            if (clear || activity == null || activity.trim().isEmpty()) {
+                this.activityService.clear(currentUserKey, conversationId);
+            } else {
+                this.activityService.record(currentUserKey, conversationId, activity);
+            }
+            return JimRestResponses.okJson(JimRestResponses.singleEntry("ok", true));
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST /rest/jim/1.0/conversations/" + conversationId + "/activity", userKey, ex, "internal_error", "Unable to update activity.");
         }
     }
 

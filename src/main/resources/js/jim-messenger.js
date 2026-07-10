@@ -502,6 +502,9 @@
             state.voiceStream = stream;
             state.voiceChunks = [];
             state.voiceSeconds = 0;
+            if (state.selectedConversationId) {
+                JimApi.postActivity(state.selectedConversationId, 'recording').catch(function () {});
+            }
             state.voiceDiscard = false;
 
             recorder.ondataavailable = function (event) {
@@ -3865,6 +3868,69 @@
         return merged;
     }
 
+    // --- Sprint 12 polish: ephemeral chat activity indicators ---------------
+    function activityFirstName(a) {
+        var n = (a && a.displayName ? a.displayName : '').toString().trim();
+        return n ? n.split(/\s+/)[0] : '?';
+    }
+
+    function activityLabelText(acts) {
+        if (!acts || !acts.length) {
+            return '';
+        }
+        if (acts.length === 1) {
+            var name = activityFirstName(acts[0]);
+            switch (acts[0].activity) {
+                case 'recording': return name + ' is recording voice…';
+                case 'uploading': return name + ' is sending a file…';
+                case 'uploading_media': return name + ' is sending media…';
+                default: return name + ' is typing…';
+            }
+        }
+        if (acts.length === 2) {
+            return activityFirstName(acts[0]) + ' and ' + activityFirstName(acts[1]) + ' are typing…';
+        }
+        return 'Several people are typing…';
+    }
+
+    function renderActivityIndicator() {
+        var el = document.getElementById('jim-activity-indicator');
+        var text = activityLabelText(state.activities);
+        if (!text) {
+            if (el && el.parentNode) {
+                el.parentNode.removeChild(el);
+            }
+            return;
+        }
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'jim-activity-indicator';
+            el.className = 'jim-activity-indicator';
+            if (els.composer && els.composer.parentNode) {
+                els.composer.parentNode.insertBefore(el, els.composer);
+            }
+        }
+        el.textContent = text;
+    }
+
+    function emitTypingActivity() {
+        var now = Date.now();
+        if (now - (state.lastTypingPost || 0) < 3000) {
+            return;
+        }
+        state.lastTypingPost = now;
+        if (state.selectedConversationId) {
+            JimApi.postActivity(state.selectedConversationId, 'typing').catch(function () {});
+        }
+    }
+
+    function clearTypingActivity() {
+        state.lastTypingPost = 0;
+        if (state.selectedConversationId) {
+            JimApi.postActivity(state.selectedConversationId, null, true).catch(function () {});
+        }
+    }
+
     function loadMessages(conversationId, showLoading, autoScroll) {
         if (autoScroll) {
             state.shouldAutoScroll = true;
@@ -3880,6 +3946,9 @@
                 return;
             }
             var fresh = response.messages || [];
+            // Sprint 12 polish: other participants' ephemeral activity (TTL).
+            state.activities = response.activities || [];
+            renderActivityIndicator();
             // First-load / poll-refresh: MERGE so any older messages the
             // user has already lazy-loaded stay on screen across polls.
             state.messages = mergeMessages(state.messages, fresh);
@@ -4087,6 +4156,11 @@
         // overwrite state.selectedConversationId, and restore the draft
         // for the conversation we're switching INTO afterwards.
         saveCurrentDraft();
+        // Stop broadcasting typing in the conversation we're leaving, and clear
+        // any stale activity indicator before the new conversation loads.
+        clearTypingActivity();
+        state.activities = [];
+        renderActivityIndicator();
 
         state.selectedConversationId = conversationId;
         state.selectedConversation = conversation;
@@ -4392,6 +4466,8 @@
             return;
         }
 
+        // Stop broadcasting "typing" as soon as we send.
+        clearTypingActivity();
         var body = normalizeMessageBody(els.messageInput.value);
         if (!body && !hasSelectedFiles() && !state.selectedIssue) {
             showComposerError('Add a message or choose a file to send.');
@@ -5189,6 +5265,13 @@
         }
         if (els.messageInput) {
             els.messageInput.addEventListener('input', updateComposerState);
+            els.messageInput.addEventListener('input', function () {
+                if (els.messageInput.value && els.messageInput.value.trim()) {
+                    emitTypingActivity();
+                } else {
+                    clearTypingActivity();
+                }
+            });
             els.messageInput.addEventListener('keydown', function (event) {
                 if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();

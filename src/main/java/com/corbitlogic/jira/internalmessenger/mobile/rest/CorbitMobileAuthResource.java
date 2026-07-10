@@ -210,8 +210,56 @@ public class CorbitMobileAuthResource {
             return JimRestResponses.errorJson(401, "NOT_AUTHENTICATED",
                     "You must be signed in.");
         }
-        return JimRestResponses.errorJson(400, "unsupported",
-                "Your account password is managed in Jira. Please change it from your Jira profile / your organization's login system.");
+        String current = str(body, "currentPassword");
+        String next = str(body, "newPassword");
+        if (isBlank(current) || isBlank(next)) {
+            return JimRestResponses.errorJson(400, "bad_request",
+                    "Current and new password are required.");
+        }
+        if (next.length() < 8) {
+            return JimRestResponses.errorJson(400, "weak_password",
+                    "New password must be at least 8 characters.");
+        }
+        // External/read-only directories (LDAP/SSO/Crowd) don't allow writes.
+        if (!this.userManager.canUpdateUserPassword(user)) {
+            return JimRestResponses.errorJson(400, "managed_externally",
+                    "Password change is managed by your organization directory.");
+        }
+        // Verify the current password before changing it. Never logged.
+        try {
+            this.crowdService.authenticate(user.getName(), current);
+        } catch (FailedAuthenticationException ex) {
+            return JimRestResponses.errorJson(401, "invalid_current_password",
+                    "Current password is incorrect.");
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/auth/change-password", user.getKey(), ex,
+                    "change_error", "Could not change your password. Please try again.");
+        }
+        try {
+            com.atlassian.crowd.embedded.api.User crowdUser =
+                    this.crowdService.getUser(user.getName());
+            if (crowdUser == null) {
+                return JimRestResponses.errorJson(400, "managed_externally",
+                        "Password change is managed by your organization directory.");
+            }
+            this.crowdService.updateUserCredential(crowdUser, next);
+            log.info("endpoint=POST /rest/corbit-mobile/1.0/auth/change-password outcome=success userKey={}",
+                    user.getKey());
+            Map<String, Object> ok = new LinkedHashMap<>();
+            ok.put("ok", true);
+            return JimRestResponses.okJson(ok);
+        } catch (com.atlassian.crowd.exception.OperationNotPermittedException ex) {
+            return JimRestResponses.errorJson(400, "managed_externally",
+                    "Password change is managed by your organization directory.");
+        } catch (com.atlassian.crowd.exception.InvalidCredentialException ex) {
+            return JimRestResponses.errorJson(400, "weak_password",
+                    "The new password does not meet the password policy.");
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/auth/change-password", user.getKey(), ex,
+                    "change_error", "Could not change your password. Please try again.");
+        }
     }
 
     @GET

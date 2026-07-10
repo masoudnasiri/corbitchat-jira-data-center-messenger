@@ -16,7 +16,9 @@ import com.corbitlogic.jira.internalmessenger.model.JimConversationType;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestJsonMapper;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
 import com.corbitlogic.jira.internalmessenger.ao.JimGroupMember;
+import com.corbitlogic.jira.internalmessenger.ao.JimActivity;
 import com.corbitlogic.jira.internalmessenger.service.JimAccessPolicyService;
+import com.corbitlogic.jira.internalmessenger.service.JimActivityService;
 import com.corbitlogic.jira.internalmessenger.service.JimAttachmentService;
 import com.corbitlogic.jira.internalmessenger.service.JimChatAuditService;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
@@ -100,6 +102,7 @@ public class CorbitMobileChatResource {
     private final JimProjectChatService projectChatService;
     private final JimMessageUserStateService userStateService;
     private final JimChatAuditService auditService;
+    private final JimActivityService activityService;
 
     @Inject
     public CorbitMobileChatResource(JiraAuthenticationContext authenticationContext,
@@ -119,7 +122,8 @@ public class CorbitMobileChatResource {
                                     JimGroupService groupService,
                                     JimProjectChatService projectChatService,
                                     JimMessageUserStateService userStateService,
-                                    JimChatAuditService auditService) {
+                                    JimChatAuditService auditService,
+                                    JimActivityService activityService) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
@@ -138,6 +142,32 @@ public class CorbitMobileChatResource {
         this.projectChatService = projectChatService;
         this.userStateService = userStateService;
         this.auditService = auditService;
+        this.activityService = activityService;
+    }
+
+    /** Serialize non-expired activities of OTHER participants for the poll response. */
+    private List<Map<String, Object>> activitiesFor(int conversationId, String viewerKey) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (JimActivity a : this.activityService.activeFor(conversationId, viewerKey)) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("userKey", a.getUserKey());
+            m.put("displayName", displayNameFor(a.getUserKey()));
+            m.put("activity", a.getActivity());
+            out.add(m);
+        }
+        return out;
+    }
+
+    private String displayNameFor(String userKey) {
+        if (userKey == null) {
+            return null;
+        }
+        try {
+            ApplicationUser u = com.atlassian.jira.component.ComponentAccessor.getUserManager().getUserByKey(userKey);
+            return u != null ? u.getDisplayName() : userKey;
+        } catch (Exception ex) {
+            return userKey;
+        }
     }
 
     /**
@@ -651,6 +681,8 @@ public class CorbitMobileChatResource {
             rewriteMessageAttachments(messageMaps);
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("messages", messageMaps);
+            // Ephemeral typing/recording/uploading of other participants (TTL).
+            body.put("activities", activitiesFor(conversationId, currentUserKey));
             return JimRestResponses.okJson(body);
         } catch (JimMessengerException ex) {
             return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
@@ -658,6 +690,68 @@ public class CorbitMobileChatResource {
             return JimRestResponses.internalError(log,
                     "GET /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/messages",
                     userKey, ex, "internal_error", "An internal error occurred while loading messages.");
+        }
+    }
+
+    /** Poll other participants' current ephemeral activity (typing/recording/uploading). */
+    @GET
+    @Path("/conversations/{conversationId}/activity")
+    public Response getActivity(@PathParam("conversationId") int conversationId) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            this.conversationService.getConversationForUser(conversationId, currentUserKey);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("activities", activitiesFor(conversationId, currentUserKey));
+            return JimRestResponses.okJson(body);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/activity",
+                    userKey, ex, "internal_error", "Unable to load activity.");
+        }
+    }
+
+    /**
+     * Record the caller's ephemeral activity (typing/recording/uploading) in a
+     * conversation. Refreshes a short TTL; not a message. Only participants may
+     * post. An empty/absent activity clears it (on send/leave/blur).
+     */
+    @POST
+    @Path("/conversations/{conversationId}/activity")
+    @Consumes({"application/json"})
+    public Response postActivity(@PathParam("conversationId") int conversationId,
+                                 Map<String, Object> requestBody) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            // Participant check (throws if not a participant).
+            this.conversationService.getConversationForUser(conversationId, currentUserKey);
+            String activity = requestBody == null ? null : String.valueOf(requestBody.get("activity"));
+            boolean clear = requestBody != null && Boolean.TRUE.equals(requestBody.get("clear"));
+            if (clear || activity == null || "null".equals(activity) || activity.trim().isEmpty()) {
+                this.activityService.clear(currentUserKey, conversationId);
+            } else {
+                this.activityService.record(currentUserKey, conversationId, activity);
+            }
+            return JimRestResponses.okJson(JimRestResponses.singleEntry("ok", true));
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/activity",
+                    userKey, ex, "internal_error", "Unable to update activity.");
         }
     }
 

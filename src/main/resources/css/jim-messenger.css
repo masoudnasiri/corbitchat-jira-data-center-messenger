@@ -244,7 +244,8 @@
 
 /* Auto-linked URLs inside message bubbles. */
 #jim-messenger-app .jim-message-text .jim-link {
-    color: inherit;
+    color: #0b66cb; /* clear link affordance on incoming bubbles */
+    font-weight: 600;
     text-decoration: underline;
     word-break: break-all;
     overflow-wrap: anywhere;
@@ -252,13 +253,15 @@
 #jim-messenger-app .jim-message-text .jim-link:hover {
     text-decoration-thickness: 2px;
 }
+/* Outgoing (blue/teal) bubbles: white link is readable and clearly a link. */
 #jim-messenger-app .jim-message-row-own .jim-message-text .jim-link {
     color: #ffffff;
 }
 
 /* Sprint 12: tappable phone numbers (tel:) inside message bubbles. */
 #jim-messenger-app .jim-message-text .jim-phone-link {
-    color: inherit;
+    color: #0b66cb;
+    font-weight: 600;
     text-decoration: underline;
     text-decoration-style: dotted;
     white-space: nowrap;
@@ -295,6 +298,39 @@
         background-position: 0% 50%;
         text-shadow: 0 0 6px rgba(44, 181, 181, 0.5);
     }
+}
+/* Issue 1 fix: on outgoing blue/teal bubbles the transparent gradient-clip text
+   has poor contrast. Use a solid, readable contrast-safe variant (white glyphs
+   with a warm glow) instead of the clipped gradient. corbitlogic.com links keep
+   their own white link styling above. */
+#jim-messenger-app .jim-message-row-own .jim-easter-egg {
+    background: none;
+    -webkit-background-clip: initial;
+    background-clip: initial;
+    -webkit-text-fill-color: #ffffff;
+    color: #ffffff;
+    font-weight: 800;
+    text-shadow: 0 0 6px rgba(255, 224, 138, 0.85), 0 0 2px rgba(0, 0, 0, 0.35);
+    animation: jimCorbitShimmerOwn 2.6s ease-in-out infinite;
+}
+@keyframes jimCorbitShimmerOwn {
+    0%   { text-shadow: 0 0 4px rgba(255,255,255,0.6), 0 0 2px rgba(0,0,0,0.3); }
+    50%  { text-shadow: 0 0 10px rgba(255,224,138,0.95), 0 0 3px rgba(0,0,0,0.35); }
+    100% { text-shadow: 0 0 4px rgba(255,255,255,0.6), 0 0 2px rgba(0,0,0,0.3); }
+}
+@media (prefers-reduced-motion: reduce) {
+    #jim-messenger-app .jim-message-row-own .jim-easter-egg {
+        animation: none;
+        text-shadow: 0 0 6px rgba(255, 224, 138, 0.9), 0 0 2px rgba(0, 0, 0, 0.35);
+    }
+}
+
+/* Sprint 12 polish: ephemeral chat activity indicator above the composer. */
+#jim-messenger-app .jim-activity-indicator {
+    padding: 2px 16px 4px;
+    font-size: 12px;
+    font-style: italic;
+    color: #0b66cb;
 }
 
 /* Sprint 12: multi-select toolbar + selected message highlight. */

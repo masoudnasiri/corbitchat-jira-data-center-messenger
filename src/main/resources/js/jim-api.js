@@ -131,6 +131,12 @@
             return request('POST', '/messages/hide', { ids: messageIds });
         },
 
+        // Sprint 12 polish: ephemeral typing/recording/uploading activity (TTL).
+        postActivity: function (conversationId, activity, clear) {
+            return request('POST', '/conversations/' + conversationId + '/activity',
+                clear ? { clear: true } : { activity: activity || 'typing' });
+        },
+
         toggleReaction: function (messageId, emoji) {
             return request('POST', '/messages/' + messageId + '/reactions', { emoji: emoji });
         },
