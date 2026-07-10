@@ -26,10 +26,12 @@ import com.atlassian.jira.project.Project;
 import com.atlassian.jira.user.util.UserManager;
 import com.atlassian.sal.api.lifecycle.LifecycleAware;
 import com.corbitlogic.jira.internalmessenger.event.AssignmentEventPayload;
+import com.corbitlogic.jira.internalmessenger.event.AttachmentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.CommentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.JimEventExecutor;
 import com.corbitlogic.jira.internalmessenger.event.StatusChangeEventPayload;
 import com.corbitlogic.jira.internalmessenger.listener.JimAssignmentChangeDetector;
+import com.corbitlogic.jira.internalmessenger.listener.JimAttachmentChangeDetector;
 import com.corbitlogic.jira.internalmessenger.listener.JimStatusChangeDetector;
 import com.corbitlogic.jira.internalmessenger.service.JimIssueEventHandler;
 import com.corbitlogic.jira.internalmessenger.service.JimProjectChatService;
@@ -102,8 +104,15 @@ implements LifecycleAware {
                 return;
             }
             Long eventTypeId = issueEvent.getEventTypeId();
+            // A comment + attachment added in one action can surface either on
+            // the same IssueEvent or as adjacent events; detect attachment adds
+            // on ANY issue event so the Assistant can build a combined card.
+            boolean attachmentAdd = JimAttachmentChangeDetector.hasAttachmentAdd(issueEvent);
             if (EventType.ISSUE_COMMENTED_ID.equals(eventTypeId)) {
                 this.handleMentionCommentEvent(CommentEventPayload.from(issueEvent), "issue_event");
+                if (attachmentAdd) {
+                    this.handleAttachmentEvent(issueEvent);
+                }
                 return;
             }
             boolean explicitAssignment = EventType.ISSUE_ASSIGNED_ID.equals(eventTypeId);
@@ -113,6 +122,9 @@ implements LifecycleAware {
             }
             if (JimPluginBootstrap.isStatusChangeCandidateEvent(eventTypeId) && JimStatusChangeDetector.isStatusChange(issueEvent)) {
                 this.handleStatusChangeEvent(issueEvent);
+            }
+            if (attachmentAdd) {
+                this.handleAttachmentEvent(issueEvent);
             }
         }
         catch (Exception ex) {
@@ -170,6 +182,17 @@ implements LifecycleAware {
         }
         log.info("event=status stage=detect outcome=matched issueKey={} fromStatus={} toStatus={} recipientCount={}", new Object[]{payload.getIssueKey(), payload.getFromStatus(), payload.getToStatus(), payload.getRecipientUserKeys().size()});
         this.eventExecutor.submit("status", () -> this.issueEventHandler.handleStatusChange(payload));
+    }
+
+    private void handleAttachmentEvent(IssueEvent issueEvent) {
+        AttachmentEventPayload payload = AttachmentEventPayload.from(issueEvent);
+        if (payload == null) {
+            log.debug("event=attachment stage=extract outcome=skipped reason=invalid_payload");
+            return;
+        }
+        log.info("event=attachment stage=detect outcome=matched issueKey={} fileCount={} recipientCount={}",
+                new Object[]{payload.getIssueKey(), payload.getFiles().size(), payload.getRecipientUserKeys().size()});
+        this.eventExecutor.submit("attachment", () -> this.issueEventHandler.handleAttachment(payload));
     }
 
     private void handleMentionCommentEvent(CommentEventPayload payload, String source) {

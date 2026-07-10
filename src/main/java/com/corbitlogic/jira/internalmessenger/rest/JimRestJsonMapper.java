@@ -22,6 +22,7 @@ import com.atlassian.jira.avatar.AvatarsDisabledException;
 import com.atlassian.jira.component.ComponentAccessor;
 import com.atlassian.jira.issue.Issue;
 import com.atlassian.jira.issue.MutableIssue;
+import com.atlassian.jira.issue.attachment.Attachment;
 import com.atlassian.jira.permission.ProjectPermissions;
 import com.atlassian.jira.user.ApplicationUser;
 import com.atlassian.jira.user.util.UserManager;
@@ -46,7 +47,9 @@ import com.corbitlogic.jira.internalmessenger.service.JimReadStateService;
 import com.corbitlogic.jira.internalmessenger.util.JimMessageFlags;
 import com.corbitlogic.jira.internalmessenger.util.JimMessageLifecycle;
 import com.corbitlogic.jira.internalmessenger.util.JimSanitizer;
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -167,15 +170,19 @@ public class JimRestJsonMapper {
         item.put("eventType", message.getEventType());
         item.put("issueKey", message.getIssueKey());
         item.put("issueUrl", message.getIssueUrl());
-        // Jira Assistant/system event cards (ASSIGNMENT/MENTION/COMMENT) keep
-        // their stored summary as before — they notify a user about an issue
-        // they are already involved in. For USER "attach issue" (ISSUE_LINK)
-        // cards the summary is instead gated per-viewer in enrichIssueDetails
-        // so it never leaks to a recipient who cannot browse the issue.
-        if (!JimEventType.ISSUE_LINK.name().equals(message.getEventType())) {
+        // Jira Assistant / system issue cards (MENTION / ASSIGNMENT /
+        // STATUS_CHANGE / COMMENT / ISSUE_ATTACHMENT that reference an issue)
+        // are now re-gated per-viewer at read time (enrichSystemIssueCard): the
+        // summary, full mention text and attachment links are ONLY returned to a
+        // viewer who can still browse the issue. Non-issue system cards (e.g. a
+        // group @mention) keep their stored summary. USER "attach issue"
+        // (ISSUE_LINK) cards remain gated in enrichIssueDetails.
+        boolean systemIssueCard = JimRestJsonMapper.isEnrichableSystemIssueCard(message);
+        if (!JimEventType.ISSUE_LINK.name().equals(message.getEventType()) && !systemIssueCard) {
             item.put("issueSummary", JimSanitizer.sanitizeText(message.getIssueSummary()));
         }
         this.enrichIssueDetails(item, message, viewer);
+        this.enrichSystemIssueCard(item, message, viewer, systemIssueCard);
         item.put("actorUserKey", message.getActorUserKey());
         item.put("actorDisplayName", JimSanitizer.sanitizeText(message.getActorDisplayName()));
         item.put("createdAt", message.getCreatedAt());
@@ -246,6 +253,184 @@ public class JimRestJsonMapper {
         catch (Exception ex) {
             log.debug("Unable to enrich issue details for message {}: {}", (Object)message.getID(), (Object)ex.getMessage());
         }
+    }
+
+    /**
+     * A SYSTEM Jira Assistant card that references an issue and therefore must
+     * have its sensitive fields (summary / full mention text / attachment links)
+     * re-gated by a live browse-permission check at read time.
+     */
+    private static boolean isEnrichableSystemIssueCard(JimMessage message) {
+        if (message == null || !JimSenderType.SYSTEM.name().equals(message.getSenderType())) {
+            return false;
+        }
+        String key = message.getIssueKey();
+        if (key == null || key.trim().isEmpty()) {
+            return false;
+        }
+        String et = message.getEventType();
+        return JimEventType.MENTION.name().equals(et)
+                || JimEventType.ASSIGNMENT.name().equals(et)
+                || JimEventType.STATUS_CHANGE.name().equals(et)
+                || JimEventType.COMMENT.name().equals(et)
+                || JimEventType.ISSUE_ATTACHMENT.name().equals(et);
+    }
+
+    /**
+     * Enrich (and permission-gate) a Jira Assistant issue card. When the viewer
+     * can browse the issue we expose a FRESH summary, the full mention/comment
+     * text and any attached files with secure, Jira-authenticated download
+     * links. When they cannot (never had access, or lost it after the
+     * notification was created) we redact everything sensitive and emit a safe
+     * "unavailable" card carrying only a generic label + the issue key.
+     */
+    private void enrichSystemIssueCard(Map<String, Object> item, JimMessage message, ApplicationUser viewer, boolean systemIssueCard) {
+        if (!systemIssueCard) {
+            return;
+        }
+        boolean accessible = false;
+        try {
+            MutableIssue issue = ComponentAccessor.getIssueManager().getIssueByCurrentKey(message.getIssueKey());
+            if (issue != null && ComponentAccessor.getPermissionManager().hasPermission(ProjectPermissions.BROWSE_PROJECTS, (Issue) issue, viewer)) {
+                accessible = true;
+                item.put("issueSummary", JimSanitizer.sanitizeText(issue.getSummary()));
+                if (issue.getIssueType() != null) {
+                    item.put("issueTypeName", issue.getIssueType().getName());
+                }
+                if (issue.getStatus() != null) {
+                    item.put("issueStatusName", issue.getStatus().getName());
+                    if (issue.getStatus().getStatusCategory() != null) {
+                        item.put("issueStatusCategory", issue.getStatus().getStatusCategory().getKey());
+                    }
+                }
+                String eventText = message.getEventText();
+                if (eventText != null && !eventText.trim().isEmpty()) {
+                    // Line breaks preserved; clients HTML-escape on render.
+                    item.put("eventText", JimSanitizer.sanitizeText(eventText));
+                }
+                List<Map<String, Object>> files = this.buildIssueAttachments(message.getEventData(), issue, message.getIssueKey());
+                if (!files.isEmpty()) {
+                    item.put("issueAttachments", files);
+                }
+            }
+        }
+        catch (Exception ex) {
+            log.debug("Unable to enrich system issue card for message {}: {}", (Object) message.getID(), (Object) ex.getMessage());
+            accessible = false;
+        }
+        item.put("issueAccessible", accessible);
+        if (!accessible) {
+            // Redact: never leak summary / full text / file names / links to a
+            // viewer without browse permission (or if the issue is gone).
+            item.remove("issueSummary");
+            item.remove("eventText");
+            item.remove("issueAttachments");
+            item.remove("issueTypeName");
+            item.remove("issueStatusName");
+            item.remove("issueStatusCategory");
+            item.put("issueUnavailable", true);
+            item.put("body", JimSanitizer.sanitizeText(this.safeSystemBody(message)));
+        }
+    }
+
+    /**
+     * Resolve the stored attachment ids (one {@code id<TAB>name} per line) into
+     * per-viewer JSON with a secure download link. Metadata (size/type) and file
+     * existence are re-checked LIVE against Jira so a deleted file surfaces as
+     * unavailable and nothing stale is ever returned. The {@code downloadUrl} is
+     * Jira's own {@code /secure/attachment/*} path (permission-enforced by Jira
+     * on the web); the mobile BFF rewrites it to a session-authed proxy path.
+     */
+    private List<Map<String, Object>> buildIssueAttachments(String eventData, Issue issue, String issueKey) {
+        ArrayList<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+        if (eventData == null || eventData.trim().isEmpty() || issue == null) {
+            return out;
+        }
+        String[] lines = eventData.split("\n");
+        for (String line : lines) {
+            if (line == null || line.trim().isEmpty()) {
+                continue;
+            }
+            String idPart;
+            String storedName;
+            int tab = line.indexOf(9);
+            if (tab >= 0) {
+                idPart = line.substring(0, tab).trim();
+                storedName = line.substring(tab + 1).trim();
+            } else {
+                idPart = line.trim();
+                storedName = null;
+            }
+            long attachmentId;
+            try {
+                attachmentId = Long.parseLong(idPart);
+            } catch (NumberFormatException nfe) {
+                continue;
+            }
+            LinkedHashMap<String, Object> file = new LinkedHashMap<String, Object>();
+            file.put("id", attachmentId);
+            boolean available = false;
+            String fileName = storedName;
+            try {
+                Attachment att = ComponentAccessor.getAttachmentManager().getAttachment(attachmentId);
+                if (att != null && att.getIssue() != null && issue.getId() != null
+                        && issue.getId().equals(att.getIssue().getId())) {
+                    available = true;
+                    if (att.getFilename() != null) {
+                        fileName = att.getFilename();
+                    }
+                    if (att.getFilesize() != null) {
+                        file.put("fileSize", att.getFilesize());
+                    }
+                    if (att.getMimetype() != null) {
+                        file.put("contentType", att.getMimetype());
+                    }
+                    String secure = "/secure/attachment/" + attachmentId + "/"
+                            + JimRestJsonMapper.encodePathSegment(att.getFilename());
+                    file.put("downloadUrl", secure);
+                    file.put("previewUrl", secure);
+                }
+            }
+            catch (Exception ex) {
+                available = false;
+            }
+            file.put("fileName", JimSanitizer.sanitizeText(fileName != null ? fileName : "attachment"));
+            file.put("available", available);
+            out.add(file);
+        }
+        return out;
+    }
+
+    private static String encodePathSegment(String name) {
+        if (name == null || name.isEmpty()) {
+            return "file";
+        }
+        try {
+            return URLEncoder.encode(name, "UTF-8").replace("+", "%20");
+        }
+        catch (UnsupportedEncodingException ex) {
+            return "file";
+        }
+    }
+
+    private String safeSystemBody(JimMessage message) {
+        String actor = message.getActorDisplayName();
+        String who = actor != null && !actor.trim().isEmpty() ? actor.trim() : "Someone";
+        String key = message.getIssueKey() != null ? message.getIssueKey() : "an issue";
+        String et = message.getEventType();
+        if (JimEventType.MENTION.name().equals(et)) {
+            return who + " mentioned you in " + key + ".";
+        }
+        if (JimEventType.ASSIGNMENT.name().equals(et)) {
+            return who + " assigned " + key + " to you.";
+        }
+        if (JimEventType.STATUS_CHANGE.name().equals(et)) {
+            return who + " updated the status of " + key + ".";
+        }
+        if (JimEventType.ISSUE_ATTACHMENT.name().equals(et)) {
+            return who + " attached a file to " + key + ".";
+        }
+        return "Update on " + key + ".";
     }
 
     public List<Map<String, Object>> toReactionMaps(List<JimReaction> reactions, String currentUserKey) {

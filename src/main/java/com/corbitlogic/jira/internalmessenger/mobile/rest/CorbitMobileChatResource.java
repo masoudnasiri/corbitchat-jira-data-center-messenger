@@ -7,6 +7,12 @@ import com.corbitlogic.jira.internalmessenger.ao.JimAttachment;
 import com.corbitlogic.jira.internalmessenger.ao.JimConversation;
 import com.corbitlogic.jira.internalmessenger.ao.JimMessage;
 import com.corbitlogic.jira.internalmessenger.attachment.JimAttachmentStorageService;
+import com.atlassian.jira.component.ComponentAccessor;
+import com.atlassian.jira.issue.Issue;
+import com.atlassian.jira.issue.MutableIssue;
+import com.atlassian.jira.issue.attachment.Attachment;
+import com.atlassian.jira.permission.ProjectPermissions;
+import com.atlassian.jira.util.AttachmentUtils;
 import com.corbitlogic.jira.internalmessenger.attachment.JimAttachmentStreaming;
 import com.corbitlogic.jira.internalmessenger.attachment.JimMultipartParser;
 import com.corbitlogic.jira.internalmessenger.dto.UserSearchResultDto;
@@ -905,6 +911,77 @@ public class CorbitMobileChatResource {
         }
     }
 
+    // --- Jira Assistant issue-attachment download (Sprint 12 enrichment) ------
+    // Serves a Jira issue attachment referenced by an Assistant mention/
+    // attachment card over the session-authenticated chat path. Gated on the
+    // CHAT feature (not issueDetail): a user mentioned on an issue can open the
+    // attached file as long as they can BROWSE the issue. Jira browse +
+    // attachment-belongs-to-issue are enforced server-side on every request.
+
+    @GET
+    @Path("/issue-attachments/{issueKey}/{attachmentId}/download")
+    public Response downloadAssistantIssueAttachment(@PathParam("issueKey") String issueKey,
+                                                     @PathParam("attachmentId") long attachmentId,
+                                                     @HeaderParam("Range") String rangeHeader) {
+        return streamAssistantIssueAttachment(issueKey, attachmentId, false, rangeHeader);
+    }
+
+    @GET
+    @Path("/issue-attachments/{issueKey}/{attachmentId}/preview")
+    public Response previewAssistantIssueAttachment(@PathParam("issueKey") String issueKey,
+                                                    @PathParam("attachmentId") long attachmentId,
+                                                    @HeaderParam("Range") String rangeHeader) {
+        return streamAssistantIssueAttachment(issueKey, attachmentId, true, rangeHeader);
+    }
+
+    private Response streamAssistantIssueAttachment(String issueKey, long attachmentId,
+                                                    boolean inlinePreview, String rangeHeader) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        if (issueKey == null || issueKey.trim().isEmpty()) {
+            return JimRestResponses.errorJson(400, "bad_request", "issueKey is required.");
+        }
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        try {
+            MutableIssue issue = ComponentAccessor.getIssueManager().getIssueByCurrentKey(issueKey.trim());
+            if (issue == null || !ComponentAccessor.getPermissionManager()
+                    .hasPermission(ProjectPermissions.BROWSE_PROJECTS, (Issue) issue, viewer)) {
+                return JimRestResponses.errorJson(404, "not_found",
+                        "Issue not found or you do not have permission to view it.");
+            }
+            Attachment attachment = ComponentAccessor.getAttachmentManager().getAttachment(attachmentId);
+            if (attachment == null || attachment.getIssue() == null
+                    || !issue.getId().equals(attachment.getIssue().getId())) {
+                return JimRestResponses.errorJson(404, "not_found", "Attachment not found.");
+            }
+            File file = AttachmentUtils.getAttachmentFile(attachment);
+            if (file == null || !file.exists()) {
+                return JimRestResponses.errorJson(404, "not_found", "Attachment file not found.");
+            }
+            String contentType = attachment.getMimetype() != null
+                    ? attachment.getMimetype() : "application/octet-stream";
+            String ctl = contentType.toLowerCase(java.util.Locale.ROOT);
+            boolean inlineOk = ctl.startsWith("image/") || ctl.startsWith("audio/") || ctl.startsWith("video/");
+            String disposition = (inlinePreview && inlineOk) ? "inline" : "attachment";
+            return JimAttachmentStreaming.stream(file, contentType,
+                    attachment.getFilename(), disposition, rangeHeader);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/chat/issue-attachments/" + issueKey + "/" + attachmentId,
+                    userKey, ex, "internal_error",
+                    "An internal error occurred while loading the attachment.");
+        }
+    }
+
     // --- Mark read ------------------------------------------------------------
 
     @POST
@@ -1324,10 +1401,48 @@ public class CorbitMobileChatResource {
             return;
         }
         Object atts = message.get("attachments");
-        if (!(atts instanceof List)) {
+        if (atts instanceof List) {
+            for (Object o : (List<Object>) atts) {
+                if (!(o instanceof Map)) {
+                    continue;
+                }
+                Map<String, Object> a = (Map<String, Object>) o;
+                Object id = a.get("id");
+                if (id == null) {
+                    continue;
+                }
+                if (a.get("downloadUrl") != null) {
+                    a.put("downloadUrl", "/rest/corbit-mobile/1.0/chat/attachments/" + id + "/download");
+                }
+                if (a.get("previewUrl") != null) {
+                    a.put("previewUrl", "/rest/corbit-mobile/1.0/chat/attachments/" + id + "/preview");
+                }
+            }
+        }
+        rewriteIssueAttachments(message);
+    }
+
+    /**
+     * Rewrite Jira Assistant issue-attachment links (from the shared mapper's
+     * {@code /secure/attachment/*} form, which needs a Jira cookie) to the
+     * session-authenticated mobile proxy the app can actually reach. The proxy
+     * re-checks browse + attachment permission server-side.
+     */
+    @SuppressWarnings("unchecked")
+    private void rewriteIssueAttachments(Map<String, Object> message) {
+        if (message == null) {
             return;
         }
-        for (Object o : (List<Object>) atts) {
+        Object issueAtts = message.get("issueAttachments");
+        if (!(issueAtts instanceof List)) {
+            return;
+        }
+        Object issueKeyObj = message.get("issueKey");
+        if (issueKeyObj == null) {
+            return;
+        }
+        String base = "/rest/corbit-mobile/1.0/chat/issue-attachments/" + issueKeyObj + "/";
+        for (Object o : (List<Object>) issueAtts) {
             if (!(o instanceof Map)) {
                 continue;
             }
@@ -1337,10 +1452,10 @@ public class CorbitMobileChatResource {
                 continue;
             }
             if (a.get("downloadUrl") != null) {
-                a.put("downloadUrl", "/rest/corbit-mobile/1.0/chat/attachments/" + id + "/download");
+                a.put("downloadUrl", base + id + "/download");
             }
             if (a.get("previewUrl") != null) {
-                a.put("previewUrl", "/rest/corbit-mobile/1.0/chat/attachments/" + id + "/preview");
+                a.put("previewUrl", base + id + "/preview");
             }
         }
     }

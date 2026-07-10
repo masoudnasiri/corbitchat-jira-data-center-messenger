@@ -108,6 +108,106 @@
     border-color: #ebecf0;
 }
 
+/* Jira Assistant — full mention/comment text (notification enrichment).
+   Preserves line breaks and wraps long content; safe (text is HTML-escaped
+   in JS before insertion). RTL text renders correctly via `unicode-bidi`. */
+#jim-messenger-app .jim-system-card-mention-text {
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: #f4f5f7;
+    border-radius: 4px;
+    color: #172b4d;
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+#jim-messenger-app .jim-system-card-mention {
+    margin-top: 6px;
+}
+#jim-messenger-app .jim-system-card-mention > summary.jim-system-card-mention-preview {
+    cursor: pointer;
+    color: #42526e;
+    font-size: 13px;
+    line-height: 1.45;
+    list-style: revert;
+}
+#jim-messenger-app .jim-system-card-mention[open] > summary.jim-system-card-mention-preview {
+    color: #6b778c;
+    margin-bottom: 4px;
+}
+#jim-messenger-app .jim-system-card-mention .jim-system-card-mention-text {
+    margin-top: 0;
+}
+
+/* Jira Assistant — attached issue files. Each row shows the file name, an
+   optional size and a secure Download action (Jira-permission enforced). */
+#jim-messenger-app .jim-system-card-attachments {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+#jim-messenger-app .jim-system-card-attachment {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: #f4f5f7;
+    border: 1px solid #ebecf0;
+    border-radius: 4px;
+    font-size: 13px;
+}
+#jim-messenger-app .jim-system-card-attachment .jim-att-icon {
+    flex: 0 0 auto;
+    opacity: 0.75;
+}
+#jim-messenger-app .jim-system-card-attachment .jim-att-name {
+    flex: 1 1 auto;
+    color: #172b4d;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#jim-messenger-app .jim-system-card-attachment .jim-att-size {
+    flex: 0 0 auto;
+    color: #6b778c;
+    font-size: 12px;
+}
+#jim-messenger-app .jim-system-card-attachment .jim-att-download {
+    flex: 0 0 auto;
+    padding: 2px 8px !important;
+}
+#jim-messenger-app .jim-system-card-attachment .jim-att-unavailable {
+    flex: 0 0 auto;
+    color: #97a0af;
+    font-size: 12px;
+    font-style: italic;
+}
+#jim-messenger-app .jim-system-card-attachments-more > summary {
+    cursor: pointer;
+    color: #42526e;
+    font-size: 12px;
+    padding: 2px 0;
+}
+#jim-messenger-app .jim-system-card-attachments-more[open] {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Viewer lost access to the referenced issue: safe redacted notice. */
+#jim-messenger-app .jim-system-card-unavailable {
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: #fffae6;
+    border: 1px solid #ffe380;
+    border-radius: 4px;
+    color: #7a5c00;
+    font-size: 12px;
+}
+
 /* Acknowledged pill that replaces the 'Mark as seen' button after the
    user has actioned the message. */
 #jim-messenger-app .jim-system-card-actioned-pill {

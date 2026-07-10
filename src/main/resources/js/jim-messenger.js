@@ -72,6 +72,19 @@
                 var actor = message.ownMessage ? 'You' : (message.senderDisplayName || 'Someone');
                 return actor + ' shared ' + (message.issueKey || 'an issue');
             }
+        },
+        ISSUE_ATTACHMENT: {
+            label: 'ATTACHMENT',
+            tone: 'info',
+            title: function (message) {
+                var actor = message.actorDisplayName || 'Someone';
+                var issue = message.issueKey || 'an issue';
+                var count = (message.issueAttachments && message.issueAttachments.length) || 0;
+                if (count > 1) {
+                    return actor + ' attached ' + count + ' files to ' + issue;
+                }
+                return actor + ' attached a file to ' + issue;
+            }
         }
     };
 
@@ -2908,12 +2921,104 @@
         return body;
     }
 
+    // Human-readable file size for Assistant attachment rows.
+    function formatSystemFileSize(bytes) {
+        if (bytes == null || isNaN(bytes) || bytes < 0) {
+            return '';
+        }
+        var units = ['B', 'KB', 'MB', 'GB'];
+        var size = Number(bytes);
+        var unit = 0;
+        while (size >= 1024 && unit < units.length - 1) {
+            size /= 1024;
+            unit++;
+        }
+        var rounded = unit === 0 ? size : Math.round(size * 10) / 10;
+        return rounded + ' ' + units[unit];
+    }
+
+    // Full mention/comment text on an Assistant card. Preserves line breaks
+    // (CSS white-space: pre-wrap) and HTML-escapes so no markup/script renders.
+    // Long text collapses behind a native <details> so the card stays compact
+    // while the FULL text remains readable on expand (never truncated away).
+    function renderSystemMentionText(message) {
+        var text = message.eventText;
+        if (!text) {
+            return '';
+        }
+        var escaped = escapeHtml(text);
+        if (text.length <= 280) {
+            return '<div class="jim-system-card-mention-text">' + escaped + '</div>';
+        }
+        var preview = escapeHtml(text.substring(0, 200).replace(/\s+/g, ' ').trim()) + '…';
+        return '' +
+            '<details class="jim-system-card-mention">' +
+            '<summary class="jim-system-card-mention-preview">' + preview + '</summary>' +
+            '<div class="jim-system-card-mention-text">' + escaped + '</div>' +
+            '</details>';
+    }
+
+    function renderSystemAttachmentRow(file, messageId) {
+        var name = escapeHtml(file.fileName || 'attachment');
+        var size = formatSystemFileSize(file.fileSize);
+        var sizeSpan = size ? '<span class="jim-att-size">' + escapeHtml(size) + '</span>' : '';
+        var action;
+        if (file.available && file.downloadUrl) {
+            var url = resolveAttachmentUrl(file.downloadUrl);
+            // Opening/downloading a file counts as acknowledging the card.
+            action = '<a class="jim-att-download aui-button aui-button-link" href="' + escapeHtml(url) +
+                '" target="_blank" rel="noopener noreferrer" data-action="ack-system" data-message-id="' +
+                messageId + '">Download</a>';
+        } else {
+            action = '<span class="jim-att-unavailable">Unavailable</span>';
+        }
+        return '' +
+            '<div class="jim-system-card-attachment">' +
+            '<span class="jim-att-icon" aria-hidden="true">&#128206;</span>' +
+            '<span class="jim-att-name" title="' + name + '">' + name + '</span>' +
+            sizeSpan +
+            action +
+            '</div>';
+    }
+
+    // Attachment rows for a combined mention+attachment or standalone
+    // attachment Assistant card. Shows the first few inline; any extras collapse
+    // behind an "and N more" <details> so many files stay readable.
+    function renderSystemAttachments(message) {
+        var files = message.issueAttachments;
+        if (!files || !files.length) {
+            return '';
+        }
+        var maxInline = 3;
+        var inline = files.slice(0, maxInline);
+        var rest = files.slice(maxInline);
+        var html = '<div class="jim-system-card-attachments">';
+        for (var i = 0; i < inline.length; i++) {
+            html += renderSystemAttachmentRow(inline[i], message.id);
+        }
+        if (rest.length) {
+            html += '<details class="jim-system-card-attachments-more">' +
+                '<summary>and ' + rest.length + ' more</summary>';
+            for (var j = 0; j < rest.length; j++) {
+                html += renderSystemAttachmentRow(rest[j], message.id);
+            }
+            html += '</details>';
+        }
+        html += '</div>';
+        return html;
+    }
+
     function renderSystemMessage(message) {
         var config = getEventCardConfig(message);
         var titleText = config.title(message);
         var bodyText = systemCardBodyText(message, titleText);
         var issueUrl = resolveIssueUrl(message.issueUrl);
         var actioned = !!message.actioned;
+        // Issue-referencing system card whose viewer lost browse permission:
+        // the server redacted summary/text/files; show a safe notice only.
+        var unavailable = !!message.issueUnavailable;
+        var mentionTextHtml = unavailable ? '' : renderSystemMentionText(message);
+        var attachmentsHtml = unavailable ? '' : renderSystemAttachments(message);
 
         // Issue link counts as an action: clicking it marks the card as
         // acknowledged. data-action="ack-system" is delegated through the
@@ -2963,8 +3068,11 @@
             '    <div class="jim-system-card-body">' +
             '      <div class="jim-system-card-title">' + escapeHtml(titleText) + '</div>' +
             (message.issueKey ? '<div class="jim-system-card-issue-key">' + escapeHtml(message.issueKey) + '</div>' : '') +
-            (message.issueSummary ? '<div class="jim-system-card-summary">' + escapeHtml(message.issueSummary) + '</div>' : '') +
-            (bodyText ? '<div class="jim-system-card-text">' + escapeHtml(bodyText) + '</div>' : '') +
+            (!unavailable && message.issueSummary ? '<div class="jim-system-card-summary">' + escapeHtml(message.issueSummary) + '</div>' : '') +
+            (!unavailable && bodyText ? '<div class="jim-system-card-text">' + escapeHtml(bodyText) + '</div>' : '') +
+            mentionTextHtml +
+            attachmentsHtml +
+            (unavailable ? '<div class="jim-system-card-unavailable">You no longer have access to this issue.</div>' : '') +
             '    </div>' +
             '    <footer class="jim-system-card-actions">' +
             issueLink +

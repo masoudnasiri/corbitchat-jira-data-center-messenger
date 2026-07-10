@@ -37,6 +37,12 @@ public interface JimMessageService {
 
     public JimMessage createSystemMessage(String var1, JimEventType var2, String var3, String var4, String var5, String var6, String var7, String var8, String var9);
 
+    public JimMessage createSystemMessage(String var1, JimEventType var2, String var3, String var4, String var5, String var6, String var7, String var8, String eventText, String eventData, String var11);
+
+    public java.util.Set<String> attachFilesToRecentMentions(String issueKey, String eventDataJson);
+
+    public void reconcileMentionWithStandaloneAttachment(String targetUserKey, String issueKey);
+
     public List<JimMessage> listMessages(int var1, int var2, Integer var3);
 
     public JimMessage setPinned(int var1, String var2, boolean var3);

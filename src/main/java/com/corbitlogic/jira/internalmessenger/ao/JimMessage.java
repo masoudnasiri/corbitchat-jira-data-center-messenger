@@ -78,6 +78,35 @@ extends Entity {
 
     public void setActorDisplayName(String var1);
 
+    /**
+     * Full text carried by a Jira Assistant / system card (Sprint 12 —
+     * notification enrichment). For a MENTION/COMMENT this is the FULL comment
+     * (or field) body where the user was mentioned, so the Assistant can show
+     * the whole message instead of a generic "mentioned you" line. Nullable and
+     * auto-migrated; legacy rows leave it null. NEVER returned to a viewer who
+     * cannot browse the referenced issue (re-gated in JimRestJsonMapper).
+     */
+    @StringLength(value=-1)
+    @Accessor(value="EVENT_TEXT")
+    public String getEventText();
+
+    @Mutator(value="EVENT_TEXT")
+    public void setEventText(String var1);
+
+    /**
+     * Structured JSON metadata for a system card (Sprint 12). For an
+     * ISSUE_ATTACHMENT card this is a JSON array of the attached files
+     * ({@code [{"id","fileName","fileSize","contentType"}]}) so the Assistant
+     * can list each file with a secure, permission-checked download link.
+     * Nullable/auto-migrated; only read for ISSUE_ATTACHMENT cards.
+     */
+    @StringLength(value=-1)
+    @Accessor(value="EVENT_DATA")
+    public String getEventData();
+
+    @Mutator(value="EVENT_DATA")
+    public void setEventData(String var1);
+
     @Indexed
     public Long getCreatedAt();
 

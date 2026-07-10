@@ -74,6 +74,54 @@ public class JimMentionParser {
         return new ArrayList<ApplicationUser>(this.parseMentionedUsers(commentBody));
     }
 
+    /**
+     * Render a raw Jira comment body into readable text for the Assistant:
+     * mention tokens ([~accountid:x] / [~userkey:x] / [~name]) are replaced with
+     * "@DisplayName" (falling back to the raw token when unresolved). Line
+     * breaks are preserved; no HTML is produced (clients escape on render). The
+     * result is capped to {@code maxLength} characters so a huge comment cannot
+     * bloat storage — the "full text" the product asks for, within a sane bound.
+     */
+    public String renderReadable(String commentBody, int maxLength) {
+        if (commentBody == null) {
+            return "";
+        }
+        String rendered = commentBody;
+        try {
+            rendered = replaceMentions(ACCOUNT_ID_MENTION, rendered);
+            rendered = replaceMentions(USER_KEY_MENTION, rendered);
+            rendered = replaceMentions(USERNAME_MENTION, rendered);
+        } catch (Exception ex) {
+            log.debug("event=mention stage=render outcome=error message={}", (Object) ex.getMessage());
+            rendered = commentBody;
+        }
+        // Normalize Windows newlines but keep line breaks.
+        rendered = rendered.replace("\r\n", "\n").replace('\r', '\n').trim();
+        if (maxLength > 0 && rendered.length() > maxLength) {
+            rendered = rendered.substring(0, Math.max(0, maxLength - 3)) + "...";
+        }
+        return rendered;
+    }
+
+    private String replaceMentions(Pattern pattern, String body) {
+        Matcher matcher = pattern.matcher(body);
+        StringBuffer sb = new StringBuffer();
+        while (matcher.find()) {
+            String token = matcher.group(1);
+            String replacement;
+            ApplicationUser user = token != null ? this.resolveMentionToken(token.trim()) : null;
+            if (user != null && user.getDisplayName() != null) {
+                replacement = "@" + user.getDisplayName();
+            } else {
+                // Unresolved: show a bare @name rather than the raw wiki token.
+                replacement = token != null ? "@" + token.trim() : matcher.group(0);
+            }
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(sb);
+        return sb.toString();
+    }
+
     public String excerpt(String commentBody, int maxLength) {
         if (commentBody == null) {
             return "";

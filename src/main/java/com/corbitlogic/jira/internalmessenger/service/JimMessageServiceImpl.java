@@ -365,6 +365,9 @@ implements JimMessageService {
             case STATUS_CHANGE: {
                 return issueKey != null ? issueKey + " status changed" : "Status changed";
             }
+            case ISSUE_ATTACHMENT: {
+                return issueKey != null ? "New attachment on " + issueKey : "New attachment";
+            }
         }
         return "Jira Assistant";
     }
@@ -543,6 +546,11 @@ implements JimMessageService {
 
     @Override
     public JimMessage createSystemMessage(String targetUserKey, JimEventType eventType, String actorUserKey, String actorDisplayName, String issueKey, String issueSummary, String issueUrl, String body, String eventFingerprint) {
+        return this.createSystemMessage(targetUserKey, eventType, actorUserKey, actorDisplayName, issueKey, issueSummary, issueUrl, body, null, null, eventFingerprint);
+    }
+
+    @Override
+    public JimMessage createSystemMessage(String targetUserKey, JimEventType eventType, String actorUserKey, String actorDisplayName, String issueKey, String issueSummary, String issueUrl, String body, String eventText, String eventData, String eventFingerprint) {
         String fingerprint;
         this.validateSystemMessageRequest(targetUserKey, eventType, actorUserKey, actorDisplayName, issueKey, issueSummary, issueUrl, body);
         this.permissionService.requireActiveUser(targetUserKey);
@@ -555,7 +563,7 @@ implements JimMessageService {
         }
         JimConversation conversation = this.conversationService.getOrCreateSystemConversation(normalizedTarget);
         long now = System.currentTimeMillis();
-        JimMessage created = (JimMessage)this.activeObjects.executeInTransaction(() -> this.createSystemMessageInTransaction(fingerprint, conversation, normalizedBody, normalizedEventType, issueKey, issueSummary, issueUrl, actorUserKey, actorDisplayName, now, normalizedTarget));
+        JimMessage created = (JimMessage)this.activeObjects.executeInTransaction(() -> this.createSystemMessageInTransaction(fingerprint, conversation, normalizedBody, normalizedEventType, issueKey, issueSummary, issueUrl, actorUserKey, actorDisplayName, this.trimToNull(eventText), this.trimToNull(eventData), now, normalizedTarget));
         if (created != null) {
             try {
                 if (this.pushAllowedForEvent(normalizedEventType) && !this.presenceService.isViewingConversation(normalizedTarget, conversation.getID())) {
@@ -579,6 +587,88 @@ implements JimMessageService {
             }
         }
         return created;
+    }
+
+    // Window within which a Jira comment (mention) and an attachment-add on the
+    // same issue are treated as ONE combined action (Assistant enrichment).
+    private static final long COMBINE_WINDOW_MS = 15L * 60L * 1000L;
+
+    @Override
+    public java.util.Set<String> attachFilesToRecentMentions(String issueKey, String eventDataJson) {
+        java.util.LinkedHashSet<String> users = new java.util.LinkedHashSet<String>();
+        String key = this.trimToNull(issueKey);
+        String data = this.trimToNull(eventDataJson);
+        if (key == null || data == null) {
+            return users;
+        }
+        long cutoff = System.currentTimeMillis() - COMBINE_WINDOW_MS;
+        JimMessage[] mentions = (JimMessage[]) this.activeObjects.find(JimMessage.class,
+                Query.select().where("EVENT_TYPE = ? AND ISSUE_KEY = ? AND CREATED_AT >= ? AND DELETED = 0",
+                        new Object[]{JimEventType.MENTION.name(), key, cutoff}).order("ID DESC"));
+        if (mentions.length == 0) {
+            return users;
+        }
+        this.activeObjects.executeInTransaction(() -> {
+            for (JimMessage m : mentions) {
+                String uk = this.resolveSystemConversationUserKey(m.getConversationId());
+                if (uk != null) {
+                    users.add(uk);
+                }
+                String existing = m.getEventData();
+                if (existing == null || existing.trim().isEmpty()) {
+                    m.setEventData(data);
+                    m.save();
+                }
+            }
+            return null;
+        });
+        return users;
+    }
+
+    @Override
+    public void reconcileMentionWithStandaloneAttachment(String targetUserKey, String issueKey) {
+        String uk = this.trimToNull(targetUserKey);
+        String key = this.trimToNull(issueKey);
+        if (uk == null || key == null) {
+            return;
+        }
+        JimConversation conversation = this.conversationService.getOrCreateSystemConversation(uk);
+        long cutoff = System.currentTimeMillis() - COMBINE_WINDOW_MS;
+        JimMessage[] mentions = (JimMessage[]) this.activeObjects.find(JimMessage.class,
+                Query.select().where("CONVERSATION_ID = ? AND EVENT_TYPE = ? AND ISSUE_KEY = ? AND CREATED_AT >= ? AND DELETED = 0",
+                        new Object[]{conversation.getID(), JimEventType.MENTION.name(), key, cutoff}).order("ID DESC").limit(1));
+        JimMessage[] attachmentCards = (JimMessage[]) this.activeObjects.find(JimMessage.class,
+                Query.select().where("CONVERSATION_ID = ? AND EVENT_TYPE = ? AND ISSUE_KEY = ? AND CREATED_AT >= ? AND DELETED = 0",
+                        new Object[]{conversation.getID(), JimEventType.ISSUE_ATTACHMENT.name(), key, cutoff}).order("ID DESC"));
+        if (mentions.length == 0 || attachmentCards.length == 0) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        this.activeObjects.executeInTransaction(() -> {
+            JimMessage mention = mentions[0];
+            String mentionData = mention.getEventData();
+            if (mentionData == null || mentionData.trim().isEmpty()) {
+                mention.setEventData(attachmentCards[0].getEventData());
+                mention.save();
+            }
+            // Remove the now-redundant standalone attachment card(s): the files
+            // are shown on the combined mention card instead.
+            for (JimMessage card : attachmentCards) {
+                card.setDeleted(1);
+                card.setDeletedAt(now);
+                card.save();
+            }
+            return null;
+        });
+    }
+
+    private String resolveSystemConversationUserKey(int conversationId) {
+        try {
+            JimConversation conversation = (JimConversation) this.activeObjects.get(JimConversation.class, conversationId);
+            return conversation != null ? conversation.getUserAKey() : null;
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     /**
@@ -863,7 +953,7 @@ implements JimMessageService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private JimMessage createSystemMessageInTransaction(String fingerprint, JimConversation conversation, String normalizedBody, JimEventType normalizedEventType, String issueKey, String issueSummary, String issueUrl, String actorUserKey, String actorDisplayName, long now, String normalizedTarget) {
+    private JimMessage createSystemMessageInTransaction(String fingerprint, JimConversation conversation, String normalizedBody, JimEventType normalizedEventType, String issueKey, String issueSummary, String issueUrl, String actorUserKey, String actorDisplayName, String eventText, String eventData, long now, String normalizedTarget) {
         if (this.isDuplicateEvent(fingerprint)) {
             return null;
         }
@@ -879,6 +969,8 @@ implements JimMessageService {
         message.setIssueUrl(this.trimToNull(issueUrl));
         message.setActorUserKey(this.trimToNull(actorUserKey));
         message.setActorDisplayName(this.trimToNull(actorDisplayName));
+        message.setEventText(eventText);
+        message.setEventData(eventData);
         message.setCreatedAt(now);
         message.setEdited(0);
         message.setDeleted(0);

@@ -10,7 +10,8 @@ public enum JimEventType {
     COMMENT,
     STATUS_CHANGE,
     GROUP_EVENT,
-    ISSUE_LINK;
+    ISSUE_LINK,
+    ISSUE_ATTACHMENT;
 
 }
 
