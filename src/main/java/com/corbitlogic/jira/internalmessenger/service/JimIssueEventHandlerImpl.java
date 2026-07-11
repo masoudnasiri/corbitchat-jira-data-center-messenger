@@ -15,6 +15,7 @@ import com.corbitlogic.jira.internalmessenger.ao.JimMessage;
 import com.corbitlogic.jira.internalmessenger.event.AssignmentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.AttachmentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.CommentEventPayload;
+import com.corbitlogic.jira.internalmessenger.event.ScheduleApprovalEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.StatusChangeEventPayload;
 import com.corbitlogic.jira.internalmessenger.model.JimEventType;
 import com.corbitlogic.jira.internalmessenger.parser.JimMentionParser;
@@ -167,6 +168,42 @@ implements JimIssueEventHandler {
             }
         } catch (Exception ex) {
             log.error("event=attachment stage=process outcome=error issueKey={} message={}",
+                    new Object[]{payload.getIssueKey(), ex.getMessage(), ex});
+        }
+    }
+
+    @Override
+    public void handleScheduleApproval(ScheduleApprovalEventPayload payload) {
+        if (payload == null) {
+            return;
+        }
+        try {
+            String approverKey = payload.getApproverUserKey();
+            if (approverKey == null || !this.permissionService.isActiveUser(approverKey)) {
+                return;
+            }
+            // Never notify a requester who selected themselves as approver in a
+            // way that would be pointless — but self-approval IS allowed by the
+            // business, so we still notify (they must act as approver).
+            String body = payload.getRequesterDisplayName() + " requested your approval of the proposed completion date for "
+                    + payload.getIssueKey() + ".";
+            // Full description is carried in eventText (permission-gated at read).
+            String description = payload.getDescription();
+            String fullText = null;
+            if (description != null && !description.trim().isEmpty()) {
+                String trimmed = description.trim();
+                fullText = trimmed.length() > MENTION_TEXT_LENGTH
+                        ? trimmed.substring(0, MENTION_TEXT_LENGTH - 3) + "..." : trimmed;
+            }
+            String fingerprint = JimConversationKeys.buildEventFingerprint(
+                    JimEventType.SCHEDULE_APPROVAL.name(), approverKey, payload.getIssueKey(),
+                    payload.getRequesterUserKey(), payload.getChangeGroupSuffix());
+            this.createAssistantMessageSafely(approverKey, JimEventType.SCHEDULE_APPROVAL,
+                    payload.getRequesterUserKey(), payload.getRequesterDisplayName(), payload.getIssueKey(),
+                    payload.getIssueSummary(), JimIssueUrlBuilder.buildBrowseUrl(this.applicationProperties, payload.getIssueKey()),
+                    JimValidation.truncatePreview(body), fullText, payload.toEventData(), fingerprint);
+        } catch (Exception ex) {
+            log.error("event=schedule stage=process outcome=error issueKey={} message={}",
                     new Object[]{payload.getIssueKey(), ex.getMessage(), ex});
         }
     }

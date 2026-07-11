@@ -11,7 +11,8 @@ public enum JimEventType {
     STATUS_CHANGE,
     GROUP_EVENT,
     ISSUE_LINK,
-    ISSUE_ATTACHMENT;
+    ISSUE_ATTACHMENT,
+    SCHEDULE_APPROVAL;
 
 }
 

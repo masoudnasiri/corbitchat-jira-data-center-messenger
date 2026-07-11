@@ -29,6 +29,7 @@ import com.corbitlogic.jira.internalmessenger.event.AssignmentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.AttachmentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.CommentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.JimEventExecutor;
+import com.corbitlogic.jira.internalmessenger.event.ScheduleApprovalEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.StatusChangeEventPayload;
 import com.corbitlogic.jira.internalmessenger.listener.JimAssignmentChangeDetector;
 import com.corbitlogic.jira.internalmessenger.listener.JimAttachmentChangeDetector;
@@ -126,6 +127,15 @@ implements LifecycleAware {
             if (attachmentAdd) {
                 this.handleAttachmentEvent(issueEvent);
             }
+            // Schedule-approval workflow (proposed completion date). On create,
+            // or when the proposed date / approver changed on an update, notify
+            // the approver. No-op unless the workflow fields are configured.
+            if (EventType.ISSUE_CREATED_ID.equals(eventTypeId)) {
+                this.handleScheduleApprovalEvent(issueEvent, true);
+            } else if (EventType.ISSUE_UPDATED_ID.equals(eventTypeId)
+                    || EventType.ISSUE_GENERICEVENT_ID.equals(eventTypeId)) {
+                this.handleScheduleApprovalEvent(issueEvent, false);
+            }
         }
         catch (Exception ex) {
             log.error("event=issue stage=listener outcome=error message={}", (Object)ex.getMessage(), (Object)ex);
@@ -182,6 +192,32 @@ implements LifecycleAware {
         }
         log.info("event=status stage=detect outcome=matched issueKey={} fromStatus={} toStatus={} recipientCount={}", new Object[]{payload.getIssueKey(), payload.getFromStatus(), payload.getToStatus(), payload.getRecipientUserKeys().size()});
         this.eventExecutor.submit("status", () -> this.issueEventHandler.handleStatusChange(payload));
+    }
+
+    private void handleScheduleApprovalEvent(IssueEvent issueEvent, boolean isCreate) {
+        try {
+            ScheduleApprovalEventPayload payload = ScheduleApprovalEventPayload.from(issueEvent, isCreate);
+            if (payload == null) {
+                return;
+            }
+            // If the proposed date / approver changed after a prior decision,
+            // reset the status back to Pending (elevated, loop-safe) before
+            // notifying, so the card and dashboard reflect a fresh request.
+            if (!isCreate) {
+                try {
+                    com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig
+                            .resetToPending(issueEvent.getIssue(), issueEvent.getUser());
+                } catch (Exception ignore) {
+                    // best-effort; notification still proceeds
+                }
+            }
+            log.info("event=schedule stage=detect outcome=matched issueKey={} approverKey={} isCreate={}",
+                    new Object[]{payload.getIssueKey(), payload.getApproverUserKey(), isCreate});
+            this.eventExecutor.submit("schedule_approval",
+                    () -> this.issueEventHandler.handleScheduleApproval(payload));
+        } catch (Exception ex) {
+            log.debug("event=schedule stage=receive outcome=error message={}", (Object) ex.getMessage());
+        }
     }
 
     private void handleAttachmentEvent(IssueEvent issueEvent) {

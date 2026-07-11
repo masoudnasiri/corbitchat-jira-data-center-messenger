@@ -273,7 +273,8 @@ public class JimRestJsonMapper {
                 || JimEventType.ASSIGNMENT.name().equals(et)
                 || JimEventType.STATUS_CHANGE.name().equals(et)
                 || JimEventType.COMMENT.name().equals(et)
-                || JimEventType.ISSUE_ATTACHMENT.name().equals(et);
+                || JimEventType.ISSUE_ATTACHMENT.name().equals(et)
+                || JimEventType.SCHEDULE_APPROVAL.name().equals(et);
     }
 
     /**
@@ -312,6 +313,9 @@ public class JimRestJsonMapper {
                 if (!files.isEmpty()) {
                     item.put("issueAttachments", files);
                 }
+                if (JimEventType.SCHEDULE_APPROVAL.name().equals(message.getEventType())) {
+                    this.enrichScheduleApproval(item, message, issue, viewer);
+                }
             }
         }
         catch (Exception ex) {
@@ -328,9 +332,64 @@ public class JimRestJsonMapper {
             item.remove("issueTypeName");
             item.remove("issueStatusName");
             item.remove("issueStatusCategory");
+            item.remove("scheduleApproval");
             item.put("issueUnavailable", true);
             item.put("body", JimSanitizer.sanitizeText(this.safeSystemBody(message)));
         }
+    }
+
+    /**
+     * Schedule-approval card fields (permission-gated; only reached for a viewer
+     * who can browse the issue). Status is read LIVE from Jira so approve/reject
+     * reflects immediately; proposed date is read live; requester/approver come
+     * from stored event metadata. {@code isApprover} is true only for the
+     * selected approver — the client shows Approve/Reject only then.
+     */
+    private void enrichScheduleApproval(Map<String, Object> item, JimMessage message, Issue issue, ApplicationUser viewer) {
+        LinkedHashMap<String, Object> sa = new LinkedHashMap<String, Object>();
+        Map<String, String> data = parseEventDataKv(message.getEventData());
+        // Proposed date — live from the issue, fall back to stored snapshot.
+        java.util.Date proposed = com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.getProposedDate(issue);
+        if (proposed != null) {
+            sa.put("proposedDateMillis", proposed.getTime());
+            sa.put("proposedDateYmd", com.corbitlogic.jira.internalmessenger.mobile.JimMobileDates.toYmd(proposed));
+        } else {
+            if (data.get("proposedDateMillis") != null && !data.get("proposedDateMillis").isEmpty()) {
+                try { sa.put("proposedDateMillis", Long.parseLong(data.get("proposedDateMillis"))); } catch (NumberFormatException ignored) {}
+            }
+            if (data.get("proposedDateYmd") != null) {
+                sa.put("proposedDateYmd", data.get("proposedDateYmd"));
+            }
+        }
+        // Live approval status.
+        String status = com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.getStatusValue(issue);
+        if (status == null || status.trim().isEmpty()) {
+            status = data.getOrDefault("status", "Pending");
+        }
+        sa.put("status", status);
+        // Requester (stored) + approver identity.
+        if (data.get("requesterName") != null) {
+            sa.put("requesterName", JimSanitizer.sanitizeText(data.get("requesterName")));
+        }
+        String approverKey = data.get("approverKey");
+        boolean isApprover = viewer != null && approverKey != null && !approverKey.isEmpty()
+                && approverKey.equals(viewer.getKey());
+        sa.put("isApprover", isApprover);
+        item.put("scheduleApproval", sa);
+    }
+
+    private static Map<String, String> parseEventDataKv(String eventData) {
+        LinkedHashMap<String, String> map = new LinkedHashMap<String, String>();
+        if (eventData == null || eventData.trim().isEmpty()) {
+            return map;
+        }
+        for (String line : eventData.split("\n")) {
+            int eq = line.indexOf('=');
+            if (eq > 0) {
+                map.put(line.substring(0, eq).trim(), line.substring(eq + 1));
+            }
+        }
+        return map;
     }
 
     /**

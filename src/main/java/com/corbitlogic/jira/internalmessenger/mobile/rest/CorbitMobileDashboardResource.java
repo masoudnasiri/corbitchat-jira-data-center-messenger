@@ -96,12 +96,52 @@ public class CorbitMobileDashboardResource {
             body.put("unread", computeUnread(viewer.getKey()));
             body.put("tasks", tasks);
             body.put("todayPreview", preview(viewer, "today"));
+            // Schedule approvals pending for the current user (proposed
+            // completion date awaiting their approval). Only present when the
+            // workflow fields are configured on this instance.
+            body.put("scheduleApprovals", scheduleApprovals(viewer));
             return JimRestResponses.okJson(body);
         } catch (Exception ex) {
             return JimRestResponses.internalError(log,
                     "GET /rest/corbit-mobile/1.0/dashboard", viewer.getKey(), ex,
                     "internal_error", "An internal error occurred while loading the dashboard.");
         }
+    }
+
+    /**
+     * Pending schedule approvals assigned to the current user: {@code count} and
+     * a bounded {@code preview}. {@code configured} is false (count 0) on any
+     * instance missing the workflow fields, so the client hides the card there.
+     */
+    private Map<String, Object> scheduleApprovals(ApplicationUser viewer) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        boolean configured = false;
+        int count = 0;
+        List<Map<String, Object>> items = new ArrayList<>();
+        try {
+            if (com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.isConfigured()) {
+                configured = true;
+                String jql = "cf[11305] = currentUser() AND cf[11503] = \"Pending\" "
+                        + "AND cf[11309] is not EMPTY ORDER BY updated DESC";
+                SearchService.ParseResult pr = this.searchService.parseQuery(viewer, jql);
+                if (pr.isValid()) {
+                    Query q = pr.getQuery();
+                    count = (int) this.searchService.searchCount(viewer, q);
+                    SearchResults<Issue> results =
+                            this.searchService.search(viewer, q, new PagerFilter<>(PREVIEW_SIZE));
+                    for (Issue issue : results.getResults()) {
+                        items.add(JimMobileIssues.toIssueMap(issue, viewer, this.avatarService, this.applicationProperties));
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("endpoint=GET /rest/corbit-mobile/1.0/dashboard stage=scheduleApprovals outcome=degraded message={}",
+                    ex.getMessage());
+        }
+        out.put("configured", configured);
+        out.put("count", count);
+        out.put("preview", items);
+        return out;
     }
 
     private int count(ApplicationUser viewer, String filter) {

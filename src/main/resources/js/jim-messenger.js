@@ -85,6 +85,15 @@
                 }
                 return actor + ' attached a file to ' + issue;
             }
+        },
+        SCHEDULE_APPROVAL: {
+            label: 'APPROVAL',
+            tone: 'warning',
+            title: function (message) {
+                var actor = message.actorDisplayName || 'Someone';
+                var issue = message.issueKey || 'an issue';
+                return actor + ' requested schedule approval for ' + issue;
+            }
         }
     };
 
@@ -3008,6 +3017,48 @@
         return html;
     }
 
+    // Schedule-approval info block: proposed date, requester and a live status
+    // badge. `scheduleApproval` is only present (permission-gated) for the
+    // approver's card on an accessible issue.
+    function renderScheduleApproval(message) {
+        var sa = message.scheduleApproval;
+        if (!sa) {
+            return '';
+        }
+        var rows = '';
+        if (sa.proposedDateYmd) {
+            rows += '<div class="jim-approval-row"><span class="jim-approval-label">Proposed date</span>' +
+                '<span class="jim-approval-value">' + escapeHtml(String(sa.proposedDateYmd)) + '</span></div>';
+        }
+        if (sa.requesterName) {
+            rows += '<div class="jim-approval-row"><span class="jim-approval-label">Requested by</span>' +
+                '<span class="jim-approval-value">' + escapeHtml(String(sa.requesterName)) + '</span></div>';
+        }
+        var status = sa.status || 'Pending';
+        var tone = status.toLowerCase() === 'approved' ? 'approved'
+            : (status.toLowerCase() === 'rejected' ? 'rejected' : 'pending');
+        rows += '<div class="jim-approval-row"><span class="jim-approval-label">Status</span>' +
+            '<span class="jim-approval-status jim-approval-status-' + tone + '">' + escapeHtml(status) + '</span></div>';
+        return '<div class="jim-system-card-approval">' + rows + '</div>';
+    }
+
+    // Approve / Reject buttons — only for the selected approver while Pending.
+    function approvalActionButtons(message) {
+        var sa = message.scheduleApproval;
+        if (!sa || !sa.isApprover) {
+            return '';
+        }
+        var status = (sa.status || 'Pending').toLowerCase();
+        if (status !== 'pending') {
+            return '';
+        }
+        return '' +
+            '<button type="button" class="jim-approval-btn jim-approval-approve aui-button" ' +
+            'data-action="schedule-approve" data-message-id="' + message.id + '">Approve</button>' +
+            '<button type="button" class="jim-approval-btn jim-approval-reject aui-button" ' +
+            'data-action="schedule-reject" data-message-id="' + message.id + '">Reject</button>';
+    }
+
     function renderSystemMessage(message) {
         var config = getEventCardConfig(message);
         var titleText = config.title(message);
@@ -3019,6 +3070,14 @@
         var unavailable = !!message.issueUnavailable;
         var mentionTextHtml = unavailable ? '' : renderSystemMentionText(message);
         var attachmentsHtml = unavailable ? '' : renderSystemAttachments(message);
+        var approvalHtml = unavailable ? '' : renderScheduleApproval(message);
+        var approvalButtons = unavailable ? '' : approvalActionButtons(message);
+        // Summary-first title correction: when the issue summary is available,
+        // it is the primary label and the event phrase becomes the subtitle;
+        // the issue key stays visible as metadata.
+        var hasSummary = !unavailable && !!message.issueSummary;
+        var primaryTitle = hasSummary ? message.issueSummary : titleText;
+        var subtitle = hasSummary ? titleText : '';
 
         // Issue link counts as an action: clicking it marks the card as
         // acknowledged. data-action="ack-system" is delegated through the
@@ -3066,16 +3125,18 @@
             '      <span class="jim-system-card-time">' + escapeHtml(formatMessageTime(message.createdAt)) + '</span>' +
             '    </header>' +
             '    <div class="jim-system-card-body">' +
-            '      <div class="jim-system-card-title">' + escapeHtml(titleText) + '</div>' +
+            '      <div class="jim-system-card-title">' + escapeHtml(primaryTitle) + '</div>' +
+            (subtitle ? '<div class="jim-system-card-subtitle">' + escapeHtml(subtitle) + '</div>' : '') +
             (message.issueKey ? '<div class="jim-system-card-issue-key">' + escapeHtml(message.issueKey) + '</div>' : '') +
-            (!unavailable && message.issueSummary ? '<div class="jim-system-card-summary">' + escapeHtml(message.issueSummary) + '</div>' : '') +
             (!unavailable && bodyText ? '<div class="jim-system-card-text">' + escapeHtml(bodyText) + '</div>' : '') +
+            approvalHtml +
             mentionTextHtml +
             attachmentsHtml +
             (unavailable ? '<div class="jim-system-card-unavailable">You no longer have access to this issue.</div>' : '') +
             '    </div>' +
             '    <footer class="jim-system-card-actions">' +
             issueLink +
+            approvalButtons +
             ackButton +
             '    </footer>' +
             '  </article>' +
@@ -3090,6 +3151,51 @@
      * The local message state is updated optimistically so the actioned
      * style appears immediately; on REST failure we roll back.
      */
+    // Approve / reject a schedule-approval card. Reject prompts for a required
+    // reason. On success the server returns the updated (actioned) message,
+    // which we merge so the card flips to its handled/approved/rejected state.
+    function submitScheduleDecision(messageId, action, buttonEl) {
+        var reason = null;
+        if (action === 'reject') {
+            reason = window.prompt('Enter a reason for rejecting the proposed completion date:');
+            if (reason === null) {
+                return; // cancelled
+            }
+            reason = reason.trim();
+            if (!reason) {
+                showError('A rejection reason is required.');
+                return;
+            }
+        }
+        var card = buttonEl && buttonEl.closest ? buttonEl.closest('.jim-system-card') : null;
+        if (card) {
+            var btns = card.querySelectorAll('.jim-approval-btn');
+            for (var i = 0; i < btns.length; i++) {
+                btns[i].setAttribute('disabled', 'disabled');
+            }
+        }
+        JimApi.scheduleApprovalDecision(messageId, action, reason).then(function (updated) {
+            var msg = findMessageById(messageId);
+            if (msg && updated) {
+                msg.actioned = true;
+                if (updated.scheduleApproval) {
+                    msg.scheduleApproval = updated.scheduleApproval;
+                }
+            }
+            state.renderedMessagesHtml = null;
+            renderMessages();
+            loadMessages(state.selectedConversationId, false, false);
+        }).catch(function (error) {
+            if (card) {
+                var b2 = card.querySelectorAll('.jim-approval-btn');
+                for (var j = 0; j < b2.length; j++) {
+                    b2[j].removeAttribute('disabled');
+                }
+            }
+            showError(error && error.message ? error.message : 'Could not submit the decision.');
+        });
+    }
+
     function markSystemMessageActioned(messageId) {
         if (!messageId) {
             return;
@@ -3607,6 +3713,14 @@
                 }
                 if (actionEl.tagName === 'BUTTON') {
                     event.preventDefault();
+                }
+                return;
+            }
+            if (action === 'schedule-approve' || action === 'schedule-reject') {
+                event.preventDefault();
+                var saId = parseInt(actionEl.getAttribute('data-message-id'), 10);
+                if (!isNaN(saId)) {
+                    submitScheduleDecision(saId, action === 'schedule-approve' ? 'approve' : 'reject', actionEl);
                 }
                 return;
             }

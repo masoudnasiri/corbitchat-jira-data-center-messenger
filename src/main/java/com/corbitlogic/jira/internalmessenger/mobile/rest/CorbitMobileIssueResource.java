@@ -818,6 +818,105 @@ public class CorbitMobileIssueResource {
         }
     }
 
+    /**
+     * Approve/reject the proposed completion date from the Dashboard pending
+     * list. Body: {"action":"approve"|"reject","reason":"..."}. The server
+     * enforces that the caller is the selected approver (customfield_11305).
+     */
+    @POST
+    @Path("/{issueKey}/schedule-approval")
+    @Consumes({"application/json"})
+    public Response scheduleApprovalDecision(@PathParam("issueKey") String issueKey,
+                                             Map<String, Object> body) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        String action = body != null && body.get("action") != null ? String.valueOf(body.get("action")) : null;
+        String reason = body != null && body.get("reason") != null ? String.valueOf(body.get("reason")) : null;
+        com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalActions.Result result =
+                com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalActions
+                        .executeForIssue(issueKey, viewer, action, reason);
+        if (!result.isOk()) {
+            return JimRestResponses.errorJson(result.statusCode, result.errorCode, result.errorMessage);
+        }
+        return detail(issueKey, viewer);
+    }
+
+    /**
+     * Set/clear the proposed completion date + approver (our app edit surface).
+     * Body: {"proposedDate":"yyyy-MM-dd"|null, "approverUsername":"..."|null}.
+     * When a proposed date is set, an approver is REQUIRED. The subsequent Jira
+     * update fires the event listener, which notifies the approver and resets
+     * the status to Pending on a real change. Requires EDIT_ISSUES + configured
+     * fields (409 otherwise, so unconfigured instances report clearly).
+     */
+    @POST
+    @Path("/{issueKey}/proposed-schedule")
+    @Consumes({"application/json"})
+    public Response setProposedSchedule(@PathParam("issueKey") String issueKey,
+                                        Map<String, Object> body) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.ISSUE_DETAIL)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.ISSUE_DETAIL);
+        }
+        if (!com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.isConfigured()) {
+            return JimRestResponses.errorJson(409, "not_configured",
+                    "Schedule approval fields are not configured on this environment.");
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            if (!ComponentAccessor.getPermissionManager()
+                    .hasPermission(ProjectPermissions.EDIT_ISSUES, (Issue) issue, viewer)) {
+                return JimRestResponses.errorJson(403, "no_permission",
+                        "You do not have permission to edit this issue.");
+            }
+            String dateStr = body != null ? trimToNull(body.get("proposedDate")) : null;
+            String approverName = body != null ? trimToNull(body.get("approverUsername")) : null;
+            java.util.Date proposed = null;
+            if (dateStr != null) {
+                try {
+                    java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat("yyyy-MM-dd");
+                    fmt.setTimeZone(java.util.TimeZone.getTimeZone(
+                            ComponentAccessor.getComponent(com.atlassian.jira.timezone.TimeZoneManager.class)
+                                    .getDefaultTimezone().getID()));
+                    proposed = fmt.parse(dateStr);
+                } catch (Exception pe) {
+                    return JimRestResponses.errorJson(400, "bad_request", "Invalid proposedDate; expected yyyy-MM-dd.");
+                }
+            }
+            ApplicationUser approver = approverName != null
+                    ? ComponentAccessor.getUserManager().getUserByName(approverName) : null;
+            if (proposed != null && approver == null) {
+                return JimRestResponses.errorJson(400, "approver_required",
+                        "An approver is required when a proposed completion date is set.");
+            }
+            com.atlassian.jira.issue.fields.CustomField proposedCf =
+                    com.corbitlogic.jira.internalmessenger.mobile.JimMobileDates.findProposedCompletionField();
+            com.atlassian.jira.issue.fields.CustomField approverCf =
+                    com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.resolveApproverField();
+            if (proposedCf == null || approverCf == null) {
+                return JimRestResponses.errorJson(409, "not_configured", "Schedule fields not resolvable.");
+            }
+            issue.setCustomFieldValue(proposedCf, proposed);
+            issue.setCustomFieldValue(approverCf, approver);
+            ComponentAccessor.getIssueManager().updateIssue(viewer, issue,
+                    com.atlassian.jira.event.type.EventDispatchOption.ISSUE_UPDATED, false);
+            return detail(issue.getKey(), viewer);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/issues/{issueKey}/proposed-schedule",
+                    viewer.getKey(), ex, "internal_error",
+                    "An internal error occurred while updating the schedule.");
+        }
+    }
+
     /** Assign / unassign. Body: {"name":"jdoe"} | {"name":null} (unassign) | {"name":"-1"} (default). */
     @POST
     @Path("/{issueKey}/assignee")

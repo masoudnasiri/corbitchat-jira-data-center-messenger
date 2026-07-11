@@ -378,6 +378,40 @@ public class CorbitMobileChatResource {
         }
     }
 
+    @POST
+    @Path("/messages/{messageId}/schedule-approval")
+    @Consumes({"application/json"})
+    public Response scheduleApprovalDecision(@PathParam("messageId") int messageId, Map<String, Object> body) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        String action = body != null && body.get("action") != null ? String.valueOf(body.get("action")) : null;
+        String reason = body != null && body.get("reason") != null ? String.valueOf(body.get("reason")) : null;
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimMessage message = this.messageService.getMessageForParticipant(messageId, currentUserKey);
+            com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalActions.Result result =
+                    com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalActions.execute(message, viewer, action, reason);
+            if (!result.isOk()) {
+                return JimRestResponses.errorJson(result.statusCode, result.errorCode, result.errorMessage);
+            }
+            JimMessage actioned = this.messageService.markActioned(messageId, currentUserKey);
+            return okMessage(actioned, viewer, currentUserKey);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/messages/" + messageId + "/schedule-approval",
+                    userKey, ex, "internal_error", "An internal error occurred while processing the approval.");
+        }
+    }
+
     // --- Groups (Sprint 08) ----------------------------------------------------
     // Thin wrappers over the SAME JimGroupService the web /rest/jim/1.0/groups
     // resource uses: owner-only management, member limits, group event messages

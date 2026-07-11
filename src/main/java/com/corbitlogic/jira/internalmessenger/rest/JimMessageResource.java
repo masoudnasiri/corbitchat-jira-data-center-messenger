@@ -282,6 +282,37 @@ public class JimMessageResource {
     }
 
     @POST
+    @Path(value="/{messageId}/schedule-approval")
+    @Consumes(value={"application/json"})
+    public Response scheduleApprovalDecision(@PathParam(value="messageId") int messageId, Map<String, Object> body) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        String action = body != null && body.get("action") != null ? String.valueOf(body.get("action")) : null;
+        String reason = body != null && body.get("reason") != null ? String.valueOf(body.get("reason")) : null;
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimMessage message = this.messageService.getMessageForParticipant(messageId, currentUserKey);
+            com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalActions.Result result =
+                    com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalActions.execute(message, viewer, action, reason);
+            if (!result.isOk()) {
+                return JimRestResponses.errorJson(result.statusCode, result.errorCode, result.errorMessage);
+            }
+            JimMessage actioned = this.messageService.markActioned(messageId, currentUserKey);
+            JimConversation conversation = this.conversationService.getConversationForUser(actioned.getConversationId(), currentUserKey);
+            return JimRestResponses.okJson(this.restJsonMapper.toMessageMap(actioned, viewer, conversation, currentUserKey));
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST /rest/jim/1.0/messages/" + messageId + "/schedule-approval", userKey, ex, "internal_error", "An internal error occurred while processing the approval.");
+        }
+    }
+
+    @POST
     @Path(value="/{messageId}/reactions")
     @Consumes(value={"application/json"})
     public Response toggleReaction(@PathParam(value="messageId") int messageId, ReactionRequestDto request) {

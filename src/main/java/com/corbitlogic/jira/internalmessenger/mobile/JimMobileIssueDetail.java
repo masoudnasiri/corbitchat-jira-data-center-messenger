@@ -191,6 +191,25 @@ public final class JimMobileIssueDetail {
         // Permission flags for mobile write actions.
         map.put("permissions", permissions(issue, viewer));
 
+        // Schedule-approval workflow (proposed completion date). Present only on
+        // instances where the fields are configured, so the app hides the
+        // editor + card elsewhere (graceful disable).
+        try {
+            if (com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.isConfigured()) {
+                java.util.Map<String, Object> sa = new java.util.LinkedHashMap<String, Object>();
+                sa.put("available", true);
+                java.util.Date pd = com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.getProposedDate(issue);
+                sa.put("proposedDateYmd", pd != null ? JimMobileDates.toYmd(pd) : null);
+                com.atlassian.jira.user.ApplicationUser ap =
+                        com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.getApprover(issue);
+                sa.put("approverName", ap != null ? ap.getDisplayName() : null);
+                sa.put("approverUsername", ap != null ? ap.getName() : null);
+                sa.put("status", com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.getStatusValue(issue));
+                map.put("scheduleApproval", sa);
+            }
+        } catch (Throwable ignored) {
+        }
+
         map.put("url", JimIssueUrlBuilder.buildBrowseUrl(applicationProperties, issue));
         return map;
     }

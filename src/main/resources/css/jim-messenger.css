@@ -197,6 +197,65 @@
     gap: 4px;
 }
 
+/* Summary-first subtitle: the event phrase shown under the issue summary. */
+#jim-messenger-app .jim-system-card-subtitle {
+    margin-top: 2px;
+    color: #6b778c;
+    font-size: 12px;
+}
+
+/* Schedule-approval info block (proposed date / requester / status). */
+#jim-messenger-app .jim-system-card-approval {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: #f4f5f7;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+#jim-messenger-app .jim-approval-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+#jim-messenger-app .jim-approval-label {
+    color: #6b778c;
+    min-width: 96px;
+}
+#jim-messenger-app .jim-approval-value {
+    color: #172b4d;
+    font-weight: 600;
+}
+#jim-messenger-app .jim-approval-status {
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+}
+#jim-messenger-app .jim-approval-status-pending {
+    background: #fffae6;
+    color: #7a5c00;
+}
+#jim-messenger-app .jim-approval-status-approved {
+    background: #e3fcef;
+    color: #006644;
+}
+#jim-messenger-app .jim-approval-status-rejected {
+    background: #ffebe6;
+    color: #bf2600;
+}
+#jim-messenger-app .jim-approval-btn {
+    padding: 2px 12px !important;
+}
+#jim-messenger-app .jim-approval-approve {
+    color: #006644 !important;
+}
+#jim-messenger-app .jim-approval-reject {
+    color: #bf2600 !important;
+}
+
 /* Viewer lost access to the referenced issue: safe redacted notice. */
 #jim-messenger-app .jim-system-card-unavailable {
     margin-top: 6px;

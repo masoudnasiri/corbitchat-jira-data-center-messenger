@@ -153,6 +153,12 @@
             return request('POST', '/messages/' + messageId + '/action');
         },
 
+        // Schedule-approval decision (approve/reject). Reason required on reject.
+        scheduleApprovalDecision: function (messageId, action, reason) {
+            return request('POST', '/messages/' + messageId + '/schedule-approval',
+                { action: action, reason: reason || '' });
+        },
+
         getPinnedMessage: function (conversationId) {
             return request('GET', '/conversations/' + conversationId + '/pinned');
         },
