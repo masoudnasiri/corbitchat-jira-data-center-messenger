@@ -904,7 +904,10 @@ public class CorbitMobileIssueResource {
             if (proposedCf == null || approverCf == null) {
                 return JimRestResponses.errorJson(409, "not_configured", "Schedule fields not resolvable.");
             }
-            issue.setCustomFieldValue(proposedCf, proposed);
+            // Date-picker custom fields persist a java.sql.Timestamp, not a
+            // plain java.util.Date.
+            issue.setCustomFieldValue(proposedCf,
+                    proposed == null ? null : new java.sql.Timestamp(proposed.getTime()));
             issue.setCustomFieldValue(approverCf, approver);
             ComponentAccessor.getIssueManager().updateIssue(viewer, issue,
                     com.atlassian.jira.event.type.EventDispatchOption.ISSUE_UPDATED, false);

@@ -218,16 +218,19 @@ public final class JimScheduleApprovalConfig {
     }
 
     /**
-     * Reset the status to Pending (elevated) — used when the proposed date or
-     * approver changes after a prior decision. No-op if already Pending. The
-     * resulting update only changes the status field, so it cannot loop the
+     * Ensure the approval status is exactly "Pending" (elevated) when a request
+     * is raised or the proposed date / approver changes. No-op only if it is
+     * ALREADY exactly Pending — a null/empty status IS set to Pending so a fresh
+     * request shows up in the approver's Dashboard pending list. The resulting
+     * update only changes the status field, so it cannot loop the
      * proposed-date/approver change detector.
      */
     public static boolean resetToPending(Issue issue, ApplicationUser actor) {
         if (issue == null || !isConfigured()) {
             return false;
         }
-        if (isPending(issue)) {
+        String current = getStatusValue(issue);
+        if (current != null && STATUS_PENDING.equalsIgnoreCase(current.trim())) {
             return false;
         }
         CustomField statusCf = resolveStatusField();

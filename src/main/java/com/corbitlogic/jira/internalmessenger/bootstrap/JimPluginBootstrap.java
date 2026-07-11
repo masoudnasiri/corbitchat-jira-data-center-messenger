@@ -200,16 +200,14 @@ implements LifecycleAware {
             if (payload == null) {
                 return;
             }
-            // If the proposed date / approver changed after a prior decision,
-            // reset the status back to Pending (elevated, loop-safe) before
-            // notifying, so the card and dashboard reflect a fresh request.
-            if (!isCreate) {
-                try {
-                    com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig
-                            .resetToPending(issueEvent.getIssue(), issueEvent.getUser());
-                } catch (Exception ignore) {
-                    // best-effort; notification still proceeds
-                }
+            // Ensure the status is Pending for a fresh/changed request (elevated,
+            // loop-safe) so the card and Dashboard pending list reflect it even
+            // when the field had no value yet.
+            try {
+                com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig
+                        .resetToPending(issueEvent.getIssue(), issueEvent.getUser());
+            } catch (Exception ignore) {
+                // best-effort; notification still proceeds
             }
             log.info("event=schedule stage=detect outcome=matched issueKey={} approverKey={} isCreate={}",
                     new Object[]{payload.getIssueKey(), payload.getApproverUserKey(), isCreate});

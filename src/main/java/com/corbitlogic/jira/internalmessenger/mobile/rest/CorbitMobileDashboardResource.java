@@ -121,7 +121,8 @@ public class CorbitMobileDashboardResource {
         try {
             if (com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.isConfigured()) {
                 configured = true;
-                String jql = "cf[11305] = currentUser() AND cf[11503] = \"Pending\" "
+                String jql = "cf[11305] = currentUser() "
+                        + "AND (cf[11503] = \"Pending\" OR cf[11503] is EMPTY) "
                         + "AND cf[11309] is not EMPTY ORDER BY updated DESC";
                 SearchService.ParseResult pr = this.searchService.parseQuery(viewer, jql);
                 if (pr.isValid()) {
