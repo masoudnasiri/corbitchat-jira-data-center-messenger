@@ -16,6 +16,7 @@ import com.corbitlogic.jira.internalmessenger.event.AssignmentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.AttachmentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.CommentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.ScheduleApprovalEventPayload;
+import com.corbitlogic.jira.internalmessenger.event.ScheduleResultEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.StatusChangeEventPayload;
 import com.corbitlogic.jira.internalmessenger.model.JimEventType;
 import com.corbitlogic.jira.internalmessenger.parser.JimMentionParser;
@@ -204,6 +205,40 @@ implements JimIssueEventHandler {
                     JimValidation.truncatePreview(body), fullText, payload.toEventData(), fingerprint);
         } catch (Exception ex) {
             log.error("event=schedule stage=process outcome=error issueKey={} message={}",
+                    new Object[]{payload.getIssueKey(), ex.getMessage(), ex});
+        }
+    }
+
+    @Override
+    public void handleScheduleResult(ScheduleResultEventPayload payload) {
+        if (payload == null) {
+            return;
+        }
+        try {
+            String requesterKey = this.messageService.findScheduleRequesterKey(payload.getIssueKey());
+            if (requesterKey == null || !this.permissionService.isActiveUser(requesterKey)) {
+                return;
+            }
+            // Don't notify the approver about their own decision.
+            if (payload.getApproverUserKey() != null && payload.getApproverUserKey().equals(requesterKey)) {
+                return;
+            }
+            JimEventType type = payload.isApproved()
+                    ? JimEventType.SCHEDULE_APPROVAL_APPROVED : JimEventType.SCHEDULE_APPROVAL_REJECTED;
+            String body = payload.isApproved()
+                    ? "Your proposed completion date for " + payload.getIssueKey() + " was approved by " + payload.getApproverDisplayName() + "."
+                    : "Your proposed completion date for " + payload.getIssueKey() + " was rejected by " + payload.getApproverDisplayName() + ".";
+            // Rejection reason travels in eventText (permission-gated at read).
+            String eventText = payload.isApproved() ? null : payload.getRejectionReason();
+            String fingerprint = JimConversationKeys.buildEventFingerprint(
+                    type.name(), requesterKey, payload.getIssueKey(),
+                    payload.getApproverUserKey(), payload.getChangeGroupSuffix());
+            this.createAssistantMessageSafely(requesterKey, type,
+                    payload.getApproverUserKey(), payload.getApproverDisplayName(), payload.getIssueKey(),
+                    payload.getIssueSummary(), JimIssueUrlBuilder.buildBrowseUrl(this.applicationProperties, payload.getIssueKey()),
+                    JimValidation.truncatePreview(body), eventText, payload.toEventData(), fingerprint);
+        } catch (Exception ex) {
+            log.error("event=schedule_result stage=process outcome=error issueKey={} message={}",
                     new Object[]{payload.getIssueKey(), ex.getMessage(), ex});
         }
     }

@@ -274,7 +274,16 @@ public class JimRestJsonMapper {
                 || JimEventType.STATUS_CHANGE.name().equals(et)
                 || JimEventType.COMMENT.name().equals(et)
                 || JimEventType.ISSUE_ATTACHMENT.name().equals(et)
-                || JimEventType.SCHEDULE_APPROVAL.name().equals(et);
+                || JimEventType.SCHEDULE_APPROVAL.name().equals(et)
+                || JimEventType.SCHEDULE_APPROVAL_APPROVED.name().equals(et)
+                || JimEventType.SCHEDULE_APPROVAL_REJECTED.name().equals(et);
+    }
+
+    private static boolean isScheduleCard(JimMessage message) {
+        String et = message.getEventType();
+        return JimEventType.SCHEDULE_APPROVAL.name().equals(et)
+                || JimEventType.SCHEDULE_APPROVAL_APPROVED.name().equals(et)
+                || JimEventType.SCHEDULE_APPROVAL_REJECTED.name().equals(et);
     }
 
     /**
@@ -313,7 +322,7 @@ public class JimRestJsonMapper {
                 if (!files.isEmpty()) {
                     item.put("issueAttachments", files);
                 }
-                if (JimEventType.SCHEDULE_APPROVAL.name().equals(message.getEventType())) {
+                if (isScheduleCard(message)) {
                     this.enrichScheduleApproval(item, message, issue, viewer);
                 }
             }
@@ -361,20 +370,46 @@ public class JimRestJsonMapper {
                 sa.put("proposedDateYmd", data.get("proposedDateYmd"));
             }
         }
-        // Live approval status.
-        String status = com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.getStatusValue(issue);
-        if (status == null || status.trim().isEmpty()) {
-            status = data.getOrDefault("status", "Pending");
+        boolean resultCard = JimEventType.SCHEDULE_APPROVAL_APPROVED.name().equals(message.getEventType())
+                || JimEventType.SCHEDULE_APPROVAL_REJECTED.name().equals(message.getEventType());
+        // Live approval status (request card) or the decided status (result card).
+        String status;
+        if (resultCard) {
+            status = JimEventType.SCHEDULE_APPROVAL_APPROVED.name().equals(message.getEventType())
+                    ? "Approved" : "Rejected";
+        } else {
+            status = com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.getStatusValue(issue);
+            if (status == null || status.trim().isEmpty()) {
+                status = data.getOrDefault("status", "Pending");
+            }
         }
         sa.put("status", status);
-        // Requester (stored) + approver identity.
-        if (data.get("requesterName") != null) {
+        // Requester (request card) or approver (result card) identity.
+        if (data.get("requesterName") != null && !data.get("requesterName").isEmpty()) {
             sa.put("requesterName", JimSanitizer.sanitizeText(data.get("requesterName")));
         }
-        String approverKey = data.get("approverKey");
-        boolean isApprover = viewer != null && approverKey != null && !approverKey.isEmpty()
-                && approverKey.equals(viewer.getKey());
-        sa.put("isApprover", isApprover);
+        if (data.get("approverName") != null && !data.get("approverName").isEmpty()) {
+            sa.put("approverName", JimSanitizer.sanitizeText(data.get("approverName")));
+        }
+        if (resultCard) {
+            sa.put("resultType", JimEventType.SCHEDULE_APPROVAL_APPROVED.name().equals(message.getEventType())
+                    ? "approved" : "rejected");
+            // Rejection reason (stored in eventText, permission-gated by being
+            // reached only inside the accessible branch).
+            String reason = message.getEventText();
+            if (reason != null && !reason.trim().isEmpty()) {
+                sa.put("reason", JimSanitizer.sanitizeText(reason));
+            }
+            if (data.get("decidedAt") != null && !data.get("decidedAt").isEmpty()) {
+                try { sa.put("decidedAt", Long.parseLong(data.get("decidedAt"))); } catch (NumberFormatException ignored) {}
+            }
+            sa.put("isApprover", false);
+        } else {
+            String approverKey = data.get("approverKey");
+            boolean isApprover = viewer != null && approverKey != null && !approverKey.isEmpty()
+                    && approverKey.equals(viewer.getKey());
+            sa.put("isApprover", isApprover);
+        }
         item.put("scheduleApproval", sa);
     }
 

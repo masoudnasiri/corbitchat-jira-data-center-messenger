@@ -43,6 +43,8 @@ public interface JimMessageService {
 
     public void reconcileMentionWithStandaloneAttachment(String targetUserKey, String issueKey);
 
+    public String findScheduleRequesterKey(String issueKey);
+
     public List<JimMessage> listMessages(int var1, int var2, Integer var3);
 
     public JimMessage setPinned(int var1, String var2, boolean var3);

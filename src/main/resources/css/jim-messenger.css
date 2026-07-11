@@ -246,6 +246,20 @@
     background: #ffebe6;
     color: #bf2600;
 }
+#jim-messenger-app .jim-approval-reason {
+    margin-top: 2px;
+}
+#jim-messenger-app .jim-approval-reason-text {
+    margin-top: 4px;
+    padding: 6px 8px;
+    background: #ffebe6;
+    border-radius: 4px;
+    color: #172b4d;
+    font-size: 13px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
 #jim-messenger-app .jim-approval-btn {
     padding: 2px 12px !important;
 }

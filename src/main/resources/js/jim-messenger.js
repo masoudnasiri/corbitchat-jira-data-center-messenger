@@ -94,6 +94,24 @@
                 var issue = message.issueKey || 'an issue';
                 return actor + ' requested schedule approval for ' + issue;
             }
+        },
+        SCHEDULE_APPROVAL_APPROVED: {
+            label: 'APPROVED',
+            tone: 'success',
+            title: function (message) {
+                var by = (message.scheduleApproval && message.scheduleApproval.approverName)
+                    || message.actorDisplayName || 'Someone';
+                return 'Schedule approved by ' + by;
+            }
+        },
+        SCHEDULE_APPROVAL_REJECTED: {
+            label: 'REJECTED',
+            tone: 'error',
+            title: function (message) {
+                var by = (message.scheduleApproval && message.scheduleApproval.approverName)
+                    || message.actorDisplayName || 'Someone';
+                return 'Schedule rejected by ' + by;
+            }
         }
     };
 
@@ -3034,11 +3052,19 @@
             rows += '<div class="jim-approval-row"><span class="jim-approval-label">Requested by</span>' +
                 '<span class="jim-approval-value">' + escapeHtml(String(sa.requesterName)) + '</span></div>';
         }
+        if (sa.approverName) {
+            rows += '<div class="jim-approval-row"><span class="jim-approval-label">Decided by</span>' +
+                '<span class="jim-approval-value">' + escapeHtml(String(sa.approverName)) + '</span></div>';
+        }
         var status = sa.status || 'Pending';
         var tone = status.toLowerCase() === 'approved' ? 'approved'
             : (status.toLowerCase() === 'rejected' ? 'rejected' : 'pending');
         rows += '<div class="jim-approval-row"><span class="jim-approval-label">Status</span>' +
             '<span class="jim-approval-status jim-approval-status-' + tone + '">' + escapeHtml(status) + '</span></div>';
+        if (sa.reason) {
+            rows += '<div class="jim-approval-reason"><span class="jim-approval-label">Rejection reason</span>' +
+                '<div class="jim-approval-reason-text">' + escapeHtml(String(sa.reason)) + '</div></div>';
+        }
         return '<div class="jim-system-card-approval">' + rows + '</div>';
     }
 

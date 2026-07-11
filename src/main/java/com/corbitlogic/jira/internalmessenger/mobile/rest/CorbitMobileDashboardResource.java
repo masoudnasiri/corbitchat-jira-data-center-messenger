@@ -14,9 +14,14 @@ import com.corbitlogic.jira.internalmessenger.ao.JimConversation;
 import com.corbitlogic.jira.internalmessenger.mobile.JimMobileFeatures;
 import com.corbitlogic.jira.internalmessenger.mobile.JimMobileIssues;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
+import com.atlassian.jira.user.util.UserManager;
+import com.corbitlogic.jira.internalmessenger.mobile.JimMobileDates;
+import com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
+import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
 import com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService;
 import com.corbitlogic.jira.internalmessenger.service.JimReadStateService;
+import com.corbitlogic.jira.internalmessenger.util.JimSanitizer;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -56,6 +61,8 @@ public class CorbitMobileDashboardResource {
     private final JimConversationService conversationService;
     private final JimReadStateService readStateService;
     private final JimMobileFeatureService featureService;
+    private final JimMessageService messageService;
+    private final UserManager userManager;
 
     @Inject
     public CorbitMobileDashboardResource(JiraAuthenticationContext authenticationContext,
@@ -64,7 +71,9 @@ public class CorbitMobileDashboardResource {
                                          ApplicationProperties applicationProperties,
                                          JimConversationService conversationService,
                                          JimReadStateService readStateService,
-                                         JimMobileFeatureService featureService) {
+                                         JimMobileFeatureService featureService,
+                                         JimMessageService messageService,
+                                         UserManager userManager) {
         this.authenticationContext = authenticationContext;
         this.searchService = searchService;
         this.avatarService = avatarService;
@@ -72,6 +81,8 @@ public class CorbitMobileDashboardResource {
         this.conversationService = conversationService;
         this.readStateService = readStateService;
         this.featureService = featureService;
+        this.messageService = messageService;
+        this.userManager = userManager;
     }
 
     @GET
@@ -131,7 +142,10 @@ public class CorbitMobileDashboardResource {
                     SearchResults<Issue> results =
                             this.searchService.search(viewer, q, new PagerFilter<>(PREVIEW_SIZE));
                     for (Issue issue : results.getResults()) {
-                        items.add(JimMobileIssues.toIssueMap(issue, viewer, this.avatarService, this.applicationProperties));
+                        Map<String, Object> item =
+                                JimMobileIssues.toIssueMap(issue, viewer, this.avatarService, this.applicationProperties);
+                        enrichScheduleItem(item, issue);
+                        items.add(item);
                     }
                 }
             }
@@ -143,6 +157,43 @@ public class CorbitMobileDashboardResource {
         out.put("count", count);
         out.put("preview", items);
         return out;
+    }
+
+    /**
+     * Add the same schedule DTO the Assistant card uses to a Dashboard pending
+     * item, so the Dashboard is as complete as Assistant: proposed date,
+     * status, requester and a description preview.
+     */
+    private void enrichScheduleItem(Map<String, Object> item, Issue issue) {
+        try {
+            Map<String, Object> sa = new LinkedHashMap<>();
+            java.util.Date pd = JimScheduleApprovalConfig.getProposedDate(issue);
+            if (pd != null) {
+                sa.put("proposedDateMillis", pd.getTime());
+                sa.put("proposedDateYmd", JimMobileDates.toYmd(pd));
+            }
+            String status = JimScheduleApprovalConfig.getStatusValue(issue);
+            sa.put("status", (status == null || status.trim().isEmpty()) ? "Pending" : status);
+            sa.put("isApprover", true); // the JQL already restricts to the current-user approver
+            String requesterKey = this.messageService.findScheduleRequesterKey(issue.getKey());
+            if (requesterKey != null) {
+                com.atlassian.jira.user.ApplicationUser req = this.userManager.getUserByKey(requesterKey);
+                if (req != null && req.getDisplayName() != null) {
+                    sa.put("requesterName", JimSanitizer.sanitizeText(req.getDisplayName()));
+                }
+            }
+            item.put("scheduleApproval", sa);
+            String desc = issue.getDescription();
+            if (desc != null && !desc.trim().isEmpty()) {
+                String t = desc.trim();
+                if (t.length() > 500) {
+                    t = t.substring(0, 497) + "...";
+                }
+                item.put("descriptionPreview", JimSanitizer.sanitizeText(t));
+            }
+        } catch (Exception ex) {
+            log.warn("dashboard scheduleApprovals enrich failed for {}: {}", issue.getKey(), ex.getMessage());
+        }
     }
 
     private int count(ApplicationUser viewer, String filter) {

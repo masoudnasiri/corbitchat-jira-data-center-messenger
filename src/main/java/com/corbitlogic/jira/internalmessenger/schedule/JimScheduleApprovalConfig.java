@@ -70,6 +70,12 @@ public final class JimScheduleApprovalConfig {
         return cf != null ? cf.getFieldName() : null;
     }
 
+    /** Display name of the approval-status field (for changelog matching), or null. */
+    public static String statusFieldName() {
+        CustomField cf = resolveStatusField();
+        return cf != null ? cf.getFieldName() : null;
+    }
+
     // --- Field resolution (id + type guard) ----------------------------------
 
     public static CustomField resolveApproverField() {
@@ -151,6 +157,23 @@ public final class JimScheduleApprovalConfig {
             Object value = cf.getValue(issue);
             if (value instanceof Option) {
                 return ((Option) value).getValue();
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    /** Current rejection reason (cf_11502), or null. */
+    public static String getRejectionReason(Issue issue) {
+        CustomField cf = resolveReasonField();
+        if (cf == null || issue == null) {
+            return null;
+        }
+        try {
+            Object value = cf.getValue(issue);
+            if (value != null) {
+                String s = value.toString().trim();
+                return s.isEmpty() ? null : s;
             }
         } catch (Throwable ignored) {
         }

@@ -93,6 +93,15 @@ public final class JimScheduleApprovalActions {
             if (approver == null || !approver.getKey().equals(viewer.getKey())) {
                 return Result.error(403, "not_approver", "Only the selected approver can approve or reject this request.");
             }
+            // Already-handled guard: if the status is already the requested
+            // outcome, do NOT re-write / re-comment / re-notify (prevents
+            // duplicate result notifications on double-click / retry).
+            String current = JimScheduleApprovalConfig.getStatusValue(issue);
+            String target = approved ? JimScheduleApprovalConfig.STATUS_APPROVED
+                    : JimScheduleApprovalConfig.STATUS_REJECTED;
+            if (current != null && target.equalsIgnoreCase(current.trim())) {
+                return Result.ok();
+            }
             boolean ok = JimScheduleApprovalConfig.applyDecision(issue, viewer, approved, cleanReason);
             if (!ok) {
                 return Result.error(500, "update_failed", "Could not update the approval status.");

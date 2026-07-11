@@ -662,6 +662,32 @@ implements JimMessageService {
         });
     }
 
+    @Override
+    public String findScheduleRequesterKey(String issueKey) {
+        String key = this.trimToNull(issueKey);
+        if (key == null) {
+            return null;
+        }
+        JimMessage[] cards = (JimMessage[]) this.activeObjects.find(JimMessage.class,
+                Query.select().where("EVENT_TYPE = ? AND ISSUE_KEY = ?",
+                        new Object[]{JimEventType.SCHEDULE_APPROVAL.name(), key}).order("ID DESC").limit(1));
+        if (cards.length == 0) {
+            return null;
+        }
+        String data = cards[0].getEventData();
+        if (data == null) {
+            return null;
+        }
+        for (String line : data.split("\n")) {
+            int eq = line.indexOf('=');
+            if (eq > 0 && "requesterKey".equals(line.substring(0, eq).trim())) {
+                String v = line.substring(eq + 1).trim();
+                return v.isEmpty() ? null : v;
+            }
+        }
+        return null;
+    }
+
     private String resolveSystemConversationUserKey(int conversationId) {
         try {
             JimConversation conversation = (JimConversation) this.activeObjects.get(JimConversation.class, conversationId);

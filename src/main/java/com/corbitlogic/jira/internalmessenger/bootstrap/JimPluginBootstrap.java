@@ -30,6 +30,7 @@ import com.corbitlogic.jira.internalmessenger.event.AttachmentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.CommentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.JimEventExecutor;
 import com.corbitlogic.jira.internalmessenger.event.ScheduleApprovalEventPayload;
+import com.corbitlogic.jira.internalmessenger.event.ScheduleResultEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.StatusChangeEventPayload;
 import com.corbitlogic.jira.internalmessenger.listener.JimAssignmentChangeDetector;
 import com.corbitlogic.jira.internalmessenger.listener.JimAttachmentChangeDetector;
@@ -135,6 +136,8 @@ implements LifecycleAware {
             } else if (EventType.ISSUE_UPDATED_ID.equals(eventTypeId)
                     || EventType.ISSUE_GENERICEVENT_ID.equals(eventTypeId)) {
                 this.handleScheduleApprovalEvent(issueEvent, false);
+                // Approval decision (status → Approved/Rejected): notify requester.
+                this.handleScheduleResultEvent(issueEvent);
             }
         }
         catch (Exception ex) {
@@ -215,6 +218,21 @@ implements LifecycleAware {
                     () -> this.issueEventHandler.handleScheduleApproval(payload));
         } catch (Exception ex) {
             log.debug("event=schedule stage=receive outcome=error message={}", (Object) ex.getMessage());
+        }
+    }
+
+    private void handleScheduleResultEvent(IssueEvent issueEvent) {
+        try {
+            ScheduleResultEventPayload payload = ScheduleResultEventPayload.from(issueEvent);
+            if (payload == null) {
+                return;
+            }
+            log.info("event=schedule_result stage=detect outcome=matched issueKey={} approved={}",
+                    new Object[]{payload.getIssueKey(), payload.isApproved()});
+            this.eventExecutor.submit("schedule_result",
+                    () -> this.issueEventHandler.handleScheduleResult(payload));
+        } catch (Exception ex) {
+            log.debug("event=schedule_result stage=receive outcome=error message={}", (Object) ex.getMessage());
         }
     }
 
