@@ -17,6 +17,7 @@
         <button type="button" class="jim-admin-tab" data-tab="access" role="tab" aria-selected="false">Access Control</button>
         <button type="button" class="jim-admin-tab" data-tab="mobile" role="tab" aria-selected="false">Mobile Access</button>
         <button type="button" class="jim-admin-tab" data-tab="notifications" role="tab" aria-selected="false">Notifications</button>
+        <button type="button" class="jim-admin-tab" data-tab="localization" role="tab" aria-selected="false">Localization</button>
         <button type="button" class="jim-admin-tab" data-tab="attachments" role="tab" aria-selected="false">Attachments</button>
         <button type="button" class="jim-admin-tab" data-tab="branding" role="tab" aria-selected="false">Branding</button>
         <button type="button" class="jim-admin-tab" data-tab="diagnostics" role="tab" aria-selected="false">Diagnostics</button>
@@ -152,6 +153,22 @@
             <div class="jim-admin-actions">
                 <button id="jim-save-notifications" type="button" class="aui-button aui-button-primary">Save notification settings</button>
                 <button id="jim-test-notification" type="button" class="aui-button">Send test notification to me</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== Localization ===== -->
+    <section class="jim-admin-panel" data-panel="localization">
+        <h3>Jira Chat Localization</h3>
+        <p class="jim-admin-hint">
+            Global defaults for the Jira web chat only. Individual users can override these in
+            their own chat Settings. This does not change Jira's system language or any stored dates.
+        </p>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check"><input type="checkbox" id="jim-set-webPersianUiDefault"/> Enable Persian UI for Jira Chat by default</label>
+            <label class="jim-admin-check"><input type="checkbox" id="jim-set-webJalaliDatesDefault"/> Enable Jalali/Shamsi dates in Jira Chat by default</label>
+            <div class="jim-admin-actions">
+                <button id="jim-save-localization" type="button" class="aui-button aui-button-primary">Save localization settings</button>
             </div>
         </div>
     </section>

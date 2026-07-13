@@ -114,6 +114,12 @@
         <interface>com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService</interface>
     </component>
 
+    <component key="jimWebLocaleService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimWebLocaleServiceImpl">
+        <description>Per-user web chat localization preferences (Persian UI / Jalali dates)</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimWebLocaleService</interface>
+    </component>
+
     <component key="jimAccessPolicyService"
                class="com.corbitlogic.jira.internalmessenger.service.JimAccessPolicyServiceImpl">
         <description>Chat access-control policies for CorbitChat</description>

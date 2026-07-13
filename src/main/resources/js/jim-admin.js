@@ -117,7 +117,8 @@
     // ===== Settings =====
 
     var SETTINGS_CHECKBOXES = ['enableWebPush', 'aggregateNotifications', 'mentionNotifications',
-        'assignmentNotifications', 'attachmentsEnabled', 'imagePreviewEnabled'];
+        'assignmentNotifications', 'attachmentsEnabled', 'imagePreviewEnabled',
+        'webPersianUiDefault', 'webJalaliDatesDefault'];
 
     function applySettingsToForm(settings) {
         for (var i = 0; i < SETTINGS_CHECKBOXES.length; i++) {
@@ -225,6 +226,16 @@
                 assignmentNotifications: el('jim-set-assignmentNotifications').checked
             }, 'Notification settings saved.');
         });
+
+        var saveLoc = el('jim-save-localization');
+        if (saveLoc) {
+            saveLoc.addEventListener('click', function () {
+                saveSettings({
+                    webPersianUiDefault: el('jim-set-webPersianUiDefault').checked,
+                    webJalaliDatesDefault: el('jim-set-webJalaliDatesDefault').checked
+                }, 'Localization settings saved.');
+            });
+        }
 
         el('jim-save-attachments').addEventListener('click', function () {
             saveSettings({

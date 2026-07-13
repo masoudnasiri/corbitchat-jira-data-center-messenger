@@ -87,6 +87,54 @@
     direction: ltr;
 }
 
+/* Persian effective language: RTL chrome (sidebar, header, composer, tabs,
+   modals). The message thread stays LTR so bubble sides (own right / other
+   left) remain stable; per-message text still flows via dir="auto". */
+#jim-messenger-app.jim-lang-fa {
+    direction: rtl;
+}
+#jim-messenger-app.jim-lang-fa .jim-message-list,
+#jim-messenger-app.jim-lang-fa .jim-messages,
+#jim-messenger-app.jim-lang-fa .jim-chat-messages {
+    direction: ltr;
+}
+
+/* Settings gear in the sidebar header + settings modal controls. */
+#jim-messenger-app .jim-settings-btn {
+    margin-inline-start: auto;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    color: #6b778c;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+#jim-messenger-app .jim-settings-btn:hover {
+    background: #f4f5f7;
+    color: #172b4d;
+}
+#jim-messenger-app .jim-settings-label {
+    display: block;
+    margin: 12px 0 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #42526e;
+}
+#jim-messenger-app .jim-settings-select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #dfe1e6;
+    border-radius: 4px;
+    background: #fff;
+    font-size: 14px;
+}
+#jim-messenger-app .jim-inline-success {
+    margin-top: 8px;
+    color: #006644;
+    font-size: 13px;
+}
+
 /* Jira Assistant / system card - actioned state.
    Once the user has acknowledged (clicked the issue link or "Mark as
    seen"), the card mutes its visual weight so the user can tell at a

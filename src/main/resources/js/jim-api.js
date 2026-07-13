@@ -153,6 +153,14 @@
             return request('POST', '/messages/' + messageId + '/action');
         },
 
+        // Web chat localization preferences (Persian UI / Jalali dates).
+        getWebPreferences: function () {
+            return request('GET', '/web-preferences');
+        },
+        saveWebPreferences: function (language, calendar) {
+            return request('PUT', '/web-preferences', { language: language, calendar: calendar });
+        },
+
         // Schedule-approval decision (approve/reject). Reason required on reject.
         scheduleApprovalDecision: function (messageId, action, reason) {
             return request('POST', '/messages/' + messageId + '/schedule-approval',

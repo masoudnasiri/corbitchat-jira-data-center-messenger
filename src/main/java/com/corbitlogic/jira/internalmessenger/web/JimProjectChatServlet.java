@@ -57,8 +57,9 @@ extends HttpServlet {
     private final JimProjectChatService projectChatService;
     private final JimPermissionService permissionService;
     private final JimAdminSettingsService adminSettingsService;
+    private final com.corbitlogic.jira.internalmessenger.service.JimWebLocaleService webLocaleService;
 
-    public JimProjectChatServlet(JiraAuthenticationContext authenticationContext, TemplateRenderer templateRenderer, WebResourceManager webResourceManager, AvatarService avatarService, JimProjectChatService projectChatService, JimPermissionService permissionService, JimAdminSettingsService adminSettingsService) {
+    public JimProjectChatServlet(JiraAuthenticationContext authenticationContext, TemplateRenderer templateRenderer, WebResourceManager webResourceManager, AvatarService avatarService, JimProjectChatService projectChatService, JimPermissionService permissionService, JimAdminSettingsService adminSettingsService, com.corbitlogic.jira.internalmessenger.service.JimWebLocaleService webLocaleService) {
         this.authenticationContext = authenticationContext;
         this.templateRenderer = templateRenderer;
         this.webResourceManager = webResourceManager;
@@ -66,6 +67,7 @@ extends HttpServlet {
         this.projectChatService = projectChatService;
         this.permissionService = permissionService;
         this.adminSettingsService = adminSettingsService;
+        this.webLocaleService = webLocaleService;
     }
 
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
@@ -113,6 +115,10 @@ extends HttpServlet {
         context.put("projectConversationId", conversation != null ? Integer.valueOf(conversation.getID()) : null);
         context.put("projectIsMember", isMember);
         context.put("projectLeadDisplayName", lead != null ? lead.getDisplayName() : null);
+        context.put("effectiveLanguage", this.webLocaleService.effectiveLanguage(user.getKey()));
+        context.put("effectiveCalendar", this.webLocaleService.effectiveCalendar(user.getKey()));
+        context.put("userLanguagePref", this.webLocaleService.getUserLanguage(user.getKey()));
+        context.put("userCalendarPref", this.webLocaleService.getUserCalendar(user.getKey()));
         this.templateRenderer.render(TEMPLATE_PATH, context, (Writer)response.getWriter());
     }
 

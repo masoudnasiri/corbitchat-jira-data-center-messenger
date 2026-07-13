@@ -1,6 +1,10 @@
     <div id="jim-messenger-app"
-         class="jim-messenger jim-chat-shell jim-chat-page#if($projectChatMode) jim-project-mode#end"
+         class="jim-messenger jim-chat-shell jim-chat-page jim-lang-$!effectiveLanguage#if($projectChatMode) jim-project-mode#end"
          data-user-key="$!currentUserKey"
+         data-effective-lang="$!effectiveLanguage"
+         data-effective-calendar="$!effectiveCalendar"
+         data-user-lang-pref="$!userLanguagePref"
+         data-user-calendar-pref="$!userCalendarPref"
          #if($projectChatMode)
          data-project-key="$!projectKey"
          data-project-name="$!projectName"
@@ -32,6 +36,7 @@
                         <div id="jim-sidebar-unread-summary" class="jim-sidebar-brand-subtitle">0 unread messages</div>
                     </div>
                 </div>
+                <button id="jim-settings-btn" type="button" class="jim-settings-btn" title="Settings" aria-label="Settings" data-i18n-title="Settings">&#9881;</button>
             </header>
 
             <div class="jim-sidebar-search jim-search">
@@ -45,9 +50,9 @@
             </div>
 
             <div class="jim-sidebar-tabs" role="tablist" aria-label="Conversation filters">
-                <button id="jim-tab-all" type="button" class="jim-sidebar-tab is-active" role="tab" aria-selected="true" data-tab="all">All</button>
-                <button id="jim-tab-personal" type="button" class="jim-sidebar-tab" role="tab" aria-selected="false" data-tab="personal">Personal</button>
-                <button id="jim-tab-groups" type="button" class="jim-sidebar-tab" role="tab" aria-selected="false" data-tab="groups">Groups</button>
+                <button id="jim-tab-all" type="button" class="jim-sidebar-tab is-active" role="tab" aria-selected="true" data-tab="all" data-i18n="All">All</button>
+                <button id="jim-tab-personal" type="button" class="jim-sidebar-tab" role="tab" aria-selected="false" data-tab="personal" data-i18n="Personal">Personal</button>
+                <button id="jim-tab-groups" type="button" class="jim-sidebar-tab" role="tab" aria-selected="false" data-tab="groups" data-i18n="Groups">Groups</button>
             </div>
 
             <div id="jim-assistant-slot" class="jim-assistant-slot jim-assistant-conversation" aria-label="Jira Assistant"></div>
@@ -57,8 +62,8 @@
         </div>
 
         <div class="jim-sidebar-actions">
-            <button id="jim-new-conversation" type="button" class="jim-new-conversation">+ New chat</button>
-            <button id="jim-new-group" type="button" class="jim-new-conversation jim-new-group">+ New group</button>
+            <button id="jim-new-conversation" type="button" class="jim-new-conversation"><span data-i18n="New chat">New chat</span></button>
+            <button id="jim-new-group" type="button" class="jim-new-conversation jim-new-group"><span data-i18n="New group">New group</span></button>
         </div>
 
         <footer class="jim-sidebar-footer">
@@ -280,5 +285,32 @@
                     <button id="jim-image-lightbox-close" type="button" class="jim-modal-button">Close</button>
                 </figcaption>
             </figure>
+        </div>
+
+        <div id="jim-settings-modal" class="jim-modal-overlay" hidden>
+            <div class="jim-modal" role="dialog" aria-modal="true" aria-label="Chat settings">
+                <div class="jim-modal-header">
+                    <h2 class="jim-modal-title" data-i18n="Language and dates">Language and dates</h2>
+                </div>
+                <div class="jim-modal-body">
+                    <label class="jim-settings-label" for="jim-setting-language" data-i18n="Chat language">Chat language</label>
+                    <select id="jim-setting-language" class="jim-settings-select">
+                        <option value="default" data-i18n="Use admin default">Use admin default</option>
+                        <option value="fa" data-i18n="Persian">Persian</option>
+                        <option value="en" data-i18n="English">English</option>
+                    </select>
+                    <label class="jim-settings-label" for="jim-setting-calendar" data-i18n="Chat date format">Chat date format</label>
+                    <select id="jim-setting-calendar" class="jim-settings-select">
+                        <option value="default" data-i18n="Use admin default">Use admin default</option>
+                        <option value="jalali" data-i18n="Jalali / Shamsi">Jalali / Shamsi</option>
+                        <option value="gregorian" data-i18n="Gregorian">Gregorian</option>
+                    </select>
+                    <div id="jim-settings-message" class="jim-inline-error" role="alert" hidden></div>
+                </div>
+                <div class="jim-modal-actions">
+                    <button id="jim-settings-cancel" type="button" class="jim-modal-button" data-i18n="Cancel">Cancel</button>
+                    <button id="jim-settings-save" type="button" class="jim-modal-button jim-modal-button-primary" data-i18n="Save">Save</button>
+                </div>
+            </div>
         </div>
     </div>

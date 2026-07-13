@@ -38,6 +38,12 @@ public interface JimAdminSettingsService {
 
     public String getBrandingLogoUrl();
 
+    /** Admin default: show the Jira web chat UI in Persian for users on "admin default". */
+    public boolean isWebPersianUiDefault();
+
+    /** Admin default: show chat dates in Jalali/Shamsi for users on "admin default". */
+    public boolean isWebJalaliDatesDefault();
+
     public Map<String, Object> getAllSettings();
 
     public List<String> updateSettings(Map<String, Object> var1);

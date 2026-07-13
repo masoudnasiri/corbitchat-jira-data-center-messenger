@@ -22,6 +22,7 @@ import com.atlassian.plugin.webresource.WebResourceManager;
 import com.atlassian.templaterenderer.TemplateRenderer;
 import com.corbitlogic.jira.internalmessenger.bootstrap.JimPluginBootstrap;
 import com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService;
+import com.corbitlogic.jira.internalmessenger.service.JimWebLocaleService;
 import java.io.IOException;
 import java.io.Writer;
 import java.net.URI;
@@ -42,13 +43,15 @@ extends HttpServlet {
     private final WebResourceManager webResourceManager;
     private final AvatarService avatarService;
     private final JimAdminSettingsService adminSettingsService;
+    private final JimWebLocaleService webLocaleService;
 
-    public JimChatServlet(JiraAuthenticationContext authenticationContext, TemplateRenderer templateRenderer, WebResourceManager webResourceManager, AvatarService avatarService, JimPluginBootstrap pluginBootstrap, JimAdminSettingsService adminSettingsService) {
+    public JimChatServlet(JiraAuthenticationContext authenticationContext, TemplateRenderer templateRenderer, WebResourceManager webResourceManager, AvatarService avatarService, JimPluginBootstrap pluginBootstrap, JimAdminSettingsService adminSettingsService, JimWebLocaleService webLocaleService) {
         this.authenticationContext = authenticationContext;
         this.templateRenderer = templateRenderer;
         this.webResourceManager = webResourceManager;
         this.avatarService = avatarService;
         this.adminSettingsService = adminSettingsService;
+        this.webLocaleService = webLocaleService;
     }
 
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
@@ -74,6 +77,12 @@ extends HttpServlet {
         context.put("logoUrl", logoUrl);
         context.put("brandTitle", this.resolveBrandTitle());
         context.put("brandLogoUrl", this.resolveBrandLogoUrl(logoAvailable, logoUrl));
+        // Web chat localization (Persian UI / Jalali dates): resolved effective
+        // values + raw prefs for the in-chat settings panel. Display-only.
+        context.put("effectiveLanguage", this.webLocaleService.effectiveLanguage(user.getKey()));
+        context.put("effectiveCalendar", this.webLocaleService.effectiveCalendar(user.getKey()));
+        context.put("userLanguagePref", this.webLocaleService.getUserLanguage(user.getKey()));
+        context.put("userCalendarPref", this.webLocaleService.getUserCalendar(user.getKey()));
         this.templateRenderer.render(TEMPLATE_PATH, context, (Writer)response.getWriter());
     }
 

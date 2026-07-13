@@ -33,6 +33,8 @@ implements JimAdminSettingsService {
     static final String KEY_IMAGE_PREVIEW_ENABLED = "imagePreviewEnabled";
     static final String KEY_BRANDING_TITLE = "brandingTitle";
     static final String KEY_BRANDING_LOGO_URL = "brandingLogoUrl";
+    static final String KEY_WEB_PERSIAN_UI_DEFAULT = "webPersianUiDefault";
+    static final String KEY_WEB_JALALI_DATES_DEFAULT = "webJalaliDatesDefault";
     static final String DEFAULT_BRANDING_TITLE = "CorbitChat";
     static final int MAX_BRANDING_TITLE_LENGTH = 60;
     /** Large enough to hold a base64 data URL for a ~370 KB logo image. */
@@ -109,6 +111,16 @@ implements JimAdminSettingsService {
     }
 
     @Override
+    public boolean isWebPersianUiDefault() {
+        return this.boolValue(KEY_WEB_PERSIAN_UI_DEFAULT, false);
+    }
+
+    @Override
+    public boolean isWebJalaliDatesDefault() {
+        return this.boolValue(KEY_WEB_JALALI_DATES_DEFAULT, false);
+    }
+
+    @Override
     public Map<String, Object> getAllSettings() {
         LinkedHashMap<String, Object> settings = new LinkedHashMap<String, Object>();
         settings.put(KEY_CHAT_MODE, this.getChatMode());
@@ -123,6 +135,8 @@ implements JimAdminSettingsService {
         settings.put(KEY_IMAGE_PREVIEW_ENABLED, this.isImagePreviewEnabled());
         settings.put(KEY_BRANDING_TITLE, this.getBrandingTitle());
         settings.put(KEY_BRANDING_LOGO_URL, this.getBrandingLogoUrl());
+        settings.put(KEY_WEB_PERSIAN_UI_DEFAULT, this.isWebPersianUiDefault());
+        settings.put(KEY_WEB_JALALI_DATES_DEFAULT, this.isWebJalaliDatesDefault());
         return settings;
     }
 
@@ -176,6 +190,8 @@ implements JimAdminSettingsService {
             case "notificationDetailLevel": {
                 return JimAdminSettingsServiceImpl.requireOneOf(key, value, DETAIL_LEVELS);
             }
+            case "webPersianUiDefault": 
+            case "webJalaliDatesDefault": 
             case "enableWebPush": 
             case "aggregateNotifications": 
             case "mentionNotifications": 

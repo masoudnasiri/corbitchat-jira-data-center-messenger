@@ -22,6 +22,128 @@
     var DELETE_WINDOW_MS = 10 * 60 * 1000;
     var EDIT_WINDOW_MS = 30 * 60 * 1000;
 
+    // --- Localization (web chat only): Persian UI + Jalali dates -------------
+    // Effective language/calendar are resolved server-side (user pref → admin
+    // default → English/Gregorian) and injected as data-* attributes on the
+    // app root. This is display-only; stored dates/values never change.
+    var Locale = { lang: 'en', calendar: 'gregorian' };
+
+    var FA_DIGITS = ['\u06F0', '\u06F1', '\u06F2', '\u06F3', '\u06F4',
+        '\u06F5', '\u06F6', '\u06F7', '\u06F8', '\u06F9'];
+
+    // Localize ASCII digits to Persian when the effective language is Persian.
+    function locDigits(str) {
+        if (Locale.lang !== 'fa' || str == null) {
+            return str;
+        }
+        var s = String(str);
+        var out = '';
+        for (var i = 0; i < s.length; i++) {
+            var c = s.charCodeAt(i);
+            out += (c >= 48 && c <= 57) ? FA_DIGITS[c - 48] : s.charAt(i);
+        }
+        return out;
+    }
+
+    // Persian (fa) UI dictionary keyed by the English source string. Missing
+    // keys fall back to English, so partial coverage degrades gracefully.
+    var FA_STRINGS = {
+        'Send': 'ارسال', 'Reply': 'پاسخ', 'Forward': 'ارسال مجدد', 'Copy': 'کپی',
+        'Delete for me': 'حذف برای من', 'Select': 'انتخاب', 'Cancel': 'لغو',
+        'Save': 'ذخیره', 'Search': 'جستجو', 'Settings': 'تنظیمات',
+        'Open issue': 'مشاهده تسک', 'Open comment': 'مشاهده دیدگاه',
+        'Attach Jira issue': 'اتصال تسک Jira', 'Download': 'دانلود',
+        'Approve': 'تأیید', 'Reject': 'رد', 'Rejection reason': 'دلیل رد',
+        'React': 'واکنش', 'Pin': 'سنجاق', 'Unpin': 'برداشتن سنجاق',
+        'Info': 'اطلاعات', 'Edit': 'ویرایش', 'Delete': 'حذف', 'Delete?': 'حذف شود؟',
+        'Yes': 'بله', 'No': 'خیر', 'Deleted message': 'پیام حذف‌شده',
+        'Seen': 'دیده شد', 'Sent': 'ارسال شد', 'Draft': 'پیش‌نویس',
+        'Mark as seen': 'علامت‌گذاری به‌عنوان دیده‌شده', 'Acknowledged': 'تأیید شد',
+        'Loading...': 'در حال بارگذاری...', 'Loading conversations...': 'در حال بارگذاری گفتگوها...',
+        'Loading messages...': 'در حال بارگذاری پیام‌ها...',
+        'Loading older messages\u2026': 'در حال بارگذاری پیام‌های قدیمی‌تر...',
+        'Sending\u2026': 'در حال ارسال...',
+        'Something went wrong. Please try again.': 'خطایی رخ داد. دوباره تلاش کنید.',
+        'No conversations yet': 'هنوز گفتگویی نیست',
+        'No messages yet': 'هنوز پیامی نیست',
+        'No results': 'نتیجه‌ای یافت نشد',
+        'Active now': 'آنلاین', 'Direct message': 'گفتگوی مستقیم',
+        'Back to conversations': 'بازگشت به گفتگوها',
+        'Project lead': 'راهبر پروژه', 'Owner': 'مالک',
+        'Pinned:': 'سنجاق‌شده:', 'Image': 'تصویر', 'Voice message': 'پیام صوتی',
+        'Video': 'ویدیو', 'File:': 'فایل:',
+        'Jira notifications and updates': 'اعلان‌ها و به‌روزرسانی‌های Jira',
+        'Assistant': 'دستیار', 'Jira Assistant': 'دستیار Jira',
+        'All': 'همه', 'Personal': 'شخصی', 'Groups': 'گروه‌ها',
+        'New chat': 'گفتگوی جدید', 'New group': 'گروه جدید', 'Create group': 'ایجاد گروه',
+        'Message info': 'اطلاعات پیام', 'Forward message': 'ارسال مجدد پیام',
+        'Language and dates': 'زبان و تاریخ', 'Chat language': 'زبان گفتگو',
+        'Chat date format': 'قالب تاریخ گفتگو', 'Use admin default': 'پیش‌فرض مدیر',
+        'Persian': 'فارسی', 'English': 'انگلیسی', 'Jalali / Shamsi': 'جلالی / شمسی',
+        'Gregorian': 'میلادی', 'Saved. Reloading…': 'ذخیره شد. در حال بارگذاری مجدد…',
+        'Just now': 'همین حالا', 'Today': 'امروز', 'Yesterday': 'دیروز',
+        'Unavailable': 'در دسترس نیست', 'and': 'و', 'more': 'بیشتر'
+    };
+
+    // Translate a UI label to the effective language (English passthrough).
+    function t(s) {
+        if (Locale.lang === 'fa' && Object.prototype.hasOwnProperty.call(FA_STRINGS, s)) {
+            return FA_STRINGS[s];
+        }
+        return s;
+    }
+
+    // --- Jalali (Shamsi) calendar conversion (display only) ------------------
+    var JALALI_MONTHS_FA = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+        'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+    var GREG_MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var WEEKDAYS_FA = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه'];
+
+    function div(a, b) { return Math.floor(a / b); }
+
+    // Gregorian (y, m[1-12], d) → Jalali {jy, jm[1-12], jd}. Standard algorithm.
+    function gregorianToJalali(gy, gm, gd) {
+        var gDaysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        var jDaysInMonth = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
+        var gy2 = gy - 1600, gm2 = gm - 1, gd2 = gd - 1;
+        var gDayNo = 365 * gy2 + div(gy2 + 3, 4) - div(gy2 + 99, 100) + div(gy2 + 399, 400);
+        for (var i = 0; i < gm2; i++) { gDayNo += gDaysInMonth[i]; }
+        if (gm2 > 1 && ((gy % 4 === 0 && gy % 100 !== 0) || gy % 400 === 0)) { gDayNo++; }
+        gDayNo += gd2;
+        var jDayNo = gDayNo - 79;
+        var jNp = div(jDayNo, 12053);
+        jDayNo %= 12053;
+        var jy = 979 + 33 * jNp + 4 * div(jDayNo, 1461);
+        jDayNo %= 1461;
+        if (jDayNo >= 366) { jy += div(jDayNo - 366, 365); jDayNo = (jDayNo - 366) % 365; }
+        var jm = 0;
+        for (var j = 0; j < 12; j++) {
+            if (jDayNo < jDaysInMonth[j]) { jm = j; break; }
+            jDayNo -= jDaysInMonth[j];
+        }
+        return { jy: jy, jm: jm + 1, jd: jDayNo + 1 };
+    }
+
+    function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+    // Effective-calendar date, e.g. "۱۴۰۵ مرداد ۲۴" (jalali fa) / "Aug 15, 2026".
+    function calDate(date, opts) {
+        opts = opts || {};
+        if (Locale.calendar === 'jalali') {
+            var j = gregorianToJalali(date.getFullYear(), date.getMonth() + 1, date.getDate());
+            var out = j.jd + ' ' + JALALI_MONTHS_FA[j.jm - 1] + ' ' + j.jy;
+            if (opts.weekday) { out = WEEKDAYS_FA[date.getDay()] + ' ' + out; }
+            return locDigits(out);
+        }
+        var g = GREG_MONTHS_EN[date.getMonth()] + ' ' + date.getDate() + ', ' + date.getFullYear();
+        return opts.weekday ? (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()] + ', ' + g) : g;
+    }
+
+    function calClock(date) {
+        return locDigits(pad2(date.getHours()) + ':' + pad2(date.getMinutes()));
+    }
+
     var EVENT_CARD_CONFIG = {
         MENTION: {
             label: 'MENTION',
@@ -1342,19 +1464,28 @@
         }
 
         if (diff < 60000) {
-            return 'Just now';
+            return t('Just now');
         }
         if (diff < 3600000) {
-            return Math.floor(diff / 60000) + 'm ago';
+            return relAgo(Math.floor(diff / 60000), 'm');
         }
         if (diff < 86400000) {
-            return Math.floor(diff / 3600000) + 'h ago';
+            return relAgo(Math.floor(diff / 3600000), 'h');
         }
         if (diff < 604800000) {
-            return Math.floor(diff / 86400000) + 'd ago';
+            return relAgo(Math.floor(diff / 86400000), 'd');
         }
 
-        return date.toLocaleString();
+        return calDate(date) + ' ' + calClock(date);
+    }
+
+    // Relative "N unit ago" localized (fa: "۵ دقیقه پیش" etc.).
+    function relAgo(n, unit) {
+        if (Locale.lang === 'fa') {
+            var u = unit === 'm' ? 'دقیقه' : (unit === 'h' ? 'ساعت' : 'روز');
+            return locDigits('' + n) + ' ' + u + ' پیش';
+        }
+        return n + unit + ' ago';
     }
 
     function formatAbsoluteDateTime(timestamp) {
@@ -1362,17 +1493,10 @@
         if (isNaN(date.getTime())) {
             return '';
         }
-
-        return new Intl.DateTimeFormat(undefined, {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit'
-        }).format(date);
+        return calDate(date) + ' ' + calClock(date);
     }
 
-    /** Exact wall-clock time: "14:32" today, "yesterday 14:32", or "11 Jun 14:32". */
+    /** Exact wall-clock time: "14:32" today, "yesterday 14:32", or a dated clock. */
     function formatExactTime(timestamp) {
         if (!timestamp) {
             return '';
@@ -1381,17 +1505,16 @@
         if (isNaN(date.getTime())) {
             return '';
         }
-        var clock = ('0' + date.getHours()).slice(-2) + ':' + ('0' + date.getMinutes()).slice(-2);
+        var clock = calClock(date);
         var now = new Date();
         if (date.toDateString() === now.toDateString()) {
             return clock;
         }
         var yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
         if (date.toDateString() === yesterday.toDateString()) {
-            return 'yesterday ' + clock;
+            return t('Yesterday') + ' ' + clock;
         }
-        var day = date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-        return day + ' ' + clock;
+        return calDate(date) + ' ' + clock;
     }
 
     function formatMessageTime(timestamp) {
@@ -1411,12 +1534,12 @@
 
         if (diff <= MESSAGE_ABSOLUTE_TIME_MS) {
             if (diff < 60000) {
-                return 'Just now';
+                return t('Just now');
             }
             if (diff < 3600000) {
-                return Math.floor(diff / 60000) + 'm ago';
+                return relAgo(Math.floor(diff / 60000), 'm');
             }
-            return Math.floor(diff / 3600000) + 'h ago';
+            return relAgo(Math.floor(diff / 3600000), 'h');
         }
 
         return formatAbsoluteDateTime(timestamp);
@@ -1444,25 +1567,16 @@
         var messageStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
         var diffDays = Math.round((todayStart - messageStart) / 86400000);
 
-        var fullDate = date.toLocaleDateString(undefined, {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric'
-        });
+        var fullDate = calDate(date);
 
         if (diffDays === 0) {
-            return 'Today \u2014 ' + fullDate;
+            return t('Today') + ' \u2014 ' + fullDate;
         }
         if (diffDays === 1) {
-            return 'Yesterday \u2014 ' + fullDate;
+            return t('Yesterday') + ' \u2014 ' + fullDate;
         }
 
-        return date.toLocaleDateString(undefined, {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric'
-        });
+        return calDate(date, { weekday: true });
     }
 
     function renderDateDivider(label) {
@@ -1472,6 +1586,86 @@
         return '<div class="jim-date-divider" role="separator" aria-label="' + escapeHtml(label) + '">' +
             '<span class="jim-date-divider-text">' + escapeHtml(label) + '</span>' +
             '</div>';
+    }
+
+    // Apply the effective language to the shell: RTL direction + a language
+    // class, and localize any static element tagged with data-i18n /
+    // data-i18n-ph (placeholder). Dynamic JS-rendered strings use t() directly.
+    function applyLocaleToDom() {
+        if (!els.app) {
+            return;
+        }
+        if (Locale.lang === 'fa') {
+            els.app.classList.add('jim-lang-fa');
+            els.app.setAttribute('dir', 'rtl');
+        } else {
+            els.app.classList.remove('jim-lang-fa');
+            els.app.setAttribute('dir', 'ltr');
+        }
+        var nodes = els.app.querySelectorAll('[data-i18n]');
+        for (var i = 0; i < nodes.length; i++) {
+            var key = nodes[i].getAttribute('data-i18n');
+            var tr = t(key);
+            if (tr !== key) {
+                nodes[i].textContent = tr;
+            }
+        }
+        var phs = els.app.querySelectorAll('[data-i18n-ph]');
+        for (var j = 0; j < phs.length; j++) {
+            var pk = phs[j].getAttribute('data-i18n-ph');
+            var ptr = t(pk);
+            if (ptr !== pk) {
+                phs[j].setAttribute('placeholder', ptr);
+            }
+        }
+        var titles = els.app.querySelectorAll('[data-i18n-title]');
+        for (var k = 0; k < titles.length; k++) {
+            var tk = titles[k].getAttribute('data-i18n-title');
+            var ttr = t(tk);
+            if (ttr !== tk) {
+                titles[k].setAttribute('title', ttr);
+                titles[k].setAttribute('aria-label', ttr);
+            }
+        }
+    }
+
+    // In-chat "Language and dates" settings: opens a modal, saves the per-user
+    // web preference, then reloads so the effective language/calendar re-apply.
+    function setupSettingsPanel() {
+        var btn = document.getElementById('jim-settings-btn');
+        var modal = document.getElementById('jim-settings-modal');
+        if (!btn || !modal || !els.app) {
+            return;
+        }
+        var langSel = document.getElementById('jim-setting-language');
+        var calSel = document.getElementById('jim-setting-calendar');
+        var msg = document.getElementById('jim-settings-message');
+        var save = document.getElementById('jim-settings-save');
+        var cancel = document.getElementById('jim-settings-cancel');
+        function open() {
+            if (langSel) { langSel.value = els.app.getAttribute('data-user-lang-pref') || 'default'; }
+            if (calSel) { calSel.value = els.app.getAttribute('data-user-calendar-pref') || 'default'; }
+            if (msg) { setHidden(msg, true); msg.textContent = ''; }
+            setHidden(modal, false);
+        }
+        function close() { setHidden(modal, true); }
+        btn.addEventListener('click', open);
+        if (cancel) { cancel.addEventListener('click', close); }
+        modal.addEventListener('click', function (e) { if (e.target === modal) { close(); } });
+        if (save) {
+            save.addEventListener('click', function () {
+                save.setAttribute('disabled', 'disabled');
+                JimApi.saveWebPreferences(langSel ? langSel.value : 'default', calSel ? calSel.value : 'default')
+                    .then(function () {
+                        if (msg) { msg.className = 'jim-inline-success'; msg.textContent = t('Saved. Reloading\u2026'); setHidden(msg, false); }
+                        window.setTimeout(function () { window.location.reload(); }, 500);
+                    })
+                    .catch(function (error) {
+                        save.removeAttribute('disabled');
+                        if (msg) { msg.className = 'jim-inline-error'; msg.textContent = (error && error.message) || t('Something went wrong. Please try again.'); setHidden(msg, false); }
+                    });
+            });
+        }
     }
 
     function logError(context, error) {
@@ -2456,27 +2650,27 @@
         }
 
         var actions = [];
-        actions.push('<button type="button" class="jim-message-action jim-react-action" data-action="react" data-message-id="' + message.id + '">React</button>');
-        actions.push('<button type="button" class="jim-message-action jim-reply-action" data-action="reply" data-message-id="' + message.id + '">Reply</button>');
+        actions.push('<button type="button" class="jim-message-action jim-react-action" data-action="react" data-message-id="' + message.id + '">' + escapeHtml(t('React')) + '</button>');
+        actions.push('<button type="button" class="jim-message-action jim-reply-action" data-action="reply" data-message-id="' + message.id + '">' + escapeHtml(t('Reply')) + '</button>');
         // Forwarding is text-only for safety (attachments would need a server-side
         // copy endpoint that doesn't exist yet, and forwarding a download URL
         // would 401 in the recipient's account).
         if (isForwardableMessage(message)) {
-            actions.push('<button type="button" class="jim-message-action jim-forward-action" data-action="forward" data-message-id="' + message.id + '">Forward</button>');
+            actions.push('<button type="button" class="jim-message-action jim-forward-action" data-action="forward" data-message-id="' + message.id + '">' + escapeHtml(t('Forward')) + '</button>');
         }
         actions.push('<button type="button" class="jim-message-action jim-pin-action" data-action="' +
             (message.pinned ? 'unpin' : 'pin') + '" data-message-id="' + message.id + '">' +
-            (message.pinned ? 'Unpin' : 'Pin') + '</button>');
+            escapeHtml(message.pinned ? t('Unpin') : t('Pin')) + '</button>');
 
         // Sprint 12: Delete-for-me (any message, own or others') + enter
         // multi-select mode. These never hard-delete; they hide per-user only.
-        actions.push('<button type="button" class="jim-message-action jim-hide-action" data-action="hide-for-me" data-message-id="' + message.id + '">Delete for me</button>');
-        actions.push('<button type="button" class="jim-message-action jim-select-action" data-action="select-msg" data-message-id="' + message.id + '">Select</button>');
+        actions.push('<button type="button" class="jim-message-action jim-hide-action" data-action="hide-for-me" data-message-id="' + message.id + '">' + escapeHtml(t('Delete for me')) + '</button>');
+        actions.push('<button type="button" class="jim-message-action jim-select-action" data-action="select-msg" data-message-id="' + message.id + '">' + escapeHtml(t('Select')) + '</button>');
 
         if (isOwnMessage(message)) {
             var conversationForInfo = state.selectedConversation;
             if (conversationForInfo && (isGroupConversation(conversationForInfo) || conversationForInfo.isProjectChat)) {
-                actions.push('<button type="button" class="jim-message-action jim-info-action" data-action="info" data-message-id="' + message.id + '">Info</button>');
+                actions.push('<button type="button" class="jim-message-action jim-info-action" data-action="info" data-message-id="' + message.id + '">' + escapeHtml(t('Info')) + '</button>');
             }
             // Edit is only offered for the message owner, on user (non-system,
             // non-issue-link) messages, and only within the 30-minute edit
@@ -2486,19 +2680,19 @@
             if (message.canEdit !== false
                     && normalizeEventType(message) !== 'ISSUE_LINK'
                     && isWithinEditWindow(message)) {
-                actions.push('<button type="button" class="jim-message-action jim-edit-action" data-action="edit" data-message-id="' + message.id + '">Edit</button>');
+                actions.push('<button type="button" class="jim-message-action jim-edit-action" data-action="edit" data-message-id="' + message.id + '">' + escapeHtml(t('Edit')) + '</button>');
             }
             if (canDeleteMessage(message)) {
                 if (state.deleteConfirmMessageId === message.id) {
                     actions.push(
                         '<span class="jim-delete-confirm">' +
-                        'Delete? ' +
-                        '<button type="button" class="jim-message-action jim-delete-action" data-action="delete-confirm" data-message-id="' + message.id + '">Yes</button>' +
-                        '<button type="button" class="jim-message-action" data-action="delete-cancel" data-message-id="' + message.id + '">No</button>' +
+                        escapeHtml(t('Delete?')) + ' ' +
+                        '<button type="button" class="jim-message-action jim-delete-action" data-action="delete-confirm" data-message-id="' + message.id + '">' + escapeHtml(t('Yes')) + '</button>' +
+                        '<button type="button" class="jim-message-action" data-action="delete-cancel" data-message-id="' + message.id + '">' + escapeHtml(t('No')) + '</button>' +
                         '</span>'
                     );
                 } else {
-                    actions.push('<button type="button" class="jim-message-action jim-delete-action" data-action="delete" data-message-id="' + message.id + '">Delete</button>');
+                    actions.push('<button type="button" class="jim-message-action jim-delete-action" data-action="delete" data-message-id="' + message.id + '">' + escapeHtml(t('Delete')) + '</button>');
                 }
             }
         }
@@ -3080,9 +3274,9 @@
         }
         return '' +
             '<button type="button" class="jim-approval-btn jim-approval-approve aui-button" ' +
-            'data-action="schedule-approve" data-message-id="' + message.id + '">Approve</button>' +
+            'data-action="schedule-approve" data-message-id="' + message.id + '">' + escapeHtml(t('Approve')) + '</button>' +
             '<button type="button" class="jim-approval-btn jim-approval-reject aui-button" ' +
-            'data-action="schedule-reject" data-message-id="' + message.id + '">Reject</button>';
+            'data-action="schedule-reject" data-message-id="' + message.id + '">' + escapeHtml(t('Reject')) + '</button>';
     }
 
     function renderSystemMessage(message) {
@@ -3113,7 +3307,7 @@
         if (issueUrl) {
             issueLink = '<a class="jim-system-card-link jim-issue-link-button aui-button aui-button-link" ' +
                 'href="' + escapeHtml(issueUrl) + '" target="_blank" rel="noopener noreferrer" ' +
-                'data-action="ack-system" data-message-id="' + message.id + '">Open issue</a>';
+                'data-action="ack-system" data-message-id="' + message.id + '">' + escapeHtml(t('Open issue')) + '</a>';
         }
 
         // Manual acknowledge button. Present for every assistant message
@@ -3122,12 +3316,12 @@
         var ackButton = !actioned
             ? '<button type="button" class="jim-system-card-ack-btn aui-button aui-button-link" ' +
               'data-action="ack-system" data-message-id="' + message.id + '">' +
-              '<span aria-hidden="true">&#10003;</span> Mark as seen</button>'
+              '<span aria-hidden="true">&#10003;</span> ' + escapeHtml(t('Mark as seen')) + '</button>'
             : '<span class="jim-system-card-actioned-pill" title="You marked this as seen">' +
-              '<span aria-hidden="true">&#10003;</span> Acknowledged</span>';
+              '<span aria-hidden="true">&#10003;</span> ' + escapeHtml(t('Acknowledged')) + '</span>';
         // Sprint 12: hide this Assistant item for me only (per-user; auditable).
         ackButton += '<button type="button" class="jim-system-card-ack-btn aui-button aui-button-link" ' +
-            'data-action="hide-for-me" data-message-id="' + message.id + '">Delete for me</button>';
+            'data-action="hide-for-me" data-message-id="' + message.id + '">' + escapeHtml(t('Delete for me')) + '</button>';
 
         var eventType = normalizeEventType(message) || 'system';
         var isUnread = !!(message.id && state.initiallyUnreadIds[message.id]);
@@ -5904,6 +6098,14 @@
         state.projectKey = els.app.getAttribute('data-project-key') || null;
         state.projectMode = !!state.projectKey;
         state.projectLeadName = els.app.getAttribute('data-project-lead-name') || null;
+
+        // Effective localization (resolved server-side): drive Persian UI + RTL
+        // + Jalali dates for this user only. Display-only.
+        Locale.lang = els.app.getAttribute('data-effective-lang') === 'fa' ? 'fa' : 'en';
+        Locale.calendar = els.app.getAttribute('data-effective-calendar') === 'jalali'
+            ? 'jalali' : 'gregorian';
+        applyLocaleToDom();
+        setupSettingsPanel();
 
         bindEvents();
         ensureMessageActionsBound();
