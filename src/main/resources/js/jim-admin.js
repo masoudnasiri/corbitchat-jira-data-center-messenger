@@ -17,6 +17,9 @@
             var xhr = new XMLHttpRequest();
             xhr.open(method, contextPath() + BASE + path, true);
             xhr.setRequestHeader('Accept', 'application/json');
+            // Jira's XSRF filter rejects same-origin PUT/POST without this
+            // header; without it every admin save returns 403 Forbidden.
+            xhr.setRequestHeader('X-Atlassian-Token', 'no-check');
             if (body !== undefined) {
                 xhr.setRequestHeader('Content-Type', 'application/json');
             }
