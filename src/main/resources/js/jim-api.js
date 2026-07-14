@@ -75,10 +75,13 @@
             return request('POST', '/conversations/direct', { targetUserKey: targetUserKey });
         },
 
-        listMessages: function (conversationId, limit, beforeMessageId) {
+        listMessages: function (conversationId, limit, beforeMessageId, since) {
             var query = '?limit=' + encodeURIComponent(limit || 50);
             if (beforeMessageId) {
                 query += '&beforeMessageId=' + encodeURIComponent(beforeMessageId);
+            }
+            if (since) {
+                query += '&since=' + encodeURIComponent(since);
             }
             return request('GET', '/conversations/' + conversationId + '/messages' + query);
         },

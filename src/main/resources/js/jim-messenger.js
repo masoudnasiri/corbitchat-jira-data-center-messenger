@@ -82,7 +82,26 @@
         'Persian': 'فارسی', 'English': 'انگلیسی', 'Jalali / Shamsi': 'جلالی / شمسی',
         'Gregorian': 'میلادی', 'Saved. Reloading…': 'ذخیره شد. در حال بارگذاری مجدد…',
         'Just now': 'همین حالا', 'Today': 'امروز', 'Yesterday': 'دیروز',
-        'Unavailable': 'در دسترس نیست', 'and': 'و', 'more': 'بیشتر'
+        'Unavailable': 'در دسترس نیست', 'and': 'و', 'more': 'بیشتر',
+        'Active': 'آنلاین', 'Enable notifications': 'فعال‌سازی اعلان‌ها',
+        'Notifications on': 'اعلان‌ها روشن است', 'Notifications blocked': 'اعلان‌ها مسدود شده',
+        'Editing message': 'ویرایش پیام', 'Esc to cancel': 'برای لغو کلید Esc',
+        'Uploading...': 'در حال بارگذاری...', 'Uploading\u2026': 'در حال بارگذاری…',
+        'Recording voice message...': 'در حال ضبط پیام صوتی...',
+        'Search issues (key or text)...': 'جستجوی تسک (کلید یا متن)...',
+        'Search people': 'جستجوی افراد', 'Send to': 'ارسال به', 'Close': 'بستن',
+        'Select a conversation to start chatting': 'برای شروع گفتگو، یک مکالمه را انتخاب کنید',
+        'This conversation is read-only': 'این گفتگو فقط‌خواندنی است',
+        'Type a message': 'پیام بنویسید…', 'Group name': 'نام گروه',
+        'e.g. Dev Team': 'مثلاً تیم توسعه', 'Add people': 'افزودن افراد',
+        'Search teammates...': 'جستجوی هم‌تیمی‌ها...',
+        'Search conversations...': 'جستجوی گفتگوها...',
+        '0 unread messages': 'بدون پیام خوانده‌نشده',
+        'Members': 'اعضا', 'Group': 'گروه', 'Project chat': 'گفتگوی پروژه',
+        'You': 'شما', 'Online': 'آنلاین', 'Offline': 'آفلاین',
+        'Proposed date': 'تاریخ پیشنهادی', 'Requested by': 'درخواست‌دهنده',
+        'Decided by': 'تصمیم‌گیرنده', 'Status': 'وضعیت',
+        'Pending': 'در انتظار', 'Approved': 'تأیید شد', 'Rejected': 'رد شد'
     };
 
     // Translate a UI label to the effective language (English passthrough).
@@ -102,27 +121,33 @@
 
     function div(a, b) { return Math.floor(a / b); }
 
-    // Gregorian (y, m[1-12], d) → Jalali {jy, jm[1-12], jd}. Standard algorithm.
+    // Gregorian (gy, gm[1-12], gd) → Jalali {jy, jm[1-12], jd}. Borkowski
+    // algorithm — compact, well-known, and verified against boundary dates
+    // (Nowruz 1400/1403/1404/1405, leap years). Replaces an earlier
+    // JDN/break-table transcription that was off by one year and produced an
+    // out-of-range month (see git history).
+    var G_DAYS_IN_MONTH = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
     function gregorianToJalali(gy, gm, gd) {
-        var gDaysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-        var jDaysInMonth = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
-        var gy2 = gy - 1600, gm2 = gm - 1, gd2 = gd - 1;
-        var gDayNo = 365 * gy2 + div(gy2 + 3, 4) - div(gy2 + 99, 100) + div(gy2 + 399, 400);
-        for (var i = 0; i < gm2; i++) { gDayNo += gDaysInMonth[i]; }
-        if (gm2 > 1 && ((gy % 4 === 0 && gy % 100 !== 0) || gy % 400 === 0)) { gDayNo++; }
-        gDayNo += gd2;
-        var jDayNo = gDayNo - 79;
-        var jNp = div(jDayNo, 12053);
-        jDayNo %= 12053;
-        var jy = 979 + 33 * jNp + 4 * div(jDayNo, 1461);
-        jDayNo %= 1461;
-        if (jDayNo >= 366) { jy += div(jDayNo - 366, 365); jDayNo = (jDayNo - 366) % 365; }
-        var jm = 0;
-        for (var j = 0; j < 12; j++) {
-            if (jDayNo < jDaysInMonth[j]) { jm = j; break; }
-            jDayNo -= jDaysInMonth[j];
+        var jy, jm, jd;
+        var gy2 = (gm > 2) ? (gy + 1) : gy;
+        var days = 355666 + (365 * gy) + div(gy2 + 3, 4) - div(gy2 + 99, 100)
+            + div(gy2 + 399, 400) + gd + G_DAYS_IN_MONTH[gm - 1];
+        jy = -1595 + (33 * div(days, 12053));
+        days %= 12053;
+        jy += 4 * div(days, 1461);
+        days %= 1461;
+        if (days > 365) {
+            jy += div(days - 1, 365);
+            days = (days - 1) % 365;
         }
-        return { jy: jy, jm: jm + 1, jd: jDayNo + 1 };
+        if (days < 186) {
+            jm = 1 + div(days, 31);
+            jd = 1 + (days % 31);
+        } else {
+            jm = 7 + div(days - 186, 30);
+            jd = 1 + ((days - 186) % 30);
+        }
+        return { jy: jy, jm: jm, jd: jd };
     }
 
     function pad2(n) { return n < 10 ? '0' + n : '' + n; }
@@ -142,6 +167,19 @@
 
     function calClock(date) {
         return locDigits(pad2(date.getHours()) + ':' + pad2(date.getMinutes()));
+    }
+
+    // Format a date-only "YYYY-MM-DD" string in the effective calendar (Jalali
+    // when active, otherwise Gregorian). Parsed as local midnight — never via
+    // `new Date(str)` — so the day is never shifted by the timezone. Falls back
+    // to the raw string if it is not a plain Y-M-D value.
+    function calDateYmd(ymd) {
+        if (!ymd) { return ''; }
+        var m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(ymd));
+        if (!m) { return String(ymd); }
+        var d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+        if (isNaN(d.getTime())) { return String(ymd); }
+        return calDate(d);
     }
 
     var EVENT_CARD_CONFIG = {
@@ -1872,7 +1910,11 @@
         if (!els.sidebarUnreadSummary) {
             return;
         }
-        if (total === 1) {
+        if (Locale.lang === 'fa') {
+            els.sidebarUnreadSummary.textContent = total === 0
+                ? t('0 unread messages')
+                : locDigits(String(total)) + ' پیام خوانده‌نشده';
+        } else if (total === 1) {
             els.sidebarUnreadSummary.textContent = '1 unread message';
         } else {
             els.sidebarUnreadSummary.textContent = total + ' unread messages';
@@ -3239,24 +3281,24 @@
         }
         var rows = '';
         if (sa.proposedDateYmd) {
-            rows += '<div class="jim-approval-row"><span class="jim-approval-label">Proposed date</span>' +
-                '<span class="jim-approval-value">' + escapeHtml(String(sa.proposedDateYmd)) + '</span></div>';
+            rows += '<div class="jim-approval-row"><span class="jim-approval-label">' + escapeHtml(t('Proposed date')) + '</span>' +
+                '<span class="jim-approval-value">' + escapeHtml(calDateYmd(sa.proposedDateYmd)) + '</span></div>';
         }
         if (sa.requesterName) {
-            rows += '<div class="jim-approval-row"><span class="jim-approval-label">Requested by</span>' +
+            rows += '<div class="jim-approval-row"><span class="jim-approval-label">' + escapeHtml(t('Requested by')) + '</span>' +
                 '<span class="jim-approval-value">' + escapeHtml(String(sa.requesterName)) + '</span></div>';
         }
         if (sa.approverName) {
-            rows += '<div class="jim-approval-row"><span class="jim-approval-label">Decided by</span>' +
+            rows += '<div class="jim-approval-row"><span class="jim-approval-label">' + escapeHtml(t('Decided by')) + '</span>' +
                 '<span class="jim-approval-value">' + escapeHtml(String(sa.approverName)) + '</span></div>';
         }
         var status = sa.status || 'Pending';
         var tone = status.toLowerCase() === 'approved' ? 'approved'
             : (status.toLowerCase() === 'rejected' ? 'rejected' : 'pending');
-        rows += '<div class="jim-approval-row"><span class="jim-approval-label">Status</span>' +
-            '<span class="jim-approval-status jim-approval-status-' + tone + '">' + escapeHtml(status) + '</span></div>';
+        rows += '<div class="jim-approval-row"><span class="jim-approval-label">' + escapeHtml(t('Status')) + '</span>' +
+            '<span class="jim-approval-status jim-approval-status-' + tone + '">' + escapeHtml(t(status)) + '</span></div>';
         if (sa.reason) {
-            rows += '<div class="jim-approval-reason"><span class="jim-approval-label">Rejection reason</span>' +
+            rows += '<div class="jim-approval-reason"><span class="jim-approval-label">' + escapeHtml(t('Rejection reason')) + '</span>' +
                 '<div class="jim-approval-reason-text">' + escapeHtml(String(sa.reason)) + '</div></div>';
         }
         return '<div class="jim-system-card-approval">' + rows + '</div>';
@@ -4276,6 +4318,11 @@
     // 'Load older messages' button or by scrolling to the top.
     var INITIAL_MESSAGES_LIMIT = 30;
     var OLDER_PAGE_SIZE = 50;
+    // First open loads the recent ~10-day window (capped) so the chat opens
+    // with meaningful history; older messages then load on scroll. Polls keep
+    // using the small recent fetch so we never re-stream the backlog.
+    var INITIAL_SINCE_DAYS = 10;
+    var INITIAL_WINDOW_CAP = 300;
 
     /**
      * Merges existing messages with a newly-fetched batch by id.
@@ -4385,7 +4432,14 @@
             renderLoadingState(els.messageList, 'Loading messages...');
         }
 
-        return JimApi.listMessages(conversationId, INITIAL_MESSAGES_LIMIT, null).then(function (response) {
+        // First open of this conversation → recent 10-day window; subsequent
+        // polls → small recent fetch (merged) so we don't re-stream history.
+        var firstOpen = state.unreadSnapshotConversationId !== conversationId;
+        var listPromise = firstOpen
+            ? JimApi.listMessages(conversationId, INITIAL_WINDOW_CAP, null,
+                  Date.now() - INITIAL_SINCE_DAYS * 86400000)
+            : JimApi.listMessages(conversationId, INITIAL_MESSAGES_LIMIT, null);
+        return listPromise.then(function (response) {
             if (state.selectedConversationId !== conversationId) {
                 return;
             }
@@ -4396,11 +4450,10 @@
             // First-load / poll-refresh: MERGE so any older messages the
             // user has already lazy-loaded stay on screen across polls.
             state.messages = mergeMessages(state.messages, fresh);
-            // If the very first server response is short of a full page,
-            // there are no older messages to fetch - hide the Load older
-            // button.
+            // Authoritative "older exists" flag from the server (works even when
+            // the 10-day window returned fewer than a page).
             if (state.unreadSnapshotConversationId !== conversationId) {
-                state.hasMoreOlder = fresh.length >= INITIAL_MESSAGES_LIMIT;
+                state.hasMoreOlder = response.hasOlder === true;
                 state.loadingOlder = false;
                 // Snapshot which messages were unread when the conversation was opened,
                 // so "NEW" markers stay visible after the read state syncs.
@@ -5944,7 +5997,7 @@
         button.hidden = false;
         button.classList.remove('jim-push-status-on', 'jim-push-status-blocked');
         if (window.Notification.permission === 'denied') {
-            button.textContent = 'Notifications blocked';
+            button.textContent = t('Notifications blocked');
             button.classList.add('jim-push-status-blocked');
             button.setAttribute('aria-label', 'Browser has blocked notifications for this site');
             button.setAttribute('title', 'Allow notifications in your browser settings to receive push messages');
@@ -5953,12 +6006,12 @@
         }
         var enabled = pushEnabled();
         if (enabled) {
-            button.textContent = 'Notifications on';
+            button.textContent = t('Notifications on');
             button.classList.add('jim-push-status-on');
             button.setAttribute('aria-label', 'Notifications are on (click to disable)');
             button.setAttribute('title', 'Click to disable push notifications');
         } else {
-            button.textContent = 'Enable notifications';
+            button.textContent = t('Enable notifications');
             button.setAttribute('aria-label', 'Enable browser push notifications');
             button.setAttribute('title', 'Enable browser push notifications');
         }

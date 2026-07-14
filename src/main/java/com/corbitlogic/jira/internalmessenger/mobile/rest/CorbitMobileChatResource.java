@@ -686,7 +686,8 @@ public class CorbitMobileChatResource {
     @Path("/conversations/{conversationId}/messages")
     public Response listMessages(@PathParam("conversationId") int conversationId,
                                  @QueryParam("limit") @DefaultValue("50") int limit,
-                                 @QueryParam("beforeMessageId") Integer beforeMessageId) {
+                                 @QueryParam("beforeMessageId") Integer beforeMessageId,
+                                 @QueryParam("since") Long since) {
         String userKey = resolveCurrentUserKey();
         if (userKey == null) {
             return unauthenticated();
@@ -702,7 +703,7 @@ public class CorbitMobileChatResource {
             JimConversation conversation =
                     this.conversationService.getConversationForUser(conversationId, currentUserKey);
             List<JimMessage> messages =
-                    this.messageService.listMessages(conversationId, limit, beforeMessageId);
+                    this.messageService.listMessages(conversationId, limit, beforeMessageId, since);
             // Sprint 12: drop messages the viewer chose "Delete for me".
             java.util.Set<Integer> hidden =
                     this.userStateService.hiddenMessageIds(currentUserKey, conversationId);
@@ -721,6 +722,12 @@ public class CorbitMobileChatResource {
             rewriteMessageAttachments(messageMaps);
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("messages", messageMaps);
+            // Whether older messages exist before the earliest returned one, so
+            // the client can keep infinite-scroll enabled even when the initial
+            // ~10-day window returned fewer than a full page.
+            boolean hasOlder = !messages.isEmpty()
+                    && this.messageService.hasMessagesBefore(conversationId, messages.get(0).getID());
+            body.put("hasOlder", hasOlder);
             // Ephemeral typing/recording/uploading of other participants (TTL).
             body.put("activities", activitiesFor(conversationId, currentUserKey));
             return JimRestResponses.okJson(body);

@@ -47,6 +47,10 @@ public interface JimMessageService {
 
     public List<JimMessage> listMessages(int var1, int var2, Integer var3);
 
+    public List<JimMessage> listMessages(int var1, int var2, Integer var3, Long sinceMillis);
+
+    public boolean hasMessagesBefore(int conversationId, int messageId);
+
     public JimMessage setPinned(int var1, String var2, boolean var3);
 
     public JimMessage getPinnedMessage(int var1, String var2);

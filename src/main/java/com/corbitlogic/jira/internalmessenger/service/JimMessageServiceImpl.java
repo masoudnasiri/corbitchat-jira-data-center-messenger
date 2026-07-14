@@ -767,16 +767,46 @@ implements JimMessageService {
 
     @Override
     public List<JimMessage> listMessages(int conversationId, int limit, Integer beforeMessageId) {
+        return this.listMessages(conversationId, limit, beforeMessageId, null);
+    }
+
+    @Override
+    public List<JimMessage> listMessages(int conversationId, int limit, Integer beforeMessageId, Long sinceMillis) {
         this.validateListMessagesRequest(conversationId, limit, beforeMessageId);
         String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
         this.conversationService.getConversationForUser(conversationId, authenticatedUserKey);
         int normalizedLimit = JimValidation.normalizeListLimit(limit);
         Integer normalizedBeforeMessageId = JimValidation.normalizeBeforeMessageId(beforeMessageId);
-        Query query = normalizedBeforeMessageId == null ? Query.select().where("CONVERSATION_ID = ?", new Object[]{conversationId}).order("ID DESC").limit(normalizedLimit) : Query.select().where("CONVERSATION_ID = ? AND ID < ?", new Object[]{conversationId, normalizedBeforeMessageId}).order("ID DESC").limit(normalizedLimit);
+        Query query;
+        if (normalizedBeforeMessageId != null) {
+            // Older page (infinite scroll): messages before a cursor id.
+            query = Query.select().where("CONVERSATION_ID = ? AND ID < ?",
+                    new Object[]{conversationId, normalizedBeforeMessageId}).order("ID DESC").limit(normalizedLimit);
+        } else if (sinceMillis != null && sinceMillis > 0L) {
+            // Initial window (~last N days): messages at/after `since`, capped by
+            // limit so a very active recent window can't blow up the payload.
+            query = Query.select().where("CONVERSATION_ID = ? AND CREATED_AT >= ?",
+                    new Object[]{conversationId, sinceMillis}).order("ID DESC").limit(normalizedLimit);
+        } else {
+            query = Query.select().where("CONVERSATION_ID = ?",
+                    new Object[]{conversationId}).order("ID DESC").limit(normalizedLimit);
+        }
         JimMessage[] messages = (JimMessage[])this.activeObjects.find(JimMessage.class, query);
         ArrayList<JimMessage> result = new ArrayList<JimMessage>(Arrays.asList(messages));
         Collections.reverse(result);
         return result;
+    }
+
+    @Override
+    public boolean hasMessagesBefore(int conversationId, int messageId) {
+        if (messageId <= 0) {
+            return false;
+        }
+        this.permissionService.requireAuthenticatedUserKey();
+        JimMessage[] older = (JimMessage[]) this.activeObjects.find(JimMessage.class,
+                Query.select().where("CONVERSATION_ID = ? AND ID < ?",
+                        new Object[]{conversationId, messageId}).order("ID DESC").limit(1));
+        return older.length > 0;
     }
 
     @Override

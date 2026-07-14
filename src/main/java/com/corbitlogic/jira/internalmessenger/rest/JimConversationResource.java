@@ -258,7 +258,7 @@ public class JimConversationResource {
 
     @GET
     @Path(value="/{conversationId}/messages")
-    public Response listMessages(@PathParam(value="conversationId") int conversationId, @QueryParam(value="limit") @DefaultValue(value="50") int limit, @QueryParam(value="beforeMessageId") Integer beforeMessageId) {
+    public Response listMessages(@PathParam(value="conversationId") int conversationId, @QueryParam(value="limit") @DefaultValue(value="50") int limit, @QueryParam(value="beforeMessageId") Integer beforeMessageId, @QueryParam(value="since") Long since) {
         String userKey = this.resolveCurrentUserKey();
         if (userKey == null) {
             return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
@@ -268,7 +268,7 @@ public class JimConversationResource {
             ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
             this.presenceService.heartbeatConversation(currentUserKey, conversationId);
             JimConversation conversation = this.conversationService.getConversationForUser(conversationId, currentUserKey);
-            List<JimMessage> messages = this.messageService.listMessages(conversationId, limit, beforeMessageId);
+            List<JimMessage> messages = this.messageService.listMessages(conversationId, limit, beforeMessageId, since);
             // Sprint 12 hotfix: exclude messages the viewer chose "Delete for me"
             // (per-user hidden overlay). This web endpoint builds the list
             // directly, so the filter must be applied here too (matches mobile).
@@ -282,8 +282,11 @@ public class JimConversationResource {
                 }
                 messages = visible;
             }
+            boolean hasOlder = !messages.isEmpty()
+                    && this.messageService.hasMessagesBefore(conversationId, messages.get(0).getID());
             LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
             body.put("messages", this.restJsonMapper.toMessageMaps(messages, viewer, conversation, currentUserKey));
+            body.put("hasOlder", hasOlder);
             body.put("activities", this.activitiesFor(conversationId, currentUserKey));
             return JimRestResponses.okJson(body);
         }

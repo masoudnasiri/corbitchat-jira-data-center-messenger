@@ -54,6 +54,16 @@ public class CorbitMobileSessionFilter implements Filter {
     public void init(FilterConfig filterConfig) {
     }
 
+    /** True for immutable media byte-stream endpoints (safe/desirable to cache). */
+    private static boolean isMediaStreamPath(HttpServletRequest req) {
+        String uri = req.getRequestURI();
+        if (uri == null) {
+            return false;
+        }
+        return (uri.contains("/attachments/") || uri.contains("/issue-attachments/"))
+                && (uri.endsWith("/download") || uri.endsWith("/preview"));
+    }
+
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
@@ -64,8 +74,12 @@ public class CorbitMobileSessionFilter implements Filter {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
 
         // Sensitive-by-default: mobile BFF payloads (profile, issues, chat, ...)
-        // must never be cached by browsers or intermediaries.
-        if (response instanceof HttpServletResponse) {
+        // must never be cached by browsers or intermediaries. EXCEPTION: media
+        // byte streams (attachment/issue-attachment download & preview) are
+        // immutable per id and safe to cache — the streaming layer sets its own
+        // private/immutable Cache-Control, so we must not clobber it with
+        // no-store (otherwise the PWA re-downloads media on every open).
+        if (response instanceof HttpServletResponse && !isMediaStreamPath(httpRequest)) {
             ((HttpServletResponse) response).setHeader("Cache-Control", "no-store");
         }
 

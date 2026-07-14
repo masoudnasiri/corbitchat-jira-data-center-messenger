@@ -64,6 +64,14 @@ public final class JimAttachmentStreaming {
                 .header("Accept-Ranges", "bytes")
                 .header("Content-Length", contentLength)
                 .header("Content-Disposition", disposition);
+        // Browser media cache (Sprint 12): attachment bytes are immutable for a
+        // given id (a re-upload gets a new id), so allow the browser to reuse the
+        // file across conversation switches without re-downloading. "private" so
+        // shared proxies never store it; only media stream responses get this —
+        // JSON API responses are unaffected.
+        builder.header("Cache-Control", "private, max-age=604800, immutable")
+                .header("ETag", "\"jim-" + fileLength + "-" + file.lastModified() + "\"")
+                .header("Last-Modified", new java.util.Date(file.lastModified()));
         if (partial) {
             builder.header("Content-Range", "bytes " + start + "-" + end + "/" + fileLength);
         }
