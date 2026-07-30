@@ -27,9 +27,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
+import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -106,6 +108,15 @@ public class CorbitMobileDashboardResource {
             body.put("serverTime", System.currentTimeMillis());
             body.put("unread", computeUnread(viewer.getKey()));
             body.put("tasks", tasks);
+            // Status-category counts for the Dashboard donut (R4). Additive and
+            // backward-compatible: older clients ignore it. Bounded — three
+            // permission-aware searchCount() queries, no per-issue work.
+            body.put("statusCounts", statusCounts(viewer));
+            // Open-work counts that EXCLUDE statusCategory=Done (dashboard-final):
+            // the headline + overdue/today/followup chips are all consistent and
+            // never include Done-status issues (the old resolution-only filters
+            // could). Bounded — four permission-aware searchCount() queries.
+            body.put("openWorkCounts", openWorkCounts(viewer));
             body.put("todayPreview", preview(viewer, "today"));
             // Schedule approvals pending for the current user (proposed
             // completion date awaiting their approval). Only present when the
@@ -132,9 +143,21 @@ public class CorbitMobileDashboardResource {
         try {
             if (com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.isConfigured()) {
                 configured = true;
-                String jql = "cf[11305] = currentUser() "
-                        + "AND (cf[11503] = \"Pending\" OR cf[11503] is EMPTY) "
-                        + "AND cf[11309] is not EMPTY ORDER BY updated DESC";
+                // Resolve the JQL clauses from the environment-specific field ids
+                // (configured -> production fallback) instead of hardcoding the
+                // production ids, so awaiting-approval works on DEV/Server-2 too.
+                String approverClause = com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.approverFieldJql();
+                String statusClause = com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.statusFieldJql();
+                String proposedClause = com.corbitlogic.jira.internalmessenger.mobile.JimMobileDates.proposedCompletionClause();
+                if (approverClause == null || statusClause == null || proposedClause == null) {
+                    out.put("configured", true);
+                    out.put("count", 0);
+                    out.put("preview", items);
+                    return out;
+                }
+                String jql = approverClause + " = currentUser() "
+                        + "AND (" + statusClause + " = \"Pending\" OR " + statusClause + " is EMPTY) "
+                        + "AND " + proposedClause + " is not EMPTY ORDER BY updated DESC";
                 SearchService.ParseResult pr = this.searchService.parseQuery(viewer, jql);
                 if (pr.isValid()) {
                     Query q = pr.getQuery();
@@ -194,6 +217,143 @@ public class CorbitMobileDashboardResource {
         } catch (Exception ex) {
             log.warn("dashboard scheduleApprovals enrich failed for {}: {}", issue.getKey(), ex.getMessage());
         }
+    }
+
+    /**
+     * Status-category counts for the current user's assigned issues, used by the
+     * Dashboard donut ({@code done} / {@code inProgress} / {@code todo}), plus
+     * {@code total}. Bounded and permission-aware ({@code searchCount} enforces
+     * issue security); each sub-query degrades to 0 on failure. Server-owned JQL
+     * — no client JQL crosses the boundary.
+     */
+    private Map<String, Object> statusCounts(ApplicationUser viewer) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        int done = statusCategoryCount(viewer, "Done");
+        int inProgress = statusCategoryCount(viewer, "In Progress");
+        int todo = statusCategoryCount(viewer, "To Do");
+        out.put("done", done);
+        out.put("inProgress", inProgress);
+        out.put("todo", todo);
+        out.put("total", done + inProgress + todo);
+        return out;
+    }
+
+    private int statusCategoryCount(ApplicationUser viewer, String category) {
+        try {
+            String jql = "assignee = currentUser() AND statusCategory = \"" + category + "\"";
+            SearchService.ParseResult pr = this.searchService.parseQuery(viewer, jql);
+            if (!pr.isValid()) {
+                return 0;
+            }
+            return (int) this.searchService.searchCount(viewer, pr.getQuery());
+        } catch (Exception ex) {
+            log.warn("endpoint=GET /rest/corbit-mobile/1.0/dashboard stage=statusCounts category={} outcome=degraded message={}",
+                    category, ex.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Open-work counts that exclude {@code statusCategory = Done}, so the
+     * headline "active" and the overdue/today/followup chips are all consistent
+     * (the legacy {@code resolution IS EMPTY} filters could still include a
+     * Done-status issue with no resolution). Server-owned JQL, permission-aware
+     * {@code searchCount} (issue security enforced), bounded, no client JQL.
+     */
+    private Map<String, Object> openWorkCounts(ApplicationUser viewer) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        String today = JimMobileDates.todayYmd(viewer);
+        String clause = JimMobileDates.proposedCompletionClause();
+        out.put("active", jqlCount(viewer,
+                "assignee = currentUser() AND statusCategory != Done"));
+        out.put("overdue", jqlCount(viewer, openDueJql("<", clause, today)));
+        out.put("today", jqlCount(viewer, openDueJql("=", clause, today)));
+        // Follow-up mirrors the existing filter (issues the user reported and
+        // still open) but excludes Done as well.
+        out.put("followup", jqlCount(viewer,
+                "reporter = currentUser() AND statusCategory != Done"));
+        return out;
+    }
+
+    /** Assignee + not-Done + effective-due (Due Date, with proposed-date fallback). */
+    private String openDueJql(String op, String clause, String today) {
+        StringBuilder sb = new StringBuilder(
+                "assignee = currentUser() AND statusCategory != Done AND (");
+        sb.append("duedate ").append(op).append(" \"").append(today).append('"');
+        if (clause != null) {
+            sb.append(" OR (duedate is EMPTY AND ")
+              .append(clause).append(' ').append(op)
+              .append(" \"").append(today).append("\")");
+        }
+        sb.append(')');
+        return sb.toString();
+    }
+
+    private int jqlCount(ApplicationUser viewer, String jql) {
+        try {
+            SearchService.ParseResult pr = this.searchService.parseQuery(viewer, jql);
+            if (!pr.isValid()) {
+                return 0;
+            }
+            return (int) this.searchService.searchCount(viewer, pr.getQuery());
+        } catch (Exception ex) {
+            log.warn("endpoint=GET /rest/corbit-mobile/1.0/dashboard stage=openWork outcome=degraded message={}",
+                    ex.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Period-filtered status donut counts (dashboard-final). Bounded, additive,
+     * permission-aware. Period windows are on the issue's last-updated date:
+     * <ul>
+     *   <li>{@code day} → updated {@code >= startOfDay()}</li>
+     *   <li>{@code week} → updated {@code >= startOfWeek()} (current week)</li>
+     *   <li>{@code month} → updated {@code >= startOfMonth()} (current month)</li>
+     *   <li>{@code all} → no date window</li>
+     * </ul>
+     * Segments match the donut legend: done / inProgress / overdue.
+     */
+    @GET
+    @Path("/report-status")
+    public Response reportStatus(@QueryParam("period") @DefaultValue("all") String period) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return JimRestResponses.errorJson(401, "NOT_AUTHENTICATED",
+                    "You must be signed in to use CorbitChat Mobile.");
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.DASHBOARD)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.DASHBOARD);
+        }
+        String p = period == null ? "all" : period.trim().toLowerCase();
+        String window;
+        switch (p) {
+            case "day":
+                window = " AND updated >= startOfDay()";
+                break;
+            case "week":
+                window = " AND updated >= startOfWeek()";
+                break;
+            case "month":
+                window = " AND updated >= startOfMonth()";
+                break;
+            default:
+                p = "all";
+                window = "";
+        }
+        int done = jqlCount(viewer,
+                "assignee = currentUser() AND statusCategory = Done" + window);
+        int inProgress = jqlCount(viewer,
+                "assignee = currentUser() AND statusCategory = \"In Progress\"" + window);
+        int overdue = jqlCount(viewer,
+                "assignee = currentUser() AND statusCategory != Done AND duedate < startOfDay()" + window);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("period", p);
+        body.put("done", done);
+        body.put("inProgress", inProgress);
+        body.put("overdue", overdue);
+        body.put("total", done + inProgress + overdue);
+        return JimRestResponses.okJson(body);
     }
 
     private int count(ApplicationUser viewer, String filter) {

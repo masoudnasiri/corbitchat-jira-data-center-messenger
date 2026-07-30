@@ -39,6 +39,7 @@ import com.corbitlogic.jira.internalmessenger.model.JimSenderType;
 import com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService;
 import com.corbitlogic.jira.internalmessenger.service.JimAttachmentService;
 import com.corbitlogic.jira.internalmessenger.service.JimGroupService;
+import com.corbitlogic.jira.internalmessenger.service.JimGroupServiceImpl;
 import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
 import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
 import com.corbitlogic.jira.internalmessenger.service.JimPresenceService;
@@ -73,8 +74,9 @@ public class JimRestJsonMapper {
     private final JimPresenceService presenceService;
     private final JimGroupService groupService;
     private final JimAdminSettingsService adminSettingsService;
+    private final com.corbitlogic.jira.internalmessenger.service.JimReviewerService reviewerService;
 
-    public JimRestJsonMapper(UserManager userManager, AvatarService avatarService, JimPermissionService permissionService, JimAttachmentService attachmentService, JimReadStateService readStateService, JimMessageService messageService, JimReactionService reactionService, JimPresenceService presenceService, JimGroupService groupService, JimAdminSettingsService adminSettingsService) {
+    public JimRestJsonMapper(UserManager userManager, AvatarService avatarService, JimPermissionService permissionService, JimAttachmentService attachmentService, JimReadStateService readStateService, JimMessageService messageService, JimReactionService reactionService, JimPresenceService presenceService, JimGroupService groupService, JimAdminSettingsService adminSettingsService, com.corbitlogic.jira.internalmessenger.service.JimReviewerService reviewerService) {
         this.userManager = userManager;
         this.avatarService = avatarService;
         this.permissionService = permissionService;
@@ -85,6 +87,7 @@ public class JimRestJsonMapper {
         this.presenceService = presenceService;
         this.groupService = groupService;
         this.adminSettingsService = adminSettingsService;
+        this.reviewerService = reviewerService;
     }
 
     public Map<String, Object> toConversationMap(JimConversation conversation, String currentUserKey, ApplicationUser viewer, int unreadCount) {
@@ -115,11 +118,16 @@ public class JimRestJsonMapper {
         }
         if (isGroup) {
             item.put("displayName", JimSanitizer.sanitizeText(conversation.getGroupName()));
-            item.put("avatarUrl", null);
+            item.put("avatarUrl", this.buildConversationAvatarUrl(conversation));
             item.put("otherUserActive", false);
             item.put("memberCount", this.groupService.countMembers(conversation.getID()));
             item.put("ownerUserKey", conversation.getCreatedByUserKey());
-            item.put("canManage", currentUserKey != null && currentUserKey.equals(conversation.getCreatedByUserKey()));
+            String myRole = this.groupService.getRole(conversation, currentUserKey);
+            boolean isOwner = JimGroupServiceImpl.ROLE_OWNER.equals(myRole);
+            item.put("myRole", myRole);
+            item.put("isOwner", isOwner);
+            item.put("canManage", this.groupService.canManageMembers(conversation, currentUserKey));
+            item.put("canManageAdmins", this.groupService.canManageAdmins(conversation, currentUserKey));
             if (isProjectChat) {
                 item.put("projectKey", conversation.getProjectKey());
             }
@@ -198,7 +206,7 @@ public class JimRestJsonMapper {
         item.put("actioned", actionedFlag != null && actionedFlag != 0);
         item.put("actionedAt", actionedFlag != null && actionedFlag != 0 ? message.getActionedAt() : null);
         if (message.getSenderUserKey() != null && (sender = this.userManager.getUserByKey(message.getSenderUserKey())) != null) {
-            item.put("senderDisplayName", sender.getDisplayName());
+                item.put("senderDisplayName", sender.getDisplayName());
             // Expose the sender's Jira avatar URL on every message so
             // the client can show the real face next to each bubble
             // in group / project chats. Previously the client fell back
@@ -214,8 +222,19 @@ public class JimRestJsonMapper {
         item.put("readByCurrentUser", message.getID() <= currentUserLastRead);
         item.put("seenByOther", seenByOther);
         item.put("seenAt", seenByOther ? this.resolveOtherParticipantLastReadAt(conversation, currentUserKey) : null);
-        item.put("canEdit", ownMessage && isUserMessage && !deleted && this.isWithinEditWindow(message));
+        boolean editEligibleType = ownMessage && isUserMessage && !deleted;
+        item.put("canEdit", editEligibleType && this.isWithinEditWindow(message));
         item.put("canDelete", ownMessage && isUserMessage && !deleted && this.isWithinDeleteWindow(message));
+        // Server-anchored edit-window fields (epoch millis) so clients never rely
+        // on browser/device wall-clock or localized strings to decide editability.
+        // editableUntilMs is null for messages that are not edit-eligible by type
+        // (others', system/issue-link, deleted) regardless of time.
+        item.put("editWindowMinutes", (int) (JimMessageLifecycle.EDIT_WINDOW_MS / 60000L));
+        Long createdAtMs = message.getCreatedAt();
+        item.put("editableUntilMs",
+                (editEligibleType && createdAtMs != null)
+                        ? Long.valueOf(createdAtMs + JimMessageLifecycle.EDIT_WINDOW_MS)
+                        : null);
         item.put("replyTo", this.buildReplyPreview(message, replyContext));
         item.put("forwardedFrom", this.buildForwardedFrom(message));
         item.put("attachments", deleted ? Collections.emptyList() : this.toAttachmentMaps(attachments != null ? attachments : Collections.emptyList()));
@@ -597,14 +616,34 @@ public class JimRestJsonMapper {
     }
 
     public List<Map<String, Object>> toGroupMemberMaps(List<JimGroupMember> members, ApplicationUser viewer) {
+        return this.toGroupMemberMaps(members, viewer, null);
+    }
+
+    public List<Map<String, Object>> toGroupMemberMaps(List<JimGroupMember> members, ApplicationUser viewer, JimConversation conversation) {
         ArrayList<Map<String, Object>> items = new ArrayList<Map<String, Object>>();
         if (members == null) {
             return items;
         }
+        String ownerKey = conversation != null && conversation.getCreatedByUserKey() != null
+                ? conversation.getCreatedByUserKey().trim() : null;
         for (JimGroupMember member : members) {
+            // Only the dedicated hidden system account (pluginuser) is suppressed
+            // from member/admin lists — never an ordinary user such as the
+            // configured reviewer user (m.nasiri).
+            if (this.reviewerService != null && this.reviewerService.isHiddenSystemAccountUserKey(member.getUserKey())) {
+                continue;
+            }
             LinkedHashMap<String, Object> item = new LinkedHashMap<String, Object>();
             item.put("userKey", member.getUserKey());
-            item.put("role", member.getRole());
+            // Normalise role with the legacy OWNER fallback: the permanent owner
+            // (createdByUserKey) reads as OWNER even if the row's role is null.
+            String role = member.getRole();
+            if (ownerKey != null && ownerKey.equals(member.getUserKey())) {
+                role = JimGroupServiceImpl.ROLE_OWNER;
+            } else if (role == null || role.trim().isEmpty()) {
+                role = JimGroupServiceImpl.ROLE_MEMBER;
+            }
+            item.put("role", role);
             item.put("joinedAt", member.getJoinedAt());
             ApplicationUser user = this.userManager.getUserByKey(member.getUserKey());
             if (user != null) {
@@ -652,7 +691,7 @@ public class JimRestJsonMapper {
         for (JimMessage message : messages) {
             Long replyToMessageId = message.getReplyToMessageId();
             if (replyToMessageId == null || replyToMessageId <= 0L) continue;
-            replyIds.add(replyToMessageId.intValue());
+                replyIds.add(replyToMessageId.intValue());
         }
         Map<Integer, JimMessage> replyMessages = this.messageService.findMessagesByIds(replyIds);
         Map<Integer, List<JimAttachment>> replyAttachments = Collections.emptyMap();
@@ -842,6 +881,21 @@ public class JimRestJsonMapper {
 
     private String buildAttachmentUrl(int attachmentId, String action) {
         return "/rest/jim/1.0/attachments/" + attachmentId + "/" + action;
+    }
+
+    /**
+     * Authenticated avatar-serve URL for a GROUP/PROJECT conversation with a
+     * custom avatar, versioned for cache-busting. Null when no custom avatar is
+     * set (the client then falls back to initials / group glyph). Relative path
+     * mirrors {@link #buildAttachmentUrl}.
+     */
+    private String buildConversationAvatarUrl(JimConversation conversation) {
+        if (conversation == null || conversation.getAvatarStoragePath() == null
+                || conversation.getAvatarStoragePath().trim().isEmpty()) {
+            return null;
+        }
+        long version = conversation.getAvatarVersion() == null ? 0L : conversation.getAvatarVersion();
+        return "/rest/jim/1.0/conversations/" + conversation.getID() + "/avatar?v=" + version;
     }
 
     private String resolveOtherParticipantKey(JimConversation conversation, String currentUserKey) {

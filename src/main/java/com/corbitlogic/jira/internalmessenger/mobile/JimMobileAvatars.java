@@ -21,6 +21,7 @@ public final class JimMobileAvatars {
 
     private static final String USER_PREFIX = "/rest/corbit-mobile/1.0/avatar/user/";
     private static final String PROJECT_PREFIX = "/rest/corbit-mobile/1.0/avatar/project/";
+    private static final String CONVERSATION_PREFIX = "/rest/corbit-mobile/1.0/avatar/conversation/";
 
     private JimMobileAvatars() {
     }
@@ -41,6 +42,11 @@ public final class JimMobileAvatars {
             return null;
         }
         return PROJECT_PREFIX + encode(projectKey.trim());
+    }
+
+    /** BFF proxy path for a group/project conversation's custom chat avatar (Phase 1). */
+    public static String conversationPath(int conversationId) {
+        return CONVERSATION_PREFIX + conversationId;
     }
 
     private static String encode(String segment) {

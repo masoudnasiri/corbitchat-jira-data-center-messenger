@@ -1,4 +1,4 @@
-# CorbitChat / Hub — Agent Handover (state as of 2026-07-04)
+# CorbitChat / Hub — Agent Handover (state as of 2026-07-05)
 
 You are the new engineering agent taking over **CorbitChat** (the Jira Data
 Center plugin) and **Hub** (the Flutter mobile app, internally "CorbitHub").
@@ -33,22 +33,25 @@ destructively, or existing `/rest/jim/1.0/*` contracts.
 - Mobile BFF Java lives under `com.corbitlogic.jira.internalmessenger.mobile`.
 - `AGENTS.md` (plugin repo root) is the always-applied build/install/test
   cheat-sheet.
-- **Push is currently BLOCKED**: the build host has no GitHub credential
-  (token-less HTTPS remotes, no GitHub SSH key). Local commits exist and are
-  safe; ask the owner for a PAT/deploy key, or have them push.
+- **Push works with an owner-supplied token.** The build host has no stored
+  GitHub credential, but the owner provides a classic PAT on request. Use it
+  inline via a transient credential helper (env-based `credential.helper`),
+  NEVER write it to `~/.git-credentials`, and remind the owner to rotate it
+  after. The plugin remote was **renamed on GitHub** to
+  `corbitchat-jira-data-center-messenger`; the old `corbitchatforjira` URL
+  still redirects, so pushes to the recorded remote succeed.
 
 ### Current git state (IMPORTANT)
 
-Committed (local, NOT pushed — GitHub push still blocked, see above):
-- Plugin: `e70b36c` (Sprint 07 Fix-1..4 attachments/voice/video/vcard),
-  `0190013` (branding endpoint + bootstrap block), `ebfb722` (Sprint 08
-  +Fix-1..3 group/project chat, mentions, forward), `d0db225` (docs refresh).
-- Mobile: `6e47a2e` (Sprint 07 media), `7b41c41` (branding + Hub rename),
-  `d0bbfa2` (Sprint 08 +Fix-1..3 group/project chat, mentions, Assistant, polish).
+Both repos are **pushed and in sync with origin** as of 2026-07-05:
+- Plugin `feature/reply-composer-attachments` → tip `c5c6ac0`
+  (Sprint 11 Fix-1/Fix-3 mobile BFF), preceded by `f9d7895` (Sprint 10),
+  `68788a2` (Sprint 09 +Fix-1).
+- Mobile `main` → tip `50ec47b` (Sprint 11 board fixes + 7G TECH build
+  variant + Sprint 11.4 UI polish), preceded by `f321ed6` (Sprint 10),
+  `3061c35` (Sprint 09 +Fix-1).
 
-Sprint 08 (+Fix-1..3) was accepted on-device (2026-07-04) and is now committed
-locally in both repos; it still needs to be **pushed** once a GitHub credential
-is available. `dist/` is gitignored in both repos; never commit APKs, jars,
+`dist/`, `releases/`, and `build/` are gitignored; never commit APKs, jars,
 secrets, google-services.json, Firebase admin JSON, or keystores.
 
 ---
@@ -64,7 +67,7 @@ Two single-node Docker deployments (each: `jira-srv` + `nginx-jira` +
 | Direct Jira | `http://185.83.181.194:8080` | `http://193.162.129.56:8080` |
 | Access | local `docker` on this build host | SSH alias `corbit-prod` (key `~/.ssh/corbit_prod_193_162_129_56`) |
 | Plugin dir | `/var/jira/plugins/installed-plugins/` in `jira-srv` | same |
-| Plugin version NOW | `1.0.0-mobile-s08-fix3` | `1.0.0-mobile-s08-fix3` |
+| Plugin version NOW | `1.0.0-mobile-s11-fix3` | `1.0.0-mobile-s11-fix3` |
 | Test users | `m.nasiri` (see AGENTS.md), `a.hesari`/`z.zarhoon` (pwd `123456`) | `m.nasiri` + `admin1` (owner provides passwords; NOT stored in repo) |
 
 - Password login requires HTTPS → functional tests hit the public HTTPS URLs.
@@ -76,12 +79,24 @@ Two single-node Docker deployments (each: `jira-srv` + `nginx-jira` +
 
 ## 4. Versions & artifacts (as of this handover)
 
-- **Mobile app:** `1.0.0+17`, build label **`s08-fix3`** —
-  `corbitchat-mobile/dist/corbithub-1.0.0+17-s08-fix3.apk`.
-- **Plugin:** `1.0.0-mobile-s08-fix3` live on BOTH dev and prod (verified
-  2026-07-04: smoke 7/7, mobile login, assistant endpoint, group list).
+- **Mobile app:** `1.0.0+26`, build label **`s11.4-uipolish`**. Built in two
+  brand flavors from one codebase (see §11): `corbitchat-mobile-hub-1.0.0+26-s11.4-uipolish.apk`
+  and `corbitchat-mobile-7gtech-1.0.0+26-s11.4-uipolish.apk`, both under
+  `/root/jira-dev/releases/`. The About screen shows `AppConfig.appBuild` +
+  `AppConfig.buildLabel` (Dart constants baked into the binary) — the
+  definitive check that a device is on the intended build.
+- **Plugin:** `1.0.0-mobile-s11-fix3` live on BOTH dev and prod. Sprint 11.4
+  is **mobile-only** (design tokens, shared badge components, card/detail
+  polish) — it required **no backend change**, so prod was not redeployed.
 - Rollback jars for every prior version: `/root/jira-dev/releases/` and
   `corbit-prod:/root/jira-backups/installed-plugins-<TS>/` (+ DB dumps).
+- **Temporary APK hand-off endpoint (may still be live):** the DEV nginx
+  (`nginx-jira`) serves signed APKs at `https://jira.corbitlogic.com/apk/`
+  (a `location /apk/` block in `/root/jira/nginx/conf.d/jira.conf`, alias
+  `/usr/share/nginx/apk/`, with `application/vnd.android.package-archive` +
+  `Content-Disposition: attachment`). This is how a phone reliably installs a
+  new build. Offer to tear it down (restore `jira.conf`, delete staged APKs)
+  once the owner confirms the device is updated.
 
 ---
 
@@ -112,14 +127,29 @@ mvn -s /root/.m2/settings.xml -Dmaven.repo.local=/root/maven-repos/atlassian-jir
 ```
 Artifact: `target/corbitchat-jira-dc-<version>.jar` (never the `*-obr.jar`).
 
-### Mobile (Flutter 3.44 at `/root/flutter/bin`; offline pub mirrors)
+### Mobile (Flutter at `/root/flutter/bin`; offline pub mirrors; JDK 17)
 ```bash
 cd /root/jira-dev/corbitchat-mobile
 export PATH=/root/flutter/bin:$PATH
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 export PUB_HOSTED_URL=https://pub.flutter-io.cn
 export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
-flutter analyze && flutter test && flutter build apk --release
+flutter analyze && flutter test
 ```
+
+**Two brand flavors, one codebase** (7G TECH variant, §11). Always build
+release APKs via the helper so the Android launcher icon/label (`--flavor`)
+and the in-app identity (`--dart-define=BRAND`) can never mismatch:
+```bash
+scripts/build_apks.sh both        # -> Hub + 7G TECH into ../releases
+scripts/build_apks.sh sevengtech  # only 7G TECH   (flavor=sevengtech)
+scripts/build_apks.sh hub         # only Hub        (flavor=hub)
+```
+If a device shows an OLD build after "installing", it is almost always a
+stale device-side install, NOT a bad build. Do a `flutter clean` rebuild,
+then verify the artifact three ways: `aapt2 dump badging` (versionCode +
+label), grep the build label string inside `lib/arm64-v8a/libapp.so`, and
+serve it via the `/apk/` HTTPS endpoint with a fresh cache-busting filename.
 **New Flutter/Gradle dependencies are generally NOT available offline** —
 implement device capabilities in native Kotlin over the existing
 `MethodChannel('corbitchat/share')` (that is how share/pick/compress/camera/
@@ -151,6 +181,25 @@ preferences, unread, branding), `preferences`, `branding` (anonymous),
 `health`, `ao-health`, `dashboard`, `issues/*`, `projects/*`, `boards`,
 `devices/*` (push), `avatars/*`.
 
+Issues (Sprint 09/10): `issues/search`, `issues/{key}` (detail incl.
+comments, attachments, worklog, permissions, field-display rules),
+`issues/{key}/comments` (GET/POST + reply-to-comment, comment attachments,
+`@DisplayName` mentions rewritten to `[~user]`), `issues/{key}/transitions`
+(GET + execute, screen prompts for comment/resolution),
+`issues/{key}/assignee` (assign/unassign; "assign to me" uses the bootstrap
+username, NEVER native `/myself`), `issues/{key}/watching`,
+`issues/{key}/worklog`, `issues/{key}/attachments` (add/delete),
+`issues/{key}/editmeta` + edit (summary/description/priority).
+
+Boards & projects (Sprint 11 +Fix-1/Fix-3): `boards` (RapidView gallery),
+board columns from GreenHopper `ColumnService` (real lanes incl. **empty**
+lanes, localized names via `I18nHelper`, status-fallback when unavailable),
+board issues with a `mine` filter and per-lane status metadata (drives
+drag-to-transition); `projects/{key}` overview (stats total/open/assignedToMe,
+component/version counts), `projects/{key}/members` (roles), project activity
+(recent updated issues), and the inline project chat via
+`projects/{key}/conversation`.
+
 Chat (`/chat/...`): `conversations` (DIRECT+GROUP+PROJECT),
 `conversations/self|direct|group`, `conversations/{id}/group` (DELETE),
 `conversations/{id}/members` (GET/POST/DELETE — owner rules, self-leave),
@@ -173,26 +222,49 @@ only the mention push); `voice` flag separates voice notes from audio files;
 
 | Area | Status |
 |---|---|
-| Sprints 00–06 (+fixes) | Done, committed & on both servers |
-| Sprint 07 + Fix-1..4 (attachments, voice+speed, video+compression, contact/location, crop editor, save/share, panel) | Done, accepted, committed locally (NOT pushed) |
-| Branding polish 1+2 (icon, server branding, login UX, "Hub" rename) | Done, accepted, committed locally (NOT pushed) |
-| Sprint 08 + Fix-1..3 (groups, project chat, filters, mentions, emoji panel, Assistant, attachment forward, push fan-out, notif icon, contrast, scroll-to-latest) | Done, accepted, deployed dev+prod, committed locally (NOT pushed) |
-| Sprints 09–14 (roadmap: `docs/mobile-roadmap/`) | Planned docs only |
+| Sprints 00–06 (+fixes) | Done, committed, pushed & on both servers |
+| Sprint 07 + Fix-1..4 (attachments, voice+speed, video+compression, contact/location, crop editor, save/share, panel) | Done, accepted, pushed |
+| Branding polish 1+2 (icon, server branding, login UX, "Hub" rename) | Done, accepted, pushed |
+| Sprint 08 + Fix-1..3 (groups, project chat, filters, mentions, emoji panel, Assistant, attachment forward, push fan-out) | Done, accepted, on dev+prod, pushed |
+| Sprint 09 + Fix-1 (issue comments, reply-to-comment, comment attachments, mentions) | Done, accepted, on dev+prod, pushed |
+| Sprint 10 (workflow transitions, worklog, edit, assign incl. assign-to-me fix, watch, issue attachments, field rules) | Done, accepted, on dev+prod, pushed |
+| Sprint 11 + Fix-1/Fix-3 (board gallery→real lanes incl. empty lanes, drag-to-transition, project workspace tabs, inline project chat, board card filters) | Done, accepted, on dev+prod, pushed |
+| 7G TECH branded build variant (Android flavors + `--dart-define=BRAND`, icon-gen, `build_apks.sh`) | Done, accepted, pushed (mobile-only; §11) |
+| Sprint 11.4 mobile UX polish (semantic design tokens, shared `StatusBadge`/`PriorityBadge`/`KeyChip`, title-first cards, operational issue-detail header, prioritized action sheet, dashboard subtext, project polish) | Done, `1.0.0+26`, pushed (mobile-only — no backend deploy) |
+| Sprints 12–14 (roadmap: `docs/mobile-roadmap/`) | Planned docs only |
 
 Known limitations (documented, deliberate): no in-app video player (system
 player), no typing indicator (web has none), chat-mention assistant cards
 don't deep-link into the conversation (no pointer stored — web parity),
 emoji recents are session-only, OSM map tiles need internet on the device.
+Recommended but NOT done (documented for a future, tested change): bottom-nav
+reorder to Dashboard · Tasks · Boards · Chat · More (risky — feature-flag
+landing priority + persisted index + deep-link handoff).
+
+## 11. 7G TECH branded build variant
+
+One codebase produces two APKs. An Android **product flavor** picks the
+launcher icon + app label (`android/app/src/<flavor>/res/**`,
+`values/strings.xml` `app_name`), and a matching `--dart-define=BRAND` picks
+the in-app identity (About/login/nav name, push fallback title, bundled login
+logo) via `lib/core/brand.dart`. Flavors: `hub` (default, "Hub") and
+`sevengtech` ("7G TECH"), same `applicationId` so they are not co-installable.
+Icons are regenerated with `flutter_launcher_icons` +
+`tool/brand/gen_icon_sources.dart`. Always build via `scripts/build_apks.sh`
+so icon and in-app brand can never mismatch. Do NOT commit generated APKs or
+icon binaries beyond the checked-in source assets.
 
 ## 10. First actions for you
 
 1. Read `AGENTS.md`, this file, `docs/deployment-production.md`, and
    `docs/mobile-roadmap/README.md`.
 2. Run the §7 smoke against dev AND prod; confirm both report
-   `1.0.0-mobile-s08-fix3`.
-3. Sprint 08 (+Fix-1..3) is accepted and committed locally (2026-07-04).
-   Remaining closure step: resolve the GitHub push credential with the owner
-   and push both repos (plugin `feature/reply-composer-attachments`, mobile
-   `main`) — several local commits are ahead of origin.
-4. Then continue with the next roadmap sprint — Sprint 09 (issue comments &
-   reply-to-comment), guide at `docs/mobile-roadmap/sprint-09-comments-replies.md`.
+   `1.0.0-mobile-s11-fix3`.
+3. Report preflight: git state of both repos (currently pushed & in sync),
+   plugin version, and mobile version (`1.0.0+26` / `s11.4-uipolish`). Check
+   whether the temporary `/apk/` download endpoint (§4) is still live and
+   offer to tear it down.
+4. Ask the owner for the current priority. The next planned roadmap sprint is
+   Sprint 12 (productivity, deep links, biometrics),
+   `docs/mobile-roadmap/sprint-12-productivity-deeplinks-biometrics.md`; PWA
+   work has also been flagged as upcoming.

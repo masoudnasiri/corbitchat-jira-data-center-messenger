@@ -143,6 +143,10 @@
         if (ext) {
             ext.value = settings.allowedExtensions || '';
         }
+        var jiraCal = el('jim-set-jiraWideCalendar');
+        if (jiraCal) {
+            jiraCal.value = settings.jiraWideJalaliEnabled === true ? 'jalali' : 'gregorian';
+        }
         var radios = document.querySelectorAll('input[name="jim-chat-mode"]');
         for (var r = 0; r < radios.length; r++) {
             radios[r].checked = radios[r].value === settings.chatMode;
@@ -158,6 +162,137 @@
             brandLogo.value = settings.brandingLogoUrl || '';
         }
         renderBrandingPreview();
+        applyReportSettingsToForm(settings);
+    }
+
+    var REPORT_LEVEL_CODES = ['normal', 'high', 'special', 'managerial'];
+
+    // Generated metrics (key, English, Persian, expected type, Persian description).
+    // Single source of truth for the mapping table; mirrors JimReportMetrics on the server.
+    var REPORT_METRICS = [
+        ['validReportCount', 'Valid report count', 'تعداد گزارش معتبر', 'Number', 'تعداد گزارش‌های معتبر ثبت‌شده'],
+        ['requiredReportCount', 'Required report count', 'تعداد گزارش موردنیاز', 'Number', 'تعداد گزارش موردنیاز طبق زمان‌بندی'],
+        ['totalRawReportCount', 'Total raw reports', 'تعداد کل گزارش‌ها', 'Number', 'تعداد کل کامنت‌های گزارش (بدون فیلتر)'],
+        ['duplicateReportCount', 'Duplicate reports', 'گزارش‌های تکراری', 'Number', 'گزارش‌های تکراری در یک بازه'],
+        ['outOfWindowReportCount', 'Out-of-window reports', 'گزارش‌های خارج از بازه', 'Number', 'گزارش‌های خارج از ساعت مجاز'],
+        ['missedReportCount', 'Missed intervals', 'بازه‌های ازدست‌رفته', 'Number', 'بازه‌هایی که گزارش ثبت نشده'],
+        ['requiredReportCountSoFar', 'Required so far', 'موردنیاز تاکنون', 'Number', 'تعداد موردنیاز تا این لحظه'],
+        ['validReportCountSoFar', 'Valid so far', 'معتبر تاکنون', 'Number', 'تعداد معتبر تا این لحظه'],
+        ['reportCoveragePercent', 'Coverage %', 'درصد پوشش', 'Number', 'درصد پوشش گزارش‌ها'],
+        ['firstReportAt', 'First report at', 'زمان اولین گزارش', 'Date', 'زمان اولین گزارش ثبت‌شده'],
+        ['lastReportAt', 'Last report at', 'زمان آخرین گزارش', 'Date', 'زمان آخرین گزارش'],
+        ['lastValidReportAt', 'Last valid report at', 'زمان آخرین گزارش معتبر', 'Date', 'زمان آخرین گزارش معتبر'],
+        ['nextExpectedReportAt', 'Next expected at', 'زمان گزارش بعدی', 'Date', 'زمان مورد انتظار گزارش بعدی'],
+        ['reportingEndsAt', 'Reporting ends at', 'پایان مهلت گزارش', 'Date', 'زمان پایان مهلت گزارش‌دهی'],
+        ['reportMetricsUpdatedAt', 'Metrics updated at', 'زمان بروزرسانی متریک', 'Date', 'آخرین زمان بروزرسانی متریک‌ها'],
+        ['reportComplianceStatus', 'Compliance status', 'وضعیت انطباق', 'Text/Select', 'وضعیت کلی انطباق گزارش‌دهی'],
+        ['reportingActiveState', 'Active state', 'وضعیت فعال بودن', 'Text/Select', 'فعال/غیرفعال بودن گزارش‌دهی'],
+        ['reportingInactiveReason', 'Inactive reason', 'دلیل غیرفعال بودن', 'Text', 'علت غیرفعال شدن گزارش‌دهی'],
+        ['effectiveFollowUpLevel', 'Effective level', 'سطح پیگیری مؤثر', 'Text/Select', 'سطح پیگیری اعمال‌شده'],
+        ['effectiveReportInterval', 'Effective interval', 'فاصله مؤثر', 'Text', 'فاصله زمانی مؤثر گزارش‌دهی'],
+        ['effectiveReportingWindow', 'Effective window', 'بازه مؤثر', 'Text', 'بازه ساعتی مؤثر گزارش‌دهی'],
+        ['reportCountMode', 'Count mode', 'حالت شمارش', 'Text/Select', 'حالت شمارش موردنیاز'],
+        ['reportLifecycleMode', 'Lifecycle mode', 'حالت چرخه', 'Text/Select', 'شرط پایان چرخه گزارش‌دهی'],
+        ['lastReportCommentId', 'Last comment id', 'شناسه آخرین کامنت', 'Text', 'شناسه کامنت آخرین گزارش'],
+        ['lastReportSummary', 'Last report summary', 'خلاصه آخرین گزارش', 'Text', 'خلاصه متن آخرین گزارش'],
+        ['lastReporter', 'Last reporter', 'آخرین گزارش‌دهنده', 'User/Text', 'کاربر آخرین گزارش‌دهنده'],
+        ['lastValidReporter', 'Last valid reporter', 'آخرین گزارش‌دهنده معتبر', 'User/Text', 'کاربر آخرین گزارش معتبر'],
+        ['reportingControlState', 'Control state', 'وضعیت کنترل', 'Text/Select', 'وضعیت چرخه: فعال/بسته/…'],
+        ['reportingActive', 'Reporting active', 'گزارش‌دهی فعال', 'Text', 'آیا گزارش‌دهی فعال است'],
+        ['reportingCloseCondition', 'Close condition', 'شرط بسته‌شدن', 'Text', 'شرطی که گزارش‌دهی را بست'],
+        ['reportingCloseReason', 'Close reason', 'دلیل بسته‌شدن', 'Text', 'توضیح دلیل بسته‌شدن'],
+        ['reportingClosedAt', 'Closed at', 'زمان بسته‌شدن', 'Date', 'زمان بسته‌شدن گزارش‌دهی'],
+        ['reportingStartAt', 'Reporting start at', 'زمان شروع', 'Date', 'زمان شروع گزارش‌دهی'],
+        ['reportingEndAt', 'Reporting end at', 'زمان پایان', 'Date', 'زمان پایان مؤثر گزارش‌دهی'],
+        ['nextReportDueAt', 'Next due at', 'موعد بعدی', 'Date', 'موعد گزارش بعدی'],
+        ['currentWindowStartAt', 'Current window start', 'شروع بازه جاری', 'Date', 'زمان شروع بازه جاری'],
+        ['currentWindowStatus', 'Current window status', 'وضعیت بازه جاری', 'Text/Select', 'وضعیت بازه فعلی'],
+        ['reportCompliancePercent', 'Compliance %', 'درصد انطباق', 'Number', 'درصد انطباق (معتبر/موردنیاز تاکنون)'],
+        ['satisfiedWindowCount', 'Satisfied windows', 'بازه‌های موفق', 'Number', 'تعداد بازه‌های دارای گزارش معتبر'],
+        ['missedWindowCount', 'Missed windows', 'بازه‌های ازدست‌رفته', 'Number', 'تعداد بازه‌های بدون گزارش'],
+        ['lateWindowCount', 'Late windows', 'بازه‌های با تأخیر', 'Number', 'تعداد بازه‌های دارای تأخیر'],
+        ['openWindowCount', 'Open windows', 'بازه‌های باز', 'Number', 'تعداد بازه‌های باز فعلی'],
+        ['futureWindowCount', 'Future windows', 'بازه‌های آینده', 'Number', 'تعداد بازه‌های آینده'],
+        ['overdueOpenCount', 'Overdue open', 'باز و معوق', 'Number', 'بازه‌های باز و عقب‌افتاده'],
+        ['maxLateMinutes', 'Max late minutes', 'بیشترین تأخیر (دقیقه)', 'Number', 'بیشترین تأخیر بر حسب دقیقه'],
+        ['avgLateMinutes', 'Avg late minutes', 'میانگین تأخیر (دقیقه)', 'Number', 'میانگین تأخیر بر حسب دقیقه'],
+        ['minutesSinceLastValidReport', 'Minutes since last valid', 'دقیقه از آخرین معتبر', 'Number', 'دقایق گذشته از آخرین گزارش معتبر'],
+        ['currentlyOverdueMinutes', 'Currently overdue minutes', 'دقایق معوق فعلی', 'Number', 'دقایق عقب‌افتادگی بازه جاری'],
+        ['totalRequiredReportsUntilEnd', 'Total required until end', 'تعداد کل گزارش‌های مورد نیاز تا پایان', 'Number', 'مجموع گزارش‌های موردنیاز تا پایان دوره کنترل'],
+        ['currentMissedReportStreak', 'Current missed streak', 'تعداد گزارش‌های عقب‌افتاده از آخرین گزارش معتبر', 'Number', 'تعداد گزارش‌های پشت‌سرهم ازدست‌رفته از آخرین گزارش معتبر'],
+        ['maxMissedReportStreak', 'Max missed streak', 'بیشترین زنجیره گزارش‌های عقب‌افتاده', 'Number', 'بیشترین تعداد گزارش‌های پشت‌سرهم ازدست‌رفته'],
+        ['todayRequiredCount', 'Today required', 'موردنیاز امروز', 'Number', 'تعداد موردنیاز امروز'],
+        ['todayValidCount', 'Today valid', 'معتبر امروز', 'Number', 'تعداد معتبر امروز'],
+        ['todayMissedCount', 'Today missed', 'ازدست‌رفته امروز', 'Number', 'تعداد ازدست‌رفته امروز'],
+        ['reportedToday', 'Reported today', 'گزارش امروز', 'Text', 'آیا امروز گزارش ثبت شده'],
+        ['responsibleUser', 'Responsible user', 'کاربر مسئول', 'User/Text', 'کاربر مسئول (assignee)'],
+        ['reportLevelMissing', 'Level missing', 'نبود سطح', 'Text', 'سطح پیگیری تنظیم نشده'],
+        ['reportConfigError', 'Config error', 'خطای تنظیمات', 'Text', 'خطای پیکربندی گزارش'],
+        ['calcDurationMs', 'Calc duration (ms)', 'مدت محاسبه (ms)', 'Number', 'مدت‌زمان آخرین محاسبه'],
+        ['calculationVersion', 'Calc version', 'نسخه محاسبه', 'Number', 'نسخه الگوریتم محاسبه']
+    ];
+
+    function buildReportMetricRows() {
+        var tbody = el('jim-report-metric-rows');
+        if (!tbody || tbody.getAttribute('data-built') === '1') { return; }
+        tbody.setAttribute('data-built', '1');
+        var rows = '';
+        for (var i = 0; i < REPORT_METRICS.length; i++) {
+            var m = REPORT_METRICS[i];
+            rows += '<tr><td><code>' + m[0] + '</code></td><td dir="rtl">' + m[2] + '</td><td>' + m[3]
+                + '</td><td dir="rtl" style="font-size:12px;color:#626f86;">' + (m[4] || '')
+                + '</td><td><input type="text" id="jim-set-reportMap_' + m[0]
+                + '" class="text" style="max-width:200px;" placeholder="Disabled"/></td></tr>';
+        }
+        tbody.innerHTML = rows;
+    }
+
+    function applyReportSettingsToForm(settings) {
+        var enabled = el('jim-set-reportComplianceEnabled');
+        if (!enabled) {
+            return; // Report Schedule tab not present in this build
+        }
+        buildReportMetricRows();
+        enabled.checked = settings.reportComplianceEnabled === true;
+        var allowWithout = el('jim-set-reportAllowWithoutConfig');
+        if (allowWithout) { allowWithout.checked = settings.reportAllowWithoutConfig === true; }
+        var reopen = el('jim-set-reportReopenReactivation');
+        if (reopen) { reopen.checked = settings.reportReopenReactivation === true; }
+        var applEnabled = el('jim-set-reportApplicabilityEnabled');
+        if (applEnabled) { applEnabled.checked = settings.reportApplicabilityEnabled === true; }
+        var applNonDone = el('jim-set-reportApplicabilityNonDoneOnly');
+        if (applNonDone) { applNonDone.checked = settings.reportApplicabilityNonDoneOnly !== false; }
+        setVal('jim-set-reportEffectiveFromDate', settings.reportEffectiveFromDate || '');
+        setVal('jim-set-reportApplicabilityDateMode', settings.reportApplicabilityDateMode || 'created_on_or_after');
+        setVal('jim-set-reportApplicabilityMissingDuePolicy', settings.reportApplicabilityMissingDuePolicy || 'exclude_missing_due');
+        for (var mi = 0; mi < REPORT_METRICS.length; mi++) {
+            var mk = REPORT_METRICS[mi][0];
+            setVal('jim-set-reportMap_' + mk, settings['reportMap_' + mk] || '');
+        }
+        setVal('jim-set-reportMarker', settings.reportMarker || '');
+        setVal('jim-set-reportWindowStart', settings.reportWindowStart || '08:00');
+        setVal('jim-set-reportWindowEnd', settings.reportWindowEnd || '21:00');
+        setVal('jim-set-reportTimezone', settings.reportTimezone || '');
+        setVal('jim-set-reportLevelFieldId', settings.reportLevelFieldId || '');
+        setVal('jim-set-reportValidCountFieldId', settings.reportValidCountFieldId || '');
+        setVal('jim-set-reportRequiredCountFieldId', settings.reportRequiredCountFieldId || '');
+        for (var i = 0; i < REPORT_LEVEL_CODES.length; i++) {
+            var c = REPORT_LEVEL_CODES[i];
+            setVal('jim-set-reportInterval_' + c, settings['reportInterval_' + c] != null ? settings['reportInterval_' + c] : 0);
+            setVal('jim-set-reportIntervalUnit_' + c, settings['reportIntervalUnit_' + c] || 'hours');
+            setVal('jim-set-reportStart_' + c, settings['reportStart_' + c] || '');
+            setVal('jim-set-reportEnd_' + c, settings['reportEnd_' + c] || '');
+            setVal('jim-set-reportActiveUntil_' + c, settings['reportActiveUntil_' + c] || 'earlier');
+            setVal('jim-set-reportCountMode_' + c, settings['reportCountMode_' + c] || 'daily');
+            setVal('jim-set-reportMinCount_' + c, settings['reportMinCount_' + c] != null ? settings['reportMinCount_' + c] : 1);
+        }
+    }
+
+    function setVal(id, value) {
+        var e = el(id);
+        if (e) {
+            e.value = value;
+        }
     }
 
     function renderBrandingPreview() {
@@ -237,6 +372,92 @@
                     webPersianUiDefault: el('jim-set-webPersianUiDefault').checked,
                     webJalaliDatesDefault: el('jim-set-webJalaliDatesDefault').checked
                 }, 'Localization settings saved.');
+            });
+        }
+
+        var saveReport = el('jim-save-report-schedule');
+        if (saveReport) {
+            saveReport.addEventListener('click', function () {
+                var changes = {
+                    reportComplianceEnabled: el('jim-set-reportComplianceEnabled').checked,
+                    reportMarker: (el('jim-set-reportMarker').value || '').trim(),
+                    reportWindowStart: (el('jim-set-reportWindowStart').value || '').trim(),
+                    reportWindowEnd: (el('jim-set-reportWindowEnd').value || '').trim(),
+                    reportTimezone: (el('jim-set-reportTimezone').value || '').trim(),
+                    reportLevelFieldId: (el('jim-set-reportLevelFieldId').value || '').trim(),
+                    reportValidCountFieldId: (el('jim-set-reportValidCountFieldId').value || '').trim(),
+                    reportRequiredCountFieldId: (el('jim-set-reportRequiredCountFieldId').value || '').trim()
+                };
+                for (var i = 0; i < REPORT_LEVEL_CODES.length; i++) {
+                    var c = REPORT_LEVEL_CODES[i];
+                    changes['reportInterval_' + c] = (el('jim-set-reportInterval_' + c).value || '0').trim();
+                    changes['reportIntervalUnit_' + c] = el('jim-set-reportIntervalUnit_' + c).value;
+                    changes['reportStart_' + c] = (el('jim-set-reportStart_' + c).value || '').trim();
+                    changes['reportEnd_' + c] = (el('jim-set-reportEnd_' + c).value || '').trim();
+                    changes['reportActiveUntil_' + c] = el('jim-set-reportActiveUntil_' + c).value;
+                    changes['reportCountMode_' + c] = el('jim-set-reportCountMode_' + c).value;
+                    changes['reportMinCount_' + c] = (el('jim-set-reportMinCount_' + c).value || '1').trim();
+                }
+                var allowWithout = el('jim-set-reportAllowWithoutConfig');
+                if (allowWithout) { changes.reportAllowWithoutConfig = allowWithout.checked; }
+                var reopen = el('jim-set-reportReopenReactivation');
+                if (reopen) { changes.reportReopenReactivation = reopen.checked; }
+                var applEnabled = el('jim-set-reportApplicabilityEnabled');
+                if (applEnabled) {
+                    changes.reportApplicabilityEnabled = applEnabled.checked;
+                    changes.reportEffectiveFromDate = (el('jim-set-reportEffectiveFromDate').value || '').trim();
+                    changes.reportApplicabilityDateMode = el('jim-set-reportApplicabilityDateMode').value;
+                    changes.reportApplicabilityNonDoneOnly = el('jim-set-reportApplicabilityNonDoneOnly').checked;
+                    changes.reportApplicabilityMissingDuePolicy = el('jim-set-reportApplicabilityMissingDuePolicy').value;
+                }
+                for (var mi = 0; mi < REPORT_METRICS.length; mi++) {
+                    var mk = REPORT_METRICS[mi][0];
+                    var inp = el('jim-set-reportMap_' + mk);
+                    if (inp) { changes['reportMap_' + mk] = (inp.value || '').trim(); }
+                }
+                saveSettings(changes, 'Report schedule saved.');
+            });
+        }
+
+        var applPreview = el('jim-report-applicability-preview');
+        if (applPreview) {
+            applPreview.addEventListener('click', function () {
+                var out = el('jim-report-applicability-impact');
+                var q = '?effectiveFrom=' + encodeURIComponent((el('jim-set-reportEffectiveFromDate').value || '').trim())
+                    + '&mode=' + encodeURIComponent(el('jim-set-reportApplicabilityDateMode').value)
+                    + '&nonDoneOnly=' + (el('jim-set-reportApplicabilityNonDoneOnly').checked ? 'true' : 'false')
+                    + '&missingDuePolicy=' + encodeURIComponent(el('jim-set-reportApplicabilityMissingDuePolicy').value);
+                if (out) { out.textContent = 'در حال محاسبه… / computing…'; }
+                request('GET', '/report-applicability/impact' + q).then(function (res) {
+                    if (!out) { return; }
+                    var c = res.counts || {};
+                    var l = res.ledger || {};
+                    var lines = [];
+                    lines.push('کل تسک‌های کاندید / total candidate: ' + c.totalCandidate);
+                    lines.push('مشمول / in scope: ' + c.inScope + '   |   خارج از محدوده / out of scope: ' + c.outOfScope);
+                    if (c.excludedDone != null) { lines.push('خارج (Done): ' + c.excludedDone); }
+                    if (c.excludedByCreatedDate != null) { lines.push('خارج (تاریخ ایجاد): ' + c.excludedByCreatedDate); }
+                    if (c.excludedByDueDate != null) { lines.push('خارج (تاریخ سررسید): ' + c.excludedByDueDate); }
+                    if (c.excludedMissingDue != null) { lines.push('خارج (بدون سررسید): ' + c.excludedMissingDue); }
+                    lines.push('لجر ACTIVE که خارج از محدوده می‌شود: ' + (l.activeWouldBecomeOutOfScope != null ? l.activeWouldBecomeOutOfScope : '-')
+                        + ' (اسکن‌شده: ' + (l.activeScanned != null ? l.activeScanned : '-') + ')');
+                    lines.push('لجر CLOSED (همه سطوح): ' + (l.closedLedgerCountAllLevels != null ? l.closedLedgerCountAllLevels : '-'));
+                    if (c.note) { lines.push('note: ' + c.note); }
+                    out.textContent = lines.join('\n');
+                }).catch(function (err) {
+                    if (out) { out.textContent = 'خطا / error: ' + (err && err.message ? err.message : err); }
+                });
+            });
+        }
+
+        var saveJiraDates = el('jim-save-jira-dates');
+        if (saveJiraDates) {
+            saveJiraDates.addEventListener('click', function () {
+                var sel = el('jim-set-jiraWideCalendar');
+                var jalali = !!sel && sel.value === 'jalali';
+                saveSettings({
+                    jiraWideJalaliEnabled: jalali
+                }, 'Jira date display saved. Reload Jira pages to apply the change.');
             });
         }
 
@@ -1014,6 +1235,132 @@
         });
     }
 
+    // ===== Schedule-approval fields (mapping + provisioning) =====
+
+    function approvalBadge(ok, naText) {
+        if (ok === null || ok === undefined) {
+            return '<span class="jim-diag-muted">' + escapeHtml(naText || '\u2013') + '</span>';
+        }
+        return ok
+            ? '<span class="jim-diag-ok">\u2713</span>'
+            : '<span class="jim-diag-bad">\u2717</span>';
+    }
+
+    function renderApprovalDiag(data) {
+        var tbody = el('jim-approval-diag-rows');
+        if (!tbody) { return; }
+        var fields = (data && data.fields) || [];
+        if (!fields.length) {
+            tbody.innerHTML = '<tr><td colspan="11">No approval fields defined.</td></tr>';
+        } else {
+            var rows = [];
+            for (var i = 0; i < fields.length; i++) {
+                var f = fields[i];
+                var nameCell = escapeHtml(f.nameEn) + ' <span class="jim-admin-hint" dir="rtl">' + escapeHtml(f.nameFa) + '</span>'
+                    + '<br><span class="jim-admin-hint">expects: ' + escapeHtml(f.expectedType) + '</span>';
+                var optionsCell = f.optionsRequired ? approvalBadge(f.optionsOk) : approvalBadge(null, 'n/a');
+                var fallbackCell = f.notConfigured
+                    ? '<span class="jim-diag-bad">not configured</span>'
+                    : (f.usingFallback ? '<span class="jim-diag-warn">fallback</span>' : '<span class="jim-diag-ok">configured</span>');
+                rows.push('<tr>'
+                    + '<td>' + nameCell + '</td>'
+                    + '<td><code>' + escapeHtml(f.logicalKey) + '</code></td>'
+                    + '<td><input type="text" class="text" style="max-width:170px;" id="jim-approval-map-' + escapeHtml(f.logicalKey)
+                        + '" value="' + escapeHtml(f.configuredFieldId || '') + '" placeholder="' + escapeHtml(f.fallbackFieldId || 'customfield_') + '"/></td>'
+                    + '<td>' + (f.effectiveFieldId ? '<code>' + escapeHtml(f.effectiveFieldId) + '</code>' : '<span class="jim-diag-muted">\u2013</span>') + '</td>'
+                    + '<td>' + approvalBadge(f.exists) + '</td>'
+                    + '<td>' + approvalBadge(f.typeOk) + '</td>'
+                    + '<td>' + optionsCell + '</td>'
+                    + '<td>' + approvalBadge(f.contextOk) + '</td>'
+                    + '<td>' + approvalBadge(f.screenOk) + '</td>'
+                    + '<td>' + fallbackCell + '</td>'
+                    + '<td><button type="button" class="aui-button aui-button-link" data-approval-map="' + escapeHtml(f.logicalKey) + '">Save</button></td>'
+                    + '</tr>');
+            }
+            tbody.innerHTML = rows.join('');
+        }
+        var status = el('jim-approval-status');
+        if (status) {
+            status.innerHTML = data && data.minimallyConfigured
+                ? '<span class="jim-diag-ok">\u2713 Approval workflow is configured on this instance (status + approver + proposed date all resolve).</span>'
+                : '<span class="jim-diag-bad">\u2717 Approval workflow is NOT fully configured \u2014 map existing fields or provision the missing ones below.</span>';
+        }
+    }
+
+    function loadApprovalFields() {
+        if (!el('jim-approval-diag-rows')) {
+            return; // tab not present in this build
+        }
+        return request('GET', '/approval-fields/diagnostics').then(renderApprovalDiag).catch(function (error) {
+            el('jim-approval-diag-rows').innerHTML = '<tr><td colspan="11">' + escapeHtml(error.message) + '</td></tr>';
+        });
+    }
+
+    function saveApprovalMapping(logicalKey) {
+        var input = el('jim-approval-map-' + logicalKey);
+        var value = input ? input.value.trim() : '';
+        request('PUT', '/approval-fields/mapping', { logicalKey: logicalKey, fieldId: value }).then(function (data) {
+            renderApprovalDiag(data);
+            showMessage(value ? ('Mapped ' + logicalKey + ' \u2192 ' + value) : ('Cleared mapping for ' + logicalKey + ' (using production fallback).'));
+        }).catch(function (error) {
+            showMessage(error.message, true);
+        });
+    }
+
+    function bindApprovalActions() {
+        var refresh = el('jim-approval-refresh');
+        if (!refresh) {
+            return; // tab not present
+        }
+        refresh.addEventListener('click', loadApprovalFields);
+
+        var tbody = el('jim-approval-diag-rows');
+        if (tbody) {
+            tbody.addEventListener('click', function (event) {
+                var btn = event.target && event.target.closest ? event.target.closest('[data-approval-map]') : null;
+                if (btn) {
+                    saveApprovalMapping(btn.getAttribute('data-approval-map'));
+                }
+            });
+        }
+
+        el('jim-approval-provision').addEventListener('click', function () {
+            var addToScreens = el('jim-approval-add-screens') && el('jim-approval-add-screens').checked;
+            var screenIds = [];
+            var raw = el('jim-approval-screen-ids') ? el('jim-approval-screen-ids').value : '';
+            var parts = String(raw || '').split(',');
+            for (var i = 0; i < parts.length; i++) {
+                var t = parts[i].trim();
+                if (t && /^\d+$/.test(t)) {
+                    screenIds.push(Number(t));
+                }
+            }
+            if (!window.confirm('Provision missing schedule-approval fields on this instance? This creates Jira custom fields and is safe to re-run.')) {
+                return;
+            }
+            var provisionBtn = this;
+            provisionBtn.setAttribute('disabled', 'disabled');
+            request('POST', '/approval-fields/provision', { addToScreens: !!addToScreens, screenIds: screenIds }).then(function (result) {
+                if (result && result.diagnostics) {
+                    renderApprovalDiag({ fields: result.diagnostics, minimallyConfigured: result.minimallyConfigured });
+                } else {
+                    loadApprovalFields();
+                }
+                var s = result && result.summary ? result.summary : {};
+                if (result && result.locked === false) {
+                    showMessage('Provisioning is already running on another node. Try again shortly.', true);
+                } else {
+                    showMessage('Provisioning done \u2014 created ' + (s.created || 0) + ', mapped ' + (s.mapped || 0)
+                        + ', already present ' + (s.exists || 0) + ', failed ' + (s.failed || 0) + '.', (s.failed || 0) > 0);
+                }
+            }).catch(function (error) {
+                showMessage(error.message, true);
+            }).then(function () {
+                provisionBtn.removeAttribute('disabled');
+            });
+        });
+    }
+
     function init() {
         if (!el('jim-admin-page') && !document.getElementById('jim-admin-message')) {
             return;
@@ -1022,11 +1369,13 @@
         bindSettingsActions();
         bindPolicyActions();
         bindMobileRuleActions();
+        bindApprovalActions();
         el('jim-diag-refresh').addEventListener('click', loadDiagnostics);
         el('jim-license-refresh').addEventListener('click', loadLicense);
         loadSettings();
         loadPolicies();
         loadMobileRules();
+        loadApprovalFields();
         loadOverview();
     }
 

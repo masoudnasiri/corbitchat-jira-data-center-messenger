@@ -347,6 +347,11 @@
     font-weight: 700;
 }
 
+#jim-admin-page .jim-diag-warn {
+    color: #974f00;
+    font-weight: 700;
+}
+
 /* ===== Audit list ===== */
 #jim-admin-page .jim-admin-audit-list {
     border: 1px solid #dfe1e6;

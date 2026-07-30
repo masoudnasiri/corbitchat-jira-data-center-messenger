@@ -39,6 +39,11 @@ import com.corbitlogic.jira.internalmessenger.ao.JimAccessPolicy;
 import com.corbitlogic.jira.internalmessenger.ao.JimAdminAudit;
 import com.corbitlogic.jira.internalmessenger.ao.JimMobileFeatureRule;
 import com.corbitlogic.jira.internalmessenger.mobile.JimMobileFeatures;
+import com.corbitlogic.jira.internalmessenger.report.JimReportBackfillManager;
+import com.corbitlogic.jira.internalmessenger.report.JimReportConfig;
+import com.corbitlogic.jira.internalmessenger.report.JimReportLedgerService;
+import com.corbitlogic.jira.internalmessenger.report.JimReportMetrics;
+import com.corbitlogic.jira.internalmessenger.report.JimReportRecalcCoordinator;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
 import com.corbitlogic.jira.internalmessenger.service.JimAccessPolicyService;
 import com.corbitlogic.jira.internalmessenger.service.JimAdminAuditService;
@@ -84,9 +89,12 @@ public class JimAdminResource {
     private final JimLicenseService licenseService;
     private final JimMobileFeatureService mobileFeatureService;
     private final JimMobilePushService mobilePushService;
+    private final JimReportLedgerService reportLedgerService;
+    private final JimReportRecalcCoordinator reportRecalcCoordinator;
+    private final JimReportBackfillManager reportBackfillManager;
 
     @Inject
-    public JimAdminResource(JiraAuthenticationContext authenticationContext, GlobalPermissionManager globalPermissionManager, JimAdminSettingsService adminSettingsService, JimAccessPolicyService accessPolicyService, JimAdminAuditService auditService, JimPushService pushService, ActiveObjects activeObjects, ApplicationProperties applicationProperties, JimLicenseService licenseService, JimMobileFeatureService mobileFeatureService, JimMobilePushService mobilePushService) {
+    public JimAdminResource(JiraAuthenticationContext authenticationContext, GlobalPermissionManager globalPermissionManager, JimAdminSettingsService adminSettingsService, JimAccessPolicyService accessPolicyService, JimAdminAuditService auditService, JimPushService pushService, ActiveObjects activeObjects, ApplicationProperties applicationProperties, JimLicenseService licenseService, JimMobileFeatureService mobileFeatureService, JimMobilePushService mobilePushService, JimReportLedgerService reportLedgerService, JimReportRecalcCoordinator reportRecalcCoordinator, JimReportBackfillManager reportBackfillManager) {
         this.authenticationContext = authenticationContext;
         this.globalPermissionManager = globalPermissionManager;
         this.adminSettingsService = adminSettingsService;
@@ -98,6 +106,9 @@ public class JimAdminResource {
         this.licenseService = licenseService;
         this.mobileFeatureService = mobileFeatureService;
         this.mobilePushService = mobilePushService;
+        this.reportLedgerService = reportLedgerService;
+        this.reportRecalcCoordinator = reportRecalcCoordinator;
+        this.reportBackfillManager = reportBackfillManager;
     }
 
     @GET
@@ -569,6 +580,535 @@ public class JimAdminResource {
         catch (Exception ex) {
             return this.internalError("POST /admin/test-notification", ex);
         }
+    }
+
+    // ===== Reporting dashboard / diagnostics / export / backfill (Phase 6/7) =====
+
+    @GET
+    @Path(value="/reporting/diagnostics")
+    public Response getReportingDiagnostics() {
+        try {
+            this.requireSysAdmin();
+            LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("featureEnabled", JimReportConfig.isFeatureEnabled());
+            body.put("queue", this.reportRecalcCoordinator.diagnostics());
+            body.put("ledger", this.reportLedgerService.diagnostics());
+            body.put("mappingHealth", this.reportMappingHealth());
+            body.put("backfill", this.reportBackfillManager.status());
+            return JimRestResponses.okJson(body);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("GET /admin/reporting/diagnostics", ex);
+        }
+    }
+
+    @GET
+    @Path(value="/reporting/dashboard")
+    public Response getReportingDashboard(@Context HttpServletRequest request) {
+        try {
+            this.requireSysAdmin();
+            List<Map<String, Object>> rows = this.reportLedgerService.listControls(
+                    param(request, "status"), param(request, "projectKey"), param(request, "userKey"),
+                    longParam(request, "from"), longParam(request, "to"), intParam(request, "limit", 500));
+            LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("issues", rows);
+            body.put("count", rows.size());
+            return JimRestResponses.okJson(body);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("GET /admin/reporting/dashboard", ex);
+        }
+    }
+
+    @GET
+    @Path(value="/reporting/export.csv")
+    @Produces(value={"text/csv"})
+    public Response exportReportingCsv(@Context HttpServletRequest request) {
+        try {
+            this.requireSysAdmin();
+            List<Map<String, Object>> rows = this.reportLedgerService.listControls(
+                    param(request, "status"), param(request, "projectKey"), param(request, "userKey"),
+                    longParam(request, "from"), longParam(request, "to"), intParam(request, "limit", 5000));
+            String[] cols = {"issueKey", "projectKey", "reportingControlState", "responsibleUserKey",
+                    "responsibleUserName", "reportingStartAt", "reportingEndAt", "reportingClosedAt",
+                    "reportingClosedByCondition", "totalRequiredReportsUntilEnd", "currentMissedReportStreak",
+                    "maxMissedReportStreak", "calculatedAt", "calculationVersion"};
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < cols.length; i++) {
+                if (i > 0) sb.append(',');
+                sb.append(cols[i]);
+            }
+            sb.append("\r\n");
+            for (Map<String, Object> row : rows) {
+                for (int i = 0; i < cols.length; i++) {
+                    if (i > 0) sb.append(',');
+                    sb.append(csv(row.get(cols[i])));
+                }
+                sb.append("\r\n");
+            }
+            return Response.ok(sb.toString()).type("text/csv; charset=UTF-8")
+                    .header("Content-Disposition", "attachment; filename=\"corbitchat-reporting.csv\"").build();
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("GET /admin/reporting/export.csv", ex);
+        }
+    }
+
+    /**
+     * Read-only report-applicability impact preview (reportscope). Bounded,
+     * SYSTEM_ADMIN-gated. Uses server-owned JQL {@code searchCount}/sample for
+     * the candidate/in-scope/excluded groups and a bounded AO-ledger cross-ref
+     * for ACTIVE rows that would become out-of-scope. Never mutates anything.
+     * Query params default to the currently-stored policy when omitted:
+     * {@code effectiveFrom=YYYY-MM-DD, mode=..., nonDoneOnly=true|false,
+     * missingDuePolicy=..., sample=15, ledgerCap=1000}.
+     */
+    @GET
+    @Path(value="/report-applicability/impact")
+    public Response getReportApplicabilityImpact(@Context HttpServletRequest request) {
+        try {
+            ApplicationUser admin = this.requireSysAdmin();
+            String effectiveFrom = firstNonEmpty(param(request, "effectiveFrom"), JimReportConfig.effectiveFromDate());
+            String mode = firstNonEmpty(param(request, "mode"), JimReportConfig.applicabilityDateMode());
+            String ndStr = param(request, "nonDoneOnly");
+            boolean nonDoneOnly = (ndStr == null || ndStr.isEmpty())
+                    ? JimReportConfig.applicabilityNonDoneOnly() : "true".equalsIgnoreCase(ndStr);
+            String missingDuePolicy = firstNonEmpty(param(request, "missingDuePolicy"),
+                    JimReportConfig.applicabilityMissingDuePolicy());
+            boolean includeMissing = "include_if_created_matches".equals(missingDuePolicy);
+            int sample = clampInt(intParam(request, "sample", 15), 0, 50);
+            int ledgerCap = clampInt(intParam(request, "ledgerCap", 1000), 0, 5000);
+
+            java.util.TimeZone tz = JimReportConfig.reportTimeZone();
+            Long effMs = JimReportConfig.parseYmdStartOfDay(effectiveFrom, tz);
+            String levelFieldId = this.adminSettingsService.getReportLevelFieldId();
+            String cfNum = levelFieldId != null ? levelFieldId.replaceAll("[^0-9]", "") : "";
+
+            LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
+            LinkedHashMap<String, Object> policy = new LinkedHashMap<String, Object>();
+            policy.put("enabledNow", JimReportConfig.applicabilityEnabled());
+            policy.put("effectiveFrom", effectiveFrom == null ? "" : effectiveFrom);
+            policy.put("mode", mode);
+            policy.put("nonDoneOnly", nonDoneOnly);
+            policy.put("missingDuePolicy", missingDuePolicy);
+            policy.put("reportTimezone", tz != null ? tz.getID() : "server-default");
+            policy.put("levelField", levelFieldId);
+            body.put("policy", policy);
+            body.put("readOnly", true);
+
+            if (cfNum.isEmpty()) {
+                body.put("error", "report level field is not configured");
+                return JimRestResponses.okJson(body);
+            }
+            String candidate = "cf[" + cfNum + "] IS NOT EMPTY";
+            String notDone = "statusCategory != Done";
+            String doneC = "statusCategory = Done";
+
+            long totalCandidate = jqlCount(admin, candidate);
+            LinkedHashMap<String, Object> counts = new LinkedHashMap<String, Object>();
+            counts.put("totalCandidate", totalCandidate);
+
+            if (effMs == null) {
+                long inScope = jqlCount(admin, andJql(candidate, nonDoneOnly ? notDone : null));
+                counts.put("inScope", inScope);
+                counts.put("outOfScope", totalCandidate - inScope);
+                counts.put("excludedDone", nonDoneOnly ? jqlCount(admin, andJql(candidate, doneC)) : 0L);
+                counts.put("note", "effectiveFrom not set — only the nonDoneOnly rule applies");
+            } else {
+                String d = effectiveFrom;
+                String createdGE = "created >= \"" + d + "\"";
+                String createdLT = "created < \"" + d + "\"";
+                String dueGE = "duedate >= \"" + d + "\"";
+                String dueLT = "duedate < \"" + d + "\"";
+                String dueEmpty = "duedate IS EMPTY";
+                String dateScope = buildDateScope(mode, includeMissing, createdGE, dueGE, dueEmpty);
+                String inScopeJql = andJql(candidate, nonDoneOnly ? notDone : null, dateScope);
+                long inScope = jqlCount(admin, inScopeJql);
+                counts.put("inScope", inScope);
+                counts.put("outOfScope", totalCandidate - inScope);
+                counts.put("excludedDone", nonDoneOnly ? jqlCount(admin, andJql(candidate, doneC)) : 0L);
+                counts.put("excludedByCreatedDate", jqlCount(admin, andJql(candidate, createdLT)));
+                counts.put("excludedByDueDate", jqlCount(admin, andJql(candidate, "duedate IS NOT EMPTY", dueLT)));
+                counts.put("excludedMissingDue", jqlCount(admin, andJql(candidate, dueEmpty)));
+                counts.put("note", "excluded* groups are independent diagnostics and may overlap; inScope/outOfScope are the authoritative totals.");
+                LinkedHashMap<String, Object> samples = new LinkedHashMap<String, Object>();
+                samples.put("inScope", jqlSample(admin, inScopeJql, sample));
+                samples.put("excludedByCreatedDate", jqlSample(admin, andJql(candidate, createdLT), sample));
+                samples.put("excludedByDueDate", jqlSample(admin, andJql(candidate, "duedate IS NOT EMPTY", dueLT), sample));
+                samples.put("excludedMissingDue", jqlSample(admin, andJql(candidate, dueEmpty), sample));
+                if (nonDoneOnly) {
+                    samples.put("excludedDone", jqlSample(admin, andJql(candidate, doneC), sample));
+                }
+                body.put("samples", samples);
+            }
+            body.put("counts", counts);
+            body.put("ledger", reportApplicabilityLedgerImpact(admin, effMs, mode, nonDoneOnly, includeMissing, ledgerCap, sample));
+            return JimRestResponses.okJson(body);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("GET /admin/report-applicability/impact", ex);
+        }
+    }
+
+    /** Bounded AO-ledger cross-ref: ACTIVE rows that would become out-of-scope + total CLOSED. Read-only. */
+    private Map<String, Object> reportApplicabilityLedgerImpact(ApplicationUser admin, Long effMs, String mode,
+            boolean nonDoneOnly, boolean includeMissing, int cap, int sample) {
+        LinkedHashMap<String, Object> out = new LinkedHashMap<String, Object>();
+        try {
+            Map<String, Object> diag = this.reportLedgerService.diagnostics();
+            out.put("closedLedgerCountAllLevels", diag.get("closedCount"));
+            out.put("activeLedgerCountAllLevels", diag.get("activeCount"));
+            List<Map<String, Object>> active = this.reportLedgerService.listControls(
+                    "ACTIVE", null, null, null, null, cap);
+            com.atlassian.jira.issue.IssueManager im = ComponentAccessor.getIssueManager();
+            int scanned = 0, wouldBecomeOOS = 0;
+            ArrayList<String> samples = new ArrayList<String>();
+            for (Map<String, Object> row : active) {
+                Object k = row.get("issueKey");
+                if (k == null) continue;
+                com.atlassian.jira.issue.Issue issue = im.getIssueObject(String.valueOf(k));
+                if (issue == null) continue;
+                scanned++;
+                long created = issue.getCreated() != null ? issue.getCreated().getTime() : 0L;
+                Long due = issue.getDueDate() != null ? issue.getDueDate().getTime() : null;
+                boolean isDone = issue.getStatus() != null && issue.getStatus().getStatusCategory() != null
+                        && com.atlassian.jira.issue.status.category.StatusCategory.COMPLETE
+                                .equals(issue.getStatus().getStatusCategory().getKey());
+                String reason = JimReportConfig.evaluateApplicability(created, due, isDone,
+                        true, nonDoneOnly, effMs, mode, includeMissing);
+                if (reason != null) {
+                    wouldBecomeOOS++;
+                    if (samples.size() < sample) samples.add(issue.getKey() + " (" + reason + ")");
+                }
+            }
+            out.put("activeScanned", scanned);
+            out.put("activeWouldBecomeOutOfScope", wouldBecomeOOS);
+            out.put("activeSamples", samples);
+            out.put("scanCap", cap);
+            out.put("note", "ACTIVE ledger rows are left frozen (not mutated) by the policy; refreshing them is a separate, approval-gated Phase 4 cleanup.");
+        }
+        catch (Exception ex) {
+            out.put("error", ex.getMessage());
+        }
+        return out;
+    }
+
+    private static String buildDateScope(String mode, boolean includeMissing,
+            String createdGE, String dueGE, String dueEmpty) {
+        switch (mode == null ? "" : mode) {
+            case "created_on_or_after":
+                return createdGE;
+            case "due_on_or_after":
+                return includeMissing ? "(" + dueGE + " OR (" + dueEmpty + " AND " + createdGE + "))" : dueGE;
+            case "created_and_due_on_or_after":
+                return includeMissing
+                        ? "(" + createdGE + " AND (" + dueGE + " OR " + dueEmpty + "))"
+                        : "(" + createdGE + " AND " + dueGE + ")";
+            case "created_or_due_on_or_after":
+                return "(" + createdGE + " OR " + dueGE + ")";
+            default:
+                return createdGE;
+        }
+    }
+
+    private long jqlCount(ApplicationUser user, String jql) {
+        try {
+            com.atlassian.jira.bc.issue.search.SearchService ss =
+                    ComponentAccessor.getComponent(com.atlassian.jira.bc.issue.search.SearchService.class);
+            com.atlassian.jira.bc.issue.search.SearchService.ParseResult pr = ss.parseQuery(user, jql);
+            if (!pr.isValid()) {
+                return -1L;
+            }
+            return ss.searchCount(user, pr.getQuery());
+        } catch (Exception ex) {
+            log.warn("report-applicability impact jqlCount failed jql={} msg={}", jql, ex.getMessage());
+            return -1L;
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private List<String> jqlSample(ApplicationUser user, String jql, int n) {
+        ArrayList<String> out = new ArrayList<String>();
+        if (n <= 0) {
+            return out;
+        }
+        try {
+            com.atlassian.jira.bc.issue.search.SearchService ss =
+                    ComponentAccessor.getComponent(com.atlassian.jira.bc.issue.search.SearchService.class);
+            com.atlassian.jira.bc.issue.search.SearchService.ParseResult pr =
+                    ss.parseQuery(user, jql + " ORDER BY key ASC");
+            if (!pr.isValid()) {
+                return out;
+            }
+            com.atlassian.jira.web.bean.PagerFilter pager = new com.atlassian.jira.web.bean.PagerFilter(n);
+            com.atlassian.jira.issue.search.SearchResults results = ss.search(user, pr.getQuery(), pager);
+            for (Object o : results.getResults()) {
+                out.add(((com.atlassian.jira.issue.Issue) o).getKey());
+            }
+        } catch (Exception ex) {
+            out.add("error:" + ex.getMessage());
+        }
+        return out;
+    }
+
+    private static String andJql(String... parts) {
+        StringBuilder sb = new StringBuilder();
+        for (String p : parts) {
+            if (p == null || p.isEmpty()) continue;
+            if (sb.length() > 0) sb.append(" AND ");
+            sb.append("(").append(p).append(")");
+        }
+        return sb.toString();
+    }
+
+    private static String firstNonEmpty(String a, String b) {
+        return (a != null && !a.isEmpty()) ? a : (b != null ? b : "");
+    }
+
+    private static int clampInt(int v, int lo, int hi) {
+        return Math.max(lo, Math.min(hi, v));
+    }
+
+    @POST
+    @Path(value="/reporting/backfill")
+    @Consumes(value={"application/json"})
+    public Response startReportingBackfill(Map<String, Object> request) {
+        try {
+            ApplicationUser admin = this.requireSysAdmin();
+            if (!this.licenseService.canUseAdminSettings()) {
+                return JimRestResponses.licenseBlocked();
+            }
+            String jql = request != null ? JimAdminResource.str(request, "jql") : null;
+            int max = request != null ? JimAdminResource.intValue(request, "maxIssues", 500) : 500;
+            boolean started = this.reportBackfillManager.start(admin, jql, max);
+            if (!started) {
+                return JimRestResponses.errorJson(409, "backfill_busy",
+                        "A backfill is already running or the feature is disabled.");
+            }
+            this.auditService.record(admin.getKey(), "reporting.backfill",
+                    "maxIssues=" + max + " jql=" + (jql == null ? "" : jql));
+            return JimRestResponses.okJson(this.reportBackfillManager.status());
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("POST /admin/reporting/backfill", ex);
+        }
+    }
+
+    @GET
+    @Path(value="/reporting/backfill")
+    public Response getReportingBackfill() {
+        try {
+            this.requireSysAdmin();
+            return JimRestResponses.okJson(this.reportBackfillManager.status());
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("GET /admin/reporting/backfill", ex);
+        }
+    }
+
+    // ===== Schedule-approval field mapping / diagnostics / provisioning ======
+
+    @GET
+    @Path(value="/approval-fields/diagnostics")
+    public Response getApprovalFieldDiagnostics() {
+        try {
+            this.requireSysAdmin();
+            LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("fields", com.corbitlogic.jira.internalmessenger.schedule.JimApprovalFields.diagnosticsAll());
+            body.put("minimallyConfigured",
+                    com.corbitlogic.jira.internalmessenger.schedule.JimApprovalFields.minimallyConfigured());
+            return JimRestResponses.okJson(body);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("GET /admin/approval-fields/diagnostics", ex);
+        }
+    }
+
+    @PUT
+    @Path(value="/approval-fields/mapping")
+    @Consumes(value={"application/json"})
+    public Response updateApprovalFieldMapping(Map<String, Object> request) {
+        try {
+            ApplicationUser admin = this.requireSysAdmin();
+            if (!this.licenseService.canUseAdminSettings()) {
+                return JimRestResponses.licenseBlocked();
+            }
+            if (request == null) {
+                return JimRestResponses.errorJson(400, "bad_request", "Request body is required");
+            }
+            String logicalKey = JimAdminResource.str(request, "logicalKey");
+            String fieldId = JimAdminResource.str(request, "fieldId");
+            com.corbitlogic.jira.internalmessenger.schedule.JimApprovalFields.Key key =
+                    com.corbitlogic.jira.internalmessenger.schedule.JimApprovalFields.Key.byLogicalKey(logicalKey);
+            if (key == null) {
+                return JimRestResponses.errorJson(400, "bad_request", "Unknown logicalKey: " + logicalKey);
+            }
+            String settingsKey = com.corbitlogic.jira.internalmessenger.schedule.JimApprovalFields.settingsKey(key);
+            String normalizedId = fieldId != null ? fieldId.trim() : "";
+            // Empty clears the mapping (resolver falls back to the production id).
+            if (!normalizedId.isEmpty()) {
+                String reason = com.corbitlogic.jira.internalmessenger.schedule.JimApprovalFields
+                        .validateMappingCandidate(key, normalizedId);
+                if (reason != null) {
+                    return JimRestResponses.errorJson(400, "invalid_mapping", reason);
+                }
+            }
+            LinkedHashMap<String, Object> change = new LinkedHashMap<String, Object>();
+            change.put(settingsKey, normalizedId);
+            this.adminSettingsService.updateSettings(change);
+            this.auditService.record(admin.getKey(), "approvalField.mapping",
+                    logicalKey + " -> " + (normalizedId.isEmpty() ? "(cleared)" : normalizedId));
+            LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("fields", com.corbitlogic.jira.internalmessenger.schedule.JimApprovalFields.diagnosticsAll());
+            body.put("minimallyConfigured",
+                    com.corbitlogic.jira.internalmessenger.schedule.JimApprovalFields.minimallyConfigured());
+            return JimRestResponses.okJson(body);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("PUT /admin/approval-fields/mapping", ex);
+        }
+    }
+
+    @POST
+    @Path(value="/approval-fields/provision")
+    @Consumes(value={"application/json"})
+    public Response provisionApprovalFields(Map<String, Object> request) {
+        try {
+            ApplicationUser admin = this.requireSysAdmin();
+            if (!this.licenseService.canUseAdminSettings()) {
+                return JimRestResponses.licenseBlocked();
+            }
+            boolean addToScreens = request != null && JimAdminResource.bool(request, "addToScreens", false);
+            List<Long> screenIds = new ArrayList<Long>();
+            if (request != null && request.get("screenIds") instanceof List) {
+                for (Object o : (List<?>) request.get("screenIds")) {
+                    if (o instanceof Number) {
+                        screenIds.add(((Number) o).longValue());
+                    } else if (o != null) {
+                        try {
+                            screenIds.add(Long.parseLong(String.valueOf(o).trim()));
+                        } catch (NumberFormatException ignore) {
+                        }
+                    }
+                }
+            }
+            Map<String, Object> result = com.corbitlogic.jira.internalmessenger.schedule.JimApprovalFieldProvisioning
+                    .provision(addToScreens, screenIds, this.adminSettingsService, this.auditService, admin);
+            this.auditService.record(admin.getKey(), "approvalField.provision",
+                    "addToScreens=" + addToScreens + " screens=" + screenIds + " summary=" + result.get("summary"));
+            // Include fresh diagnostics so the UI reflects the new state immediately.
+            LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>(result);
+            body.put("diagnostics",
+                    com.corbitlogic.jira.internalmessenger.schedule.JimApprovalFields.diagnosticsAll());
+            body.put("minimallyConfigured",
+                    com.corbitlogic.jira.internalmessenger.schedule.JimApprovalFields.minimallyConfigured());
+            return JimRestResponses.okJson(body);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return this.internalError("POST /admin/approval-fields/provision", ex);
+        }
+    }
+
+    /** Per-metric mapping health: mapped field id + whether it resolves + type-compatible. */
+    private List<Map<String, Object>> reportMappingHealth() {
+        ArrayList<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+        Map<String, String> mappings = JimReportConfig.fieldMappings();
+        for (Map.Entry<String, String> e : mappings.entrySet()) {
+            String fieldId = e.getValue();
+            if (fieldId == null || fieldId.isEmpty()) {
+                continue; // disabled
+            }
+            LinkedHashMap<String, Object> m = new LinkedHashMap<String, Object>();
+            m.put("metric", e.getKey());
+            m.put("fieldId", fieldId);
+            JimReportMetrics.Def def = JimReportMetrics.byKey(e.getKey());
+            boolean resolves = false;
+            boolean compatible = false;
+            String typeKey = null;
+            try {
+                com.atlassian.jira.issue.fields.CustomField cf =
+                        ComponentAccessor.getCustomFieldManager().getCustomFieldObject(fieldId);
+                if (cf != null && cf.getCustomFieldType() != null) {
+                    resolves = true;
+                    typeKey = cf.getCustomFieldType().getKey();
+                    compatible = def != null && JimReportMetrics.isCompatible(def.category, typeKey);
+                }
+            } catch (Throwable ignore) {
+            }
+            m.put("category", def != null ? def.category.name() : null);
+            m.put("resolves", resolves);
+            m.put("compatible", compatible);
+            m.put("fieldType", typeKey);
+            m.put("healthy", resolves && compatible);
+            out.add(m);
+        }
+        return out;
+    }
+
+    private static String param(HttpServletRequest request, String name) {
+        return request != null ? request.getParameter(name) : null;
+    }
+
+    private static Long longParam(HttpServletRequest request, String name) {
+        String v = param(request, name);
+        if (v == null || v.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(v.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static int intParam(HttpServletRequest request, String name, int def) {
+        String v = param(request, name);
+        if (v == null || v.trim().isEmpty()) {
+            return def;
+        }
+        try {
+            return Integer.parseInt(v.trim());
+        } catch (NumberFormatException ex) {
+            return def;
+        }
+    }
+
+    private static String csv(Object value) {
+        if (value == null) {
+            return "";
+        }
+        String s = String.valueOf(value);
+        if (s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r")) {
+            return "\"" + s.replace("\"", "\"\"") + "\"";
+        }
+        return s;
     }
 
     private ApplicationUser requireSysAdmin() {

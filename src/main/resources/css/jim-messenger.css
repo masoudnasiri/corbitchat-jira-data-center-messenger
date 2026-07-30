@@ -99,6 +99,47 @@
     direction: ltr;
 }
 
+/* RTL mirroring for Persian. Most of the shell is flexbox and follows
+   `direction: rtl` automatically; these rules flip the few remaining
+   physical-direction properties so the chrome mirrors cleanly. The message
+   thread stays LTR (above) to keep own/other bubble sides stable. */
+#jim-messenger-app.jim-lang-fa .jim-chat-header-actions {
+    margin-left: 0;
+    margin-right: auto;
+}
+#jim-messenger-app.jim-lang-fa .jim-conversation-preview-draft-label,
+#jim-messenger-app.jim-lang-fa .jim-conversation-group-mark {
+    margin-right: 0;
+    margin-left: 4px;
+}
+#jim-messenger-app.jim-lang-fa .jim-presence-badge {
+    right: auto;
+    left: -2px;
+}
+#jim-messenger-app.jim-lang-fa .jim-forward-target {
+    text-align: right;
+}
+#jim-messenger-app.jim-lang-fa .jim-search-input,
+#jim-messenger-app.jim-lang-fa .jim-settings-select,
+#jim-messenger-app.jim-lang-fa .jim-composer-input,
+#jim-messenger-app.jim-lang-fa .jim-issue-search-input {
+    text-align: right;
+}
+/* Schedule / due-date approval card: force RTL in Persian mode so the
+   label→value rows read right-to-left cleanly and consistently (the message
+   thread itself stays LTR, so this explicit rule is needed rather than relying
+   on per-node dir="auto"). */
+#jim-messenger-app.jim-lang-fa .jim-system-card-approval {
+    direction: rtl;
+    text-align: right;
+}
+#jim-messenger-app.jim-lang-fa .jim-approval-row {
+    flex-direction: row;
+}
+#jim-messenger-app.jim-lang-fa .jim-approval-reason-text {
+    text-align: right;
+}
+
 /* Settings gear in the sidebar header + settings modal controls. */
 #jim-messenger-app .jim-settings-btn {
     margin-inline-start: auto;
@@ -399,6 +440,81 @@
 #jim-messenger-app .jim-load-older-btn:disabled {
     cursor: default;
     opacity: 0.6;
+}
+
+/* Jira Assistant event-type filter chips (web parity with the mobile feed).
+   Display-only filter over the SYSTEM conversation; pinned to the top of the
+   feed and horizontally scrollable when the chips overflow. */
+#jim-messenger-app .jim-assistant-filter-bar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: flex;
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 10px 0;
+    margin-bottom: 12px;
+    background: #ffffff;
+    border-bottom: 1px solid var(--jim-border-subtle);
+    scrollbar-width: thin;
+}
+/* Full-bleed across the padded message list so the sticky bar covers the
+   content scrolling beneath it. Margins mirror .jim-message-list-inner padding. */
+#jim-messenger-app.jim-chat-page .jim-assistant-filter-bar {
+    margin: -24px -28px 12px;
+    padding: 10px 28px;
+}
+#jim-messenger-app .jim-assistant-filter-chip {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    border: 1px solid var(--jim-border-subtle);
+    background: #ffffff;
+    color: var(--jim-text-secondary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+#jim-messenger-app .jim-assistant-filter-chip:hover {
+    background: var(--jim-hover);
+    color: var(--jim-text);
+    border-color: var(--jim-border);
+}
+#jim-messenger-app .jim-assistant-filter-chip-active {
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand);
+    border-color: var(--jim-brand);
+}
+#jim-messenger-app .jim-assistant-filter-showall {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--jim-border-subtle);
+    background: #ffffff;
+    color: var(--jim-brand);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    margin-inline-start: 8px;
+}
+/* Persian/RTL: chips run right-to-left. */
+#jim-messenger-app.jim-lang-fa .jim-assistant-filter-bar {
+    direction: rtl;
+}
+
+@media (max-width: 768px) {
+    #jim-messenger-app.jim-chat-page .jim-assistant-filter-bar {
+        margin: -14px -10px 10px;
+        padding: 8px 10px;
+    }
 }
 
 /* Forward message modal */
@@ -2852,6 +2968,107 @@
     font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
+}
+
+/* --- Group/Project settings panel (Phase 1: admins & custom avatars) --- */
+#jim-messenger-app .jim-member-role-admin {
+    background: #fff4e5;
+    color: #b45309;
+}
+
+#jim-messenger-app .jim-member-role-btn {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 8px;
+    background: var(--jim-bg);
+    color: var(--jim-brand);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-member-role-btn:hover {
+    background: var(--jim-brand-subtle);
+}
+
+#jim-messenger-app .jim-settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--jim-border-subtle);
+}
+
+#jim-messenger-app .jim-settings-avatar {
+    align-items: center;
+    text-align: center;
+}
+
+#jim-messenger-app .jim-avatar-lg {
+    width: 64px;
+    height: 64px;
+    font-size: 22px;
+}
+
+#jim-messenger-app .jim-settings-avatar-img {
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+#jim-messenger-app .jim-settings-avatar-controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+#jim-messenger-app .jim-settings-avatar-progress {
+    color: var(--jim-muted);
+    font-size: 12px;
+}
+
+#jim-messenger-app .jim-settings-avatar-progress[hidden] {
+    display: none;
+}
+
+#jim-messenger-app .jim-settings-label {
+    color: var(--jim-muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+#jim-messenger-app .jim-settings-rename-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+#jim-messenger-app .jim-settings-rename-row .jim-search-input {
+    flex: 1;
+    min-width: 0;
+}
+
+#jim-messenger-app .jim-settings-section-label {
+    color: var(--jim-muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 4px;
+}
+
+#jim-messenger-app .jim-settings-gear {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#jim-messenger-app .jim-settings-gear-icon {
+    font-size: 15px;
+    line-height: 1;
 }
 
 #jim-messenger-app .jim-member-remove {

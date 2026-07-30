@@ -165,6 +165,66 @@ public class JimGroupResource {
         }
     }
 
+    @POST
+    @Path(value="/{conversationId}/members/{memberUserKey}/role")
+    @Consumes(value={"application/json"})
+    public Response setMemberRole(@PathParam(value="conversationId") int conversationId, @PathParam(value="memberUserKey") String memberUserKey, java.util.Map<String, Object> request) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        String role = request != null && request.get("role") != null ? String.valueOf(request.get("role")).trim().toUpperCase() : "";
+        if (!"ADMIN".equals(role) && !"MEMBER".equals(role)) {
+            return JimRestResponses.errorJson(400, "bad_request", "role must be ADMIN or MEMBER");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            if ("ADMIN".equals(role)) {
+                this.groupService.promoteToAdmin(conversationId, currentUserKey, memberUserKey);
+            } else {
+                this.groupService.demoteToMember(conversationId, currentUserKey, memberUserKey);
+            }
+            List<JimGroupMember> members = this.groupService.listMembers(conversationId, currentUserKey);
+            LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("members", this.restJsonMapper.toGroupMemberMaps(members, viewer));
+            return JimRestResponses.okJson(body);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST /rest/jim/1.0/groups/" + conversationId + "/members/" + memberUserKey + "/role", userKey, ex, "internal_error", "An internal error occurred while updating the member role.");
+        }
+    }
+
+    @POST
+    @Path(value="/{conversationId}/rename")
+    @Consumes(value={"application/json"})
+    public Response renameGroup(@PathParam(value="conversationId") int conversationId, java.util.Map<String, Object> request) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        String name = request != null && request.get("name") != null ? String.valueOf(request.get("name")) : null;
+        if (name == null || name.trim().isEmpty()) {
+            return JimRestResponses.errorJson(400, "bad_request", "name is required");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimConversation conversation = this.groupService.renameGroup(conversationId, currentUserKey, name);
+            int unreadCount = this.readStateService.getUnreadCount(conversation.getID(), currentUserKey);
+            return JimRestResponses.okJson(this.restJsonMapper.toConversationMap(conversation, currentUserKey, viewer, unreadCount));
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST /rest/jim/1.0/groups/" + conversationId + "/rename", userKey, ex, "internal_error", "An internal error occurred while renaming the group.");
+        }
+    }
+
     @DELETE
     @Path(value="/{conversationId}/members/{memberUserKey}")
     public Response removeMember(@PathParam(value="conversationId") int conversationId, @PathParam(value="memberUserKey") String memberUserKey) {

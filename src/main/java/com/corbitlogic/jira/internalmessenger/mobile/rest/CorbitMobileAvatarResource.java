@@ -14,9 +14,16 @@ import com.atlassian.jira.user.ApplicationUser;
 import com.atlassian.jira.user.util.UserManager;
 import com.atlassian.jira.util.Consumer;
 import com.atlassian.plugins.rest.common.security.AnonymousAllowed;
+import com.corbitlogic.jira.internalmessenger.ao.JimConversation;
+import com.corbitlogic.jira.internalmessenger.attachment.JimAvatarStorageService;
+import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
+import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import javax.inject.Inject;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
@@ -41,6 +48,19 @@ public class CorbitMobileAvatarResource {
 
     /** Hard cap so a bad/huge file can never blow up mobile memory. */
     private static final int MAX_BYTES = 2 * 1024 * 1024;
+
+    private final JimConversationService conversationService;
+    private final JimPermissionService permissionService;
+    private final JimAvatarStorageService avatarStorageService;
+
+    @Inject
+    public CorbitMobileAvatarResource(JimConversationService conversationService,
+                                      JimPermissionService permissionService,
+                                      JimAvatarStorageService avatarStorageService) {
+        this.conversationService = conversationService;
+        this.permissionService = permissionService;
+        this.avatarStorageService = avatarStorageService;
+    }
 
     @GET
     @Path("/user/{userKey}")
@@ -83,6 +103,65 @@ public class CorbitMobileAvatarResource {
         try {
             Avatar avatar = project.getAvatar();
             return stream(avatar, size);
+        } catch (Exception ex) {
+            return status(404);
+        }
+    }
+
+    /**
+     * Group/project custom chat avatar proxy (Phase 1). Streams the stored avatar
+     * bytes over the session-authenticated mobile connection. Participant-checked;
+     * capped at 2&nbsp;MB. 404 (no body) when there is no avatar or no access, so
+     * the client falls back to the group glyph.
+     */
+    @GET
+    @Path("/conversation/{conversationId}")
+    public Response conversationAvatar(@PathParam("conversationId") int conversationId) {
+        ApplicationUser viewer = authContext().getLoggedInUser();
+        if (viewer == null) {
+            return status(401);
+        }
+        JimConversation conversation;
+        try {
+            conversation = this.conversationService.getConversation(conversationId);
+        } catch (Exception ex) {
+            return status(404);
+        }
+        if (conversation == null || !this.permissionService.isParticipant(conversation, viewer.getKey())) {
+            return status(404);
+        }
+        String storagePath = conversation.getAvatarStoragePath();
+        if (storagePath == null || storagePath.trim().isEmpty()) {
+            return status(404);
+        }
+        try {
+            File file = this.avatarStorageService.resolveAvatarFile(storagePath);
+            if (file.length() > MAX_BYTES) {
+                return status(404);
+            }
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            try (InputStream in = new FileInputStream(file)) {
+                byte[] chunk = new byte[8192];
+                int read;
+                while ((read = in.read(chunk)) != -1) {
+                    if (buffer.size() + read > MAX_BYTES) {
+                        return status(404);
+                    }
+                    buffer.write(chunk, 0, read);
+                }
+            }
+            byte[] bytes = buffer.toByteArray();
+            if (bytes.length == 0) {
+                return status(404);
+            }
+            String contentType = conversation.getAvatarContentType();
+            if (contentType == null || contentType.trim().isEmpty()) {
+                contentType = "image/png";
+            }
+            CacheControl cc = new CacheControl();
+            cc.setPrivate(true);
+            cc.setMaxAge(86400);
+            return Response.ok(bytes).type(contentType).cacheControl(cc).build();
         } catch (Exception ex) {
             return status(404);
         }

@@ -8,7 +8,7 @@
 
     <groupId>com.corbitlogic</groupId>
     <artifactId>corbitchat-jira-dc</artifactId>
-    <version>1.0.0-s12e-media1</version>
+    <version>1.0.0-s12e-reportscope1</version>
     <packaging>atlassian-plugin</packaging>
 
     <name>CorbitChat — Team Messenger for Jira (Internal Build + Board Gallery)</name>
@@ -100,6 +100,18 @@
             <groupId>com.atlassian.sal</groupId>
             <artifactId>sal-api</artifactId>
             <version>5.0.0</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Beehive cluster lock (bundled with Jira DC). Used ONLY by the
+             admin-triggered approval-field provisioning to guard against two
+             DC nodes creating duplicate custom fields. provided → never
+             packaged; the OSGi import is optional so the plugin still enables
+             if it is somehow absent (provisioning degrades to a no-lock path). -->
+        <dependency>
+            <groupId>com.atlassian.beehive</groupId>
+            <artifactId>beehive-api</artifactId>
+            <version>5.1.0</version>
             <scope>provided</scope>
         </dependency>
 

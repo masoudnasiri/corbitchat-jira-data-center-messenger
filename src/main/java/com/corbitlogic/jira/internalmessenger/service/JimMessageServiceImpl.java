@@ -54,6 +54,7 @@ import net.java.ao.Query;
 
 public class JimMessageServiceImpl
 implements JimMessageService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(JimMessageServiceImpl.class);
     public static final String DELETE_WINDOW_EXPIRED_MESSAGE = "Messages can only be deleted within 10 minutes.";
     public static final String EDIT_WINDOW_EXPIRED_MESSAGE = "Messages can only be edited within 30 minutes.";
     private final ActiveObjects activeObjects;
@@ -774,19 +775,36 @@ implements JimMessageService {
     public List<JimMessage> listMessages(int conversationId, int limit, Integer beforeMessageId, Long sinceMillis) {
         this.validateListMessagesRequest(conversationId, limit, beforeMessageId);
         String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
-        this.conversationService.getConversationForUser(conversationId, authenticatedUserKey);
+        JimConversation conversation = this.conversationService.getConversationForUser(conversationId, authenticatedUserKey);
         int normalizedLimit = JimValidation.normalizeListLimit(limit);
         Integer normalizedBeforeMessageId = JimValidation.normalizeBeforeMessageId(beforeMessageId);
+        // Dedicated Jira Assistant (SYSTEM) feed policy: NEVER apply an age-based
+        // time window to the Assistant feed. Assistant items are notification
+        // cards that are frequently older than the chat "recent" window. When any
+        // client path (poll / refresh / resume / tab-switch / deep-link) sent
+        // `since`, the Assistant query returned an empty page — and an empty page
+        // also collapsed hasOlder to false in the mobile BFF — so the whole feed
+        // disappeared. Root-cause fix at the service layer so EVERY caller (web,
+        // mobile BFF, future) is safe. Only an explicit user-requested older
+        // cursor (beforeMessageId) pages the Assistant; `since` is ignored for it.
+        boolean systemConversation = conversation != null
+                && JimConversationType.SYSTEM.name().equals(conversation.getConversationType());
+        Long effectiveSince = systemConversation ? null : sinceMillis;
+        if (systemConversation && sinceMillis != null && sinceMillis > 0L) {
+            log.debug("Assistant feed: ignoring age window since={} for SYSTEM conversation {} "
+                    + "(recurring-empty guard)", sinceMillis, conversationId);
+        }
         Query query;
         if (normalizedBeforeMessageId != null) {
             // Older page (infinite scroll): messages before a cursor id.
             query = Query.select().where("CONVERSATION_ID = ? AND ID < ?",
                     new Object[]{conversationId, normalizedBeforeMessageId}).order("ID DESC").limit(normalizedLimit);
-        } else if (sinceMillis != null && sinceMillis > 0L) {
-            // Initial window (~last N days): messages at/after `since`, capped by
-            // limit so a very active recent window can't blow up the payload.
+        } else if (effectiveSince != null && effectiveSince > 0L) {
+            // Initial window (~last N days) for NORMAL chats only: messages at/after
+            // `since`, capped by limit so a very active recent window can't blow up
+            // the payload. Never reached for SYSTEM/Assistant conversations.
             query = Query.select().where("CONVERSATION_ID = ? AND CREATED_AT >= ?",
-                    new Object[]{conversationId, sinceMillis}).order("ID DESC").limit(normalizedLimit);
+                    new Object[]{conversationId, effectiveSince}).order("ID DESC").limit(normalizedLimit);
         } else {
             query = Query.select().where("CONVERSATION_ID = ?",
                     new Object[]{conversationId}).order("ID DESC").limit(normalizedLimit);

@@ -101,7 +101,26 @@
         'You': 'شما', 'Online': 'آنلاین', 'Offline': 'آفلاین',
         'Proposed date': 'تاریخ پیشنهادی', 'Requested by': 'درخواست‌دهنده',
         'Decided by': 'تصمیم‌گیرنده', 'Status': 'وضعیت',
-        'Pending': 'در انتظار', 'Approved': 'تأیید شد', 'Rejected': 'رد شد'
+        'Pending': 'در انتظار', 'Approved': 'تأیید شد', 'Rejected': 'رد شد',
+        'Approvals': 'تأییدها', 'Mentions': 'منشن‌ها', 'Assignments': 'ارجاع‌ها',
+        'Comments': 'دیدگاه‌ها', 'Attachments': 'پیوست‌ها',
+        'Filter by type': 'فیلتر بر اساس نوع', 'Show all': 'نمایش همه',
+        'No messages in this category.': 'پیامی در این دسته نیست.',
+        'Admin': 'مدیر', 'Make admin': 'ارتقا به مدیر', 'Remove admin': 'حذف مدیر',
+        'Group settings': 'تنظیمات گروه', 'Project chat settings': 'تنظیمات گفتگوی پروژه',
+        'Change photo': 'تغییر عکس', 'Upload photo': 'بارگذاری عکس', 'Remove photo': 'حذف عکس',
+        'Chat name': 'نام گفتگو', 'Add member...': 'افزودن عضو...',
+        'Remove from group': 'حذف از گروه',
+        'Delete group': 'حذف گروه', 'Confirm: delete group?': 'تأیید: گروه حذف شود؟',
+        'Leave group': 'ترک گروه', 'Confirm: leave group?': 'تأیید: گروه ترک شود؟',
+        'Members are managed by the project lead.': 'اعضا توسط راهبر پروژه مدیریت می‌شوند.',
+        'Group name is required': 'نام گروه الزامی است',
+        'Avatar must be a PNG, JPEG or WebP image': 'عکس باید از نوع PNG، JPEG یا WebP باشد',
+        'Avatar image exceeds the maximum allowed size of 2 MB': 'حجم عکس بیش از حداکثر مجاز (۲ مگابایت) است',
+        'Unable to change the photo.': 'تغییر عکس ممکن نشد.',
+        'Unable to remove the photo.': 'حذف عکس ممکن نشد.',
+        'Unable to rename the group.': 'تغییر نام گروه ممکن نشد.',
+        'Unable to update the member role.': 'به‌روزرسانی نقش عضو ممکن نشد.'
     };
 
     // Translate a UI label to the effective language (English passthrough).
@@ -329,8 +348,92 @@
         projectKey: null,
         projectLeadName: null,
         initiallyUnreadIds: {},
-        unreadSnapshotConversationId: null
+        unreadSnapshotConversationId: null,
+        // Jira Assistant event-type filter (display-only; see ASSISTANT_FILTERS).
+        // Persisted per browser session so the choice survives re-selecting the
+        // Assistant within the page.
+        assistantFilter: (function () {
+            try { return sessionStorage.getItem('jim.assistantFilter') || 'all'; }
+            catch (e) { return 'all'; }
+        })()
     };
+
+    // Guards the "auto-load older while a filtered Assistant category has no
+    // matches on the loaded pages" loop: only re-pull once per new base length.
+    var assistantAutoLoadGuard = -1;
+
+    // Jira Assistant event-type filters. Categories map to the SAME stable
+    // backend event types the mobile/PWA Assistant uses (JimEventType /
+    // JimMessage.getEventType, already present on each message as eventType) —
+    // never fragile title/body text. Only categories that can match real
+    // Assistant feed events are offered: Reports (written to Jira custom fields)
+    // and Overdue/Reminders (push-only) are intentionally NOT filters because
+    // they never produce Assistant cards.
+    var ASSISTANT_FILTERS = [
+        { key: 'all', label: 'All', types: null },
+        { key: 'approvals', label: 'Approvals', types: ['SCHEDULE_APPROVAL', 'SCHEDULE_APPROVAL_APPROVED', 'SCHEDULE_APPROVAL_REJECTED'] },
+        { key: 'mentions', label: 'Mentions', types: ['MENTION'] },
+        { key: 'assignments', label: 'Assignments', types: ['ASSIGNMENT'] },
+        { key: 'comments', label: 'Comments', types: ['COMMENT'] },
+        { key: 'status', label: 'Status', types: ['STATUS_CHANGE'] },
+        { key: 'attachments', label: 'Attachments', types: ['ISSUE_ATTACHMENT'] }
+    ];
+
+    function assistantFilterByKey(key) {
+        for (var i = 0; i < ASSISTANT_FILTERS.length; i++) {
+            if (ASSISTANT_FILTERS[i].key === key) {
+                return ASSISTANT_FILTERS[i];
+            }
+        }
+        return ASSISTANT_FILTERS[0];
+    }
+
+    function assistantMessageMatchesFilter(message, filterKey) {
+        if (!filterKey || filterKey === 'all') {
+            return true;
+        }
+        var f = assistantFilterByKey(filterKey);
+        if (!f.types) {
+            return true;
+        }
+        var et = normalizeEventType(message);
+        for (var i = 0; i < f.types.length; i++) {
+            if (f.types[i] === et) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function setAssistantFilter(key) {
+        var f = assistantFilterByKey(key);
+        if (state.assistantFilter === f.key) {
+            return;
+        }
+        state.assistantFilter = f.key;
+        assistantAutoLoadGuard = -1;
+        try { sessionStorage.setItem('jim.assistantFilter', f.key); } catch (e) {}
+        state.renderedMessagesHtml = null;
+        // Land on the newest matching card, like opening the feed.
+        state.shouldAutoScroll = true;
+        renderMessages();
+    }
+
+    function renderAssistantFilterBar() {
+        var active = state.assistantFilter || 'all';
+        var chips = [];
+        for (var i = 0; i < ASSISTANT_FILTERS.length; i++) {
+            var f = ASSISTANT_FILTERS[i];
+            var isActive = active === f.key;
+            chips.push('<button type="button" class="jim-assistant-filter-chip' +
+                (isActive ? ' jim-assistant-filter-chip-active' : '') +
+                '" data-action="assistant-filter" data-filter="' + escapeHtml(f.key) + '"' +
+                ' aria-pressed="' + (isActive ? 'true' : 'false') + '">' +
+                escapeHtml(t(f.label)) + '</button>');
+        }
+        return '<div class="jim-assistant-filter-bar" role="group" aria-label="' +
+            escapeHtml(t('Filter by type')) + '">' + chips.join('') + '</div>';
+    }
 
     /* Must match the backend whitelist in JimReactionServiceImpl */
     // Curated reaction palette: 10 modern emojis. No heart/love.
@@ -426,6 +529,7 @@
         els.sidebarTabs = document.querySelectorAll('#jim-messenger-app .jim-sidebar-tab');
         els.newGroupButton = document.getElementById('jim-new-group');
         els.membersPanel = document.getElementById('jim-members-panel');
+        els.avatarInput = document.getElementById('jim-avatar-input');
         els.messageInfoModal = document.getElementById('jim-message-info-modal');
         els.messageInfoBody = document.getElementById('jim-message-info-body');
         els.messageInfoClose = document.getElementById('jim-message-info-close');
@@ -2150,8 +2254,11 @@
             : '';
         var actionsHtml = isGroup
             ? '<div class="jim-chat-header-actions">' +
-              '<button id="jim-members-button" type="button" class="jim-header-button' +
-              (state.membersPanelOpen ? ' is-active' : '') + '">Members</button>' +
+              '<button id="jim-members-button" type="button" class="jim-header-button jim-settings-gear' +
+              (state.membersPanelOpen ? ' is-active' : '') + '" title="' + t('Group settings') + '" aria-label="' + t('Group settings') + '">' +
+              '<span class="jim-settings-gear-icon" aria-hidden="true">&#9881;</span>' +
+              '<span class="jim-settings-gear-label">' + t('Settings') + '</span>' +
+              '</button>' +
               '</div>'
             : '';
 
@@ -2227,27 +2334,89 @@
         }
 
         var canManage = !!conversation.canManage;
+        var isOwnerViewer = !!conversation.isOwner;
         var isProjectChat = !!conversation.isProjectChat;
-        var ownerLabel = isProjectChat ? 'Project lead' : 'Owner';
+        var ownerLabel = isProjectChat ? t('Project lead') : t('Owner');
+        var adminLabel = t('Admin');
+
+        // --- Avatar block ----------------------------------------------------
+        var avatarPreview = conversation.avatarUrl
+            ? '<img class="jim-avatar jim-avatar-lg jim-settings-avatar-img" src="' + escapeHtml(conversation.avatarUrl) + '" alt="" />'
+            : '<span class="jim-avatar jim-avatar-lg jim-settings-avatar-img jim-avatar-fallback" style="background:' +
+              avatarColor(conversation.displayName) + '" aria-hidden="true">' + escapeHtml(avatarInitials(conversation.displayName)) + '</span>';
+        var avatarControls = '';
+        if (canManage) {
+            avatarControls = '<div class="jim-settings-avatar-controls">' +
+                '<button type="button" id="jim-avatar-change" class="jim-modal-button">' +
+                (conversation.avatarUrl ? t('Change photo') : t('Upload photo')) + '</button>' +
+                (conversation.avatarUrl
+                    ? '<button type="button" id="jim-avatar-remove" class="jim-modal-button">' + t('Remove photo') + '</button>'
+                    : '') +
+                '</div>' +
+                '<div id="jim-avatar-progress" class="jim-settings-avatar-progress" hidden>' + t('Uploading...') + '</div>' +
+                '<div id="jim-avatar-error" class="jim-inline-error" role="alert" hidden></div>';
+        }
+        var avatarHtml = '<div class="jim-settings-section jim-settings-avatar">' +
+            avatarPreview + avatarControls + '</div>';
+
+        // --- Rename block ----------------------------------------------------
+        var renameHtml = '';
+        if (canManage) {
+            renameHtml = '<div class="jim-settings-section jim-settings-rename">' +
+                '<label class="jim-settings-label" for="jim-rename-input">' +
+                (isProjectChat ? t('Chat name') : t('Group name')) + '</label>' +
+                '<div class="jim-settings-rename-row">' +
+                '<input id="jim-rename-input" class="jim-search-input" type="text" maxlength="120" ' +
+                'value="' + escapeHtml(conversation.displayName || '') + '" />' +
+                '<button type="button" id="jim-rename-save" class="jim-modal-button jim-modal-button-primary">' + t('Save') + '</button>' +
+                '</div>' +
+                '<div id="jim-rename-error" class="jim-inline-error" role="alert" hidden></div>' +
+                '</div>';
+        }
+
+        // --- Members list with admin badges + promote/demote -----------------
         var rows = [];
         for (var i = 0; i < state.groupMembers.length; i++) {
             var member = state.groupMembers[i];
-            var isOwner = member.role === 'OWNER';
-            var removeButton = canManage && !isOwner
+            var role = member.role;
+            var isOwnerMember = role === 'OWNER';
+            var isAdminMember = role === 'ADMIN';
+            var badge = '';
+            if (isOwnerMember) {
+                badge = '<span class="jim-member-role">' + ownerLabel + '</span>';
+            } else if (isAdminMember) {
+                badge = '<span class="jim-member-role jim-member-role-admin">' + adminLabel + '</span>';
+            }
+            // Remove: owner can remove anyone but the owner; an admin (non-owner)
+            // may only remove plain members. Server enforces this regardless.
+            var showRemove = canManage && !isOwnerMember && (isOwnerViewer || !isAdminMember);
+            var removeButton = showRemove
                 ? '<button type="button" class="jim-member-remove" data-member-key="' + escapeHtml(member.userKey) +
-                  '" aria-label="Remove ' + escapeHtml(member.displayName) + '" title="Remove from group">&times;</button>'
+                  '" aria-label="Remove ' + escapeHtml(member.displayName) + '" title="' + t('Remove from group') + '">&times;</button>'
                 : '';
+            // Promote/demote: OWNER only, never on the owner row.
+            var roleButton = '';
+            if (isOwnerViewer && !isOwnerMember) {
+                if (isAdminMember) {
+                    roleButton = '<button type="button" class="jim-member-role-btn" data-role-action="MEMBER" data-member-key="' +
+                        escapeHtml(member.userKey) + '">' + t('Remove admin') + '</button>';
+                } else {
+                    roleButton = '<button type="button" class="jim-member-role-btn" data-role-action="ADMIN" data-member-key="' +
+                        escapeHtml(member.userKey) + '">' + t('Make admin') + '</button>';
+                }
+            }
             rows.push('<div class="jim-member-row">' +
                 renderAvatar(member.avatarUrl, member.displayName, 'jim-avatar-sm') +
                 '<span class="jim-member-name">' + escapeHtml(member.displayName) + '</span>' +
-                (isOwner ? '<span class="jim-member-role">' + ownerLabel + '</span>' : '') +
+                badge +
+                roleButton +
                 removeButton +
                 '</div>');
         }
 
         var addHtml = canManage
             ? '<div class="jim-member-add">' +
-              '<input id="jim-member-add-search" class="jim-search-input" type="search" autocomplete="off" placeholder="Add member..." />' +
+              '<input id="jim-member-add-search" class="jim-search-input" type="search" autocomplete="off" placeholder="' + t('Add member...') + '" />' +
               '<div id="jim-member-add-results" class="jim-search-results jim-member-add-results" hidden role="listbox"></div>' +
               '</div>'
             : '';
@@ -2257,14 +2426,14 @@
             // Project chats cannot be deleted and members cannot leave;
             // only the project lead manages membership.
             footerHtml = '<div class="jim-members-panel-footer">' +
-                '<div class="jim-members-panel-note">Members are managed by the project lead.</div>' +
+                '<div class="jim-members-panel-note">' + t('Members are managed by the project lead.') + '</div>' +
                 '</div>';
         } else {
             var dangerLabel;
-            if (canManage) {
-                dangerLabel = state.confirmGroupDanger ? 'Confirm: delete group?' : 'Delete group';
+            if (isOwnerViewer) {
+                dangerLabel = state.confirmGroupDanger ? t('Confirm: delete group?') : t('Delete group');
             } else {
-                dangerLabel = state.confirmGroupDanger ? 'Confirm: leave group?' : 'Leave group';
+                dangerLabel = state.confirmGroupDanger ? t('Confirm: leave group?') : t('Leave group');
             }
             footerHtml = '<div class="jim-members-panel-footer">' +
                 '<button type="button" id="jim-group-danger" class="jim-member-danger' +
@@ -2273,7 +2442,10 @@
         }
 
         els.membersPanel.innerHTML =
-            '<div class="jim-members-panel-header">Members (' + state.groupMembers.length + ')</div>' +
+            '<div class="jim-members-panel-header">' + (isProjectChat ? t('Project chat settings') : t('Group settings')) + '</div>' +
+            avatarHtml +
+            renameHtml +
+            '<div class="jim-settings-section-label">' + t('Members') + ' (' + state.groupMembers.length + ')</div>' +
             '<div class="jim-members-list">' + rows.join('') + '</div>' +
             addHtml +
             footerHtml;
@@ -2317,6 +2489,168 @@
         if (dangerButton) {
             dangerButton.addEventListener('click', handleGroupDangerAction);
         }
+
+        // Promote / demote (owner only).
+        var roleButtons = els.membersPanel.querySelectorAll('.jim-member-role-btn');
+        for (var r = 0; r < roleButtons.length; r++) {
+            roleButtons[r].addEventListener('click', function (event) {
+                var target = event.currentTarget;
+                setMemberRole(target.getAttribute('data-member-key'), target.getAttribute('data-role-action'));
+            });
+        }
+
+        // Rename (owner/admin).
+        var renameSave = document.getElementById('jim-rename-save');
+        var renameInput = document.getElementById('jim-rename-input');
+        if (renameSave && renameInput) {
+            renameSave.addEventListener('click', function () {
+                submitGroupRename(renameInput.value);
+            });
+            renameInput.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    submitGroupRename(renameInput.value);
+                }
+            });
+        }
+
+        // Avatar change / remove (owner/admin).
+        var avatarChange = document.getElementById('jim-avatar-change');
+        if (avatarChange && els.avatarInput) {
+            avatarChange.addEventListener('click', function () {
+                els.avatarInput.value = '';
+                els.avatarInput.click();
+            });
+        }
+        var avatarRemove = document.getElementById('jim-avatar-remove');
+        if (avatarRemove) {
+            avatarRemove.addEventListener('click', removeConversationAvatar);
+        }
+    }
+
+    function showAvatarError(message) {
+        var box = document.getElementById('jim-avatar-error');
+        if (!box) {
+            return;
+        }
+        if (message) {
+            box.textContent = message;
+            setHidden(box, false);
+        } else {
+            box.textContent = '';
+            setHidden(box, true);
+        }
+    }
+
+    function handleAvatarFileSelected() {
+        if (!els.avatarInput || !els.avatarInput.files || !els.avatarInput.files.length) {
+            return;
+        }
+        var file = els.avatarInput.files[0];
+        els.avatarInput.value = '';
+        var conversationId = state.selectedConversationId;
+        if (!conversationId || !file) {
+            return;
+        }
+        // Client-side guard mirrors the server policy (2 MB, raster types only);
+        // the server re-validates and is the source of truth.
+        if (file.size > 2 * 1024 * 1024) {
+            showAvatarError(t('Avatar image exceeds the maximum allowed size of 2 MB'));
+            return;
+        }
+        var allowed = { 'image/png': 1, 'image/jpeg': 1, 'image/webp': 1 };
+        if (file.type && !allowed[file.type]) {
+            showAvatarError(t('Avatar must be a PNG, JPEG or WebP image'));
+            return;
+        }
+        showAvatarError(null);
+        var progress = document.getElementById('jim-avatar-progress');
+        if (progress) {
+            setHidden(progress, false);
+        }
+        JimApi.uploadConversationAvatar(conversationId, file).then(function () {
+            if (state.selectedConversationId !== conversationId) {
+                return null;
+            }
+            return loadConversations(false);
+        }).then(function () {
+            renderMembersPanel();
+        }).catch(function (error) {
+            logError('uploadConversationAvatar', error);
+            showAvatarError(error && error.message ? error.message : t('Unable to change the photo.'));
+            if (progress) {
+                setHidden(progress, true);
+            }
+        });
+    }
+
+    function removeConversationAvatar() {
+        var conversationId = state.selectedConversationId;
+        if (!conversationId) {
+            return;
+        }
+        showAvatarError(null);
+        JimApi.deleteConversationAvatar(conversationId).then(function () {
+            if (state.selectedConversationId !== conversationId) {
+                return null;
+            }
+            return loadConversations(false);
+        }).then(function () {
+            renderMembersPanel();
+        }).catch(function (error) {
+            logError('deleteConversationAvatar', error);
+            showAvatarError(error && error.message ? error.message : t('Unable to remove the photo.'));
+        });
+    }
+
+    function submitGroupRename(name) {
+        var conversationId = state.selectedConversationId;
+        var trimmed = (name || '').trim();
+        var errorBox = document.getElementById('jim-rename-error');
+        if (!trimmed) {
+            if (errorBox) {
+                errorBox.textContent = t('Group name is required');
+                setHidden(errorBox, false);
+            }
+            return;
+        }
+        if (errorBox) {
+            setHidden(errorBox, true);
+        }
+        JimApi.renameGroup(conversationId, trimmed).then(function () {
+            if (state.selectedConversationId !== conversationId) {
+                return null;
+            }
+            return loadConversations(false);
+        }).then(function () {
+            renderMembersPanel();
+        }).catch(function (error) {
+            logError('renameGroup', error);
+            if (errorBox) {
+                errorBox.textContent = error && error.message ? error.message : t('Unable to rename the group.');
+                setHidden(errorBox, false);
+            }
+        });
+    }
+
+    function setMemberRole(userKey, role) {
+        var conversationId = state.selectedConversationId;
+        if (!conversationId || !userKey) {
+            return;
+        }
+        JimApi.setMemberRole(conversationId, userKey, role).then(function (response) {
+            if (state.selectedConversationId !== conversationId) {
+                return null;
+            }
+            state.groupMembers = response.members || [];
+            renderMembersPanel();
+            return loadConversations(false);
+        }).then(function () {
+            renderMembersPanel();
+        }).catch(function (error) {
+            logError('setMemberRole', error);
+            showError(error && error.message ? error.message : t('Unable to update the member role.'));
+        });
     }
 
     function renderMemberAddResults(container, users) {
@@ -2394,7 +2728,7 @@
         var conversationId = state.selectedConversationId;
         state.confirmGroupDanger = false;
 
-        var action = conversation && conversation.canManage
+        var action = conversation && conversation.isOwner
             ? JimApi.deleteGroup(conversationId)
             : JimApi.removeGroupMember(conversationId, state.currentUserKey);
 
@@ -2592,21 +2926,43 @@
             return false;
         }
         var createdAt = Number(message.createdAt || 0);
-        return createdAt > 0 && (Date.now() - createdAt) <= DELETE_WINDOW_MS;
+        return createdAt > 0 && (serverNow() - createdAt) <= DELETE_WINDOW_MS;
     }
 
     /**
-     * Mirror of the server's edit-window check (30 min). The server is the
-     * source of truth and will reject expired edits with HTTP 403; we also
-     * check on the client so the Edit button disappears immediately when
-     * the window lapses, not only on the next conversation poll.
+     * Server time anchoring: messages responses carry `serverNowMs`. We store
+     * the offset (server - browser) so edit/delete-window countdowns use the
+     * SERVER clock, never the browser wall clock. This makes the Edit button
+     * immune to a skewed/mis-timezoned client machine (the root cause of "can't
+     * edit a message I just sent"). Timezone is irrelevant — all values are
+     * epoch millis.
+     */
+    function captureServerNow(response) {
+        if (response && typeof response.serverNowMs === 'number' && response.serverNowMs > 0) {
+            state.serverTimeSkewMs = response.serverNowMs - Date.now();
+        }
+    }
+    function serverNow() {
+        return Date.now() + (state.serverTimeSkewMs || 0);
+    }
+
+    /**
+     * Edit-window check, anchored to the SERVER clock. Prefers the server's
+     * `editableUntilMs` (createdAt + window, null when not edit-eligible by
+     * type); falls back to createdAt + window. The server is the source of
+     * truth and rejects expired edits with 403; this only lets the Edit button
+     * disappear promptly when the window lapses, without relying on browser
+     * local time.
      */
     function isWithinEditWindow(message) {
         if (!message || message.deleted || !isOwnMessage(message)) {
             return false;
         }
+        if (message.editableUntilMs != null) {
+            return serverNow() <= Number(message.editableUntilMs);
+        }
         var createdAt = Number(message.createdAt || 0);
-        return createdAt > 0 && (Date.now() - createdAt) <= EDIT_WINDOW_MS;
+        return createdAt > 0 && (serverNow() - createdAt) <= EDIT_WINDOW_MS;
     }
 
     function replyPreviewText(message) {
@@ -3482,6 +3838,21 @@
         });
     }
 
+    // Minimal, always-safe Assistant card used when the rich renderer throws on
+    // a single item (missing/odd data). Shows the key facts so the feed survives.
+    function renderSystemFallback(message) {
+        var safeBody = '';
+        try { safeBody = escapeHtml(String((message && (message.body || message.issueKey)) || 'Jira Assistant notification')); } catch (e) { safeBody = 'Jira Assistant notification'; }
+        var t2 = '';
+        try { t2 = escapeHtml(formatMessageTime(message && message.createdAt)); } catch (e) { t2 = ''; }
+        return '<div class="jim-message-row jim-message-row-system">' +
+            '<article class="jim-system-card jim-issue-card jim-system-card-tone-info" data-message-id="' + (message && message.id ? escapeHtml(String(message.id)) : '') + '">' +
+            '<header class="jim-system-card-header"><span class="jim-system-card-lozenge jim-system-card-lozenge-info">NOTICE</span>' +
+            '<span class="jim-system-card-time">' + t2 + '</span></header>' +
+            '<div class="jim-system-card-body"><div class="jim-system-card-text">' + safeBody + '</div></div>' +
+            '</article></div>';
+    }
+
     function renderMessageGroups(messages) {
         var html = [];
         var index = 0;
@@ -3504,7 +3875,14 @@
             }
 
             if (isSystemMessage(message)) {
-                html.push(renderSystemMessage(message));
+                // Resilience: a single malformed Assistant card must never blank
+                // the whole feed. Render a safe fallback for it and continue.
+                try {
+                    html.push(renderSystemMessage(message));
+                } catch (sysErr) {
+                    logError('renderSystemMessage', sysErr);
+                    html.push(renderSystemFallback(message));
+                }
                 index++;
                 continue;
             }
@@ -3951,6 +4329,13 @@
                 return;
             }
 
+            // Jira Assistant event-type filter chip (no message id).
+            if (action === 'assistant-filter') {
+                event.preventDefault();
+                setAssistantFilter(actionEl.getAttribute('data-filter'));
+                return;
+            }
+
             // Sprint 12: selection-toolbar buttons (no message id).
             if (action === 'selection-cancel') {
                 event.preventDefault();
@@ -4166,10 +4551,59 @@
             return;
         }
 
+        // The Jira Assistant (per-user SYSTEM conversation) gets an event-type
+        // filter bar. Filtering is display-only: it narrows which already
+        // permission-gated cards are shown and never touches unread counts,
+        // seen/actioned state or the underlying message set.
+        var isSystem = !!(state.selectedConversation && isSystemConversation(state.selectedConversation));
+        var filterKey = isSystem ? (state.assistantFilter || 'all') : 'all';
+        var filterBarHtml = isSystem ? renderAssistantFilterBar() : '';
+
         if (!state.messages.length) {
             state.renderedMessagesHtml = null;
             els.messageList.innerHTML =
-                '<div class="jim-message-list-inner"><div class="jim-empty-state">No messages yet. Start the conversation.</div></div>';
+                '<div class="jim-message-list-inner">' + filterBarHtml +
+                '<div class="jim-empty-state">' +
+                escapeHtml(t('No messages yet. Start the conversation.')) +
+                '</div></div>';
+            return;
+        }
+
+        var messagesToRender = state.messages;
+        if (isSystem && filterKey !== 'all') {
+            messagesToRender = [];
+            for (var mi = 0; mi < state.messages.length; mi++) {
+                if (assistantMessageMatchesFilter(state.messages[mi], filterKey)) {
+                    messagesToRender.push(state.messages[mi]);
+                }
+            }
+        }
+
+        // Filtered category has no matches on the loaded pages. If older pages
+        // exist, keep pulling them so a category whose cards live further back
+        // still surfaces (guarded so it stops once exhausted); otherwise show a
+        // clear, filter-aware empty state with a shortcut back to All.
+        if (isSystem && filterKey !== 'all' && !messagesToRender.length) {
+            if (state.hasMoreOlder && !state.loadingOlder
+                    && assistantAutoLoadGuard !== state.messages.length) {
+                assistantAutoLoadGuard = state.messages.length;
+                els.messageList.innerHTML =
+                    '<div class="jim-message-list-inner">' + filterBarHtml +
+                    '<div class="jim-empty-state">' +
+                    escapeHtml(t('Loading older messages\u2026')) +
+                    '</div></div>';
+                state.renderedMessagesHtml = null;
+                loadOlderMessages();
+                return;
+            }
+            var emptyHtml = '<div class="jim-message-list-inner">' + filterBarHtml +
+                '<div class="jim-empty-state jim-assistant-filter-empty">' +
+                escapeHtml(t('No messages in this category.')) +
+                ' <button type="button" class="jim-assistant-filter-showall" ' +
+                'data-action="assistant-filter" data-filter="all">' +
+                escapeHtml(t('Show all')) + '</button></div></div>';
+            els.messageList.innerHTML = emptyHtml;
+            state.renderedMessagesHtml = emptyHtml;
             return;
         }
 
@@ -4183,7 +4617,7 @@
               '</button>' +
               '</div>'
             : '';
-        var html = '<div class="jim-message-list-inner">' + renderSelectionToolbarHtml() + loadOlderHtml + renderMessageGroups(state.messages) + '</div>';
+        var html = '<div class="jim-message-list-inner">' + filterBarHtml + renderSelectionToolbarHtml() + loadOlderHtml + renderMessageGroups(messagesToRender) + '</div>';
         if (html !== state.renderedMessagesHtml) {
             var savedAudio = captureAudioPlayback();
             els.messageList.innerHTML = html;
@@ -4318,11 +4752,6 @@
     // 'Load older messages' button or by scrolling to the top.
     var INITIAL_MESSAGES_LIMIT = 30;
     var OLDER_PAGE_SIZE = 50;
-    // First open loads the recent ~10-day window (capped) so the chat opens
-    // with meaningful history; older messages then load on scroll. Polls keep
-    // using the small recent fetch so we never re-stream the backlog.
-    var INITIAL_SINCE_DAYS = 10;
-    var INITIAL_WINDOW_CAP = 300;
 
     /**
      * Merges existing messages with a newly-fetched batch by id.
@@ -4432,28 +4861,23 @@
             renderLoadingState(els.messageList, 'Loading messages...');
         }
 
-        // First open of this conversation → recent 10-day window; subsequent
-        // polls → small recent fetch (merged) so we don't re-stream history.
-        var firstOpen = state.unreadSnapshotConversationId !== conversationId;
-        var listPromise = firstOpen
-            ? JimApi.listMessages(conversationId, INITIAL_WINDOW_CAP, null,
-                  Date.now() - INITIAL_SINCE_DAYS * 86400000)
-            : JimApi.listMessages(conversationId, INITIAL_MESSAGES_LIMIT, null);
-        return listPromise.then(function (response) {
+        return JimApi.listMessages(conversationId, INITIAL_MESSAGES_LIMIT, null).then(function (response) {
             if (state.selectedConversationId !== conversationId) {
                 return;
             }
             var fresh = response.messages || [];
+            captureServerNow(response);
             // Sprint 12 polish: other participants' ephemeral activity (TTL).
             state.activities = response.activities || [];
             renderActivityIndicator();
             // First-load / poll-refresh: MERGE so any older messages the
             // user has already lazy-loaded stay on screen across polls.
             state.messages = mergeMessages(state.messages, fresh);
-            // Authoritative "older exists" flag from the server (works even when
-            // the 10-day window returned fewer than a page).
+            // If the very first server response is short of a full page,
+            // there are no older messages to fetch - hide the Load older
+            // button.
             if (state.unreadSnapshotConversationId !== conversationId) {
-                state.hasMoreOlder = response.hasOlder === true;
+                state.hasMoreOlder = fresh.length >= INITIAL_MESSAGES_LIMIT;
                 state.loadingOlder = false;
                 // Snapshot which messages were unread when the conversation was opened,
                 // so "NEW" markers stay visible after the read state syncs.
@@ -4528,6 +4952,7 @@
                 return;
             }
             var batch = response.messages || [];
+            captureServerNow(response);
             if (batch.length < OLDER_PAGE_SIZE) {
                 state.hasMoreOlder = false;
             }
@@ -4669,6 +5094,8 @@
         state.hasMoreOlder = true;
         state.loadingOlder = false;
         state.unreadSnapshotConversationId = null;
+        // Reset the Assistant filter auto-load-older guard for the new feed.
+        assistantAutoLoadGuard = -1;
         cancelVoiceRecording();
         clearSelectedFile();
         clearSelectedIssue();
@@ -5489,6 +5916,9 @@
                 els.fileInput.click();
             });
             els.fileInput.addEventListener('change', onFileInputChange);
+        }
+        if (els.avatarInput) {
+            els.avatarInput.addEventListener('change', handleAvatarFileSelected);
         }
         // Per-chip remove buttons are delegated through the selected-attachment
         // container so they keep working after each re-render.

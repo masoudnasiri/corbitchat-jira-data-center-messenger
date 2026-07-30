@@ -1,6 +1,6 @@
 # Onboarding Prompt — new agent for CorbitChat + Hub
 
-> Updated 2026-07-04. Paste the block below verbatim as the FIRST message of
+> Updated 2026-07-05. Paste the block below verbatim as the FIRST message of
 > a new agent session in this workspace. It stays short on purpose: the
 > referenced documents carry the full detail and are kept current.
 
@@ -9,10 +9,12 @@
 You are taking over two live, related products in this workspace:
 
 - **CorbitChat** — a Jira Data Center 9.17.x messenger plugin
-  (`/root/jira-dev/jira-issue-chat-panel`), deployed on a dev/test server
-  and a REAL production server.
+  (`/root/jira-dev/jira-issue-chat-panel`), plugin `1.0.0-mobile-s11-fix3`,
+  deployed on a dev/test server and a REAL production server.
 - **Hub** — its Flutter mobile client
-  (`/root/jira-dev/corbitchat-mobile`), currently `1.0.0+17` / `s08-fix3`.
+  (`/root/jira-dev/corbitchat-mobile`), currently `1.0.0+26` / `s11.4-uipolish`.
+  It ships in **two brand flavors from one codebase**: standard **Hub** and a
+  customer-branded **7G TECH** build.
 
 # Documents to read, in this order, before doing anything
 
@@ -45,20 +47,25 @@ phases.
   board gallery, date correctness, board nav, feature access),
   `sprint-05-mobile-push.md` + `sprint-05b-rich-push.md`
   (+ `sprint-05-push-notifications.md`), `sprint-06-rich-chat.md`,
-  `sprint-07-attachments-voice.md`, `sprint-08-group-project-assistant.md`.
+  `sprint-07-attachments-voice.md`, `sprint-08-group-project-assistant.md`,
+  `sprint-09-comments-replies.md` (+Fix-1), `sprint-10-transitions-worklog-fieldrules.md`,
+  `sprint-11-boards.md` (+Fix-1/Fix-3 — real board lanes with empty lanes,
+  drag-to-transition, project workspace tabs, inline project chat).
+  Two efforts have **no dedicated sprint guide** — see
+  `docs/handover-agent-current-state.md` §9/§11 for the record:
+  the **7G TECH branded build variant** (Android product flavors +
+  `--dart-define=BRAND`) and **Sprint 11.4 mobile UX polish** (semantic
+  design tokens, shared `StatusBadge`/`PriorityBadge`/`KeyChip`, title-first
+  cards, operational issue-detail header, prioritized action sheet).
   Reality vs plan differs in places — trust
-  `docs/handover-agent-current-state.md` §9 for what actually shipped
-  (e.g. Sprint 08 also delivered chat filters, an inline emoji panel,
-  attachment forwarding, and group/project push fan-out via Fix-1..3).
+  `docs/handover-agent-current-state.md` §9 for what actually shipped.
 - **Not built yet** (the upcoming work, in order):
-  - `sprint-09-comments-replies.md` — issue comments + reply-to-comment.
-  - `sprint-10-transitions-worklog-fieldrules.md` — workflow transitions,
-    worklog, server-driven field rules.
-  - `sprint-11-boards.md` — full Scrum/Kanban board views.
   - `sprint-12-productivity-deeplinks-biometrics.md` — deep links,
     biometric unlock, productivity polish.
   - `sprint-13-hardening-security.md` — security/hardening pass.
   - `sprint-14-release-qa.md` — release QA.
+  - Also flagged for later: PWA work, and a recommended (not yet done)
+    bottom-nav reorder (Dashboard · Tasks · Boards · Chat · More).
 
 Supporting specs referenced by the guides: the product/technical PDF and
 design system under `docs/Mobile Design System/`, `docs/architecture.md`
@@ -80,19 +87,25 @@ design system under `docs/Mobile Design System/`, `docs/architecture.md`
   owner: finish every task with exact device test steps, versions,
   deployment status, and remaining risks.
 - Commit only when the owner accepts a sprint; never commit APKs, jars,
-  `dist/`, or secrets. GitHub pushes are currently blocked (no credential
-  on this host) — report it, don't work around it silently.
+  `dist/`, `releases/`, or secrets. GitHub pushes now work when the owner
+  supplies a Personal Access Token (classic); use it inline via a transient
+  credential helper, never persist it to disk, and remind the owner to
+  rotate it afterwards. The plugin remote was renamed on GitHub to
+  `corbitchat-jira-data-center-messenger` (old `corbitchatforjira` URL still
+  redirects). Both repos are currently pushed and in sync with origin.
 - Keep web and mobile behavior consistent; the plugin's web surface and
   shared services are the specification.
 
 # Your first actions now
 
 1. Read documents 1–4 above fully; skim the delivered sprint guides and
-   read `sprint-09-comments-replies.md` (the next planned sprint).
+   read `sprint-12-productivity-deeplinks-biometrics.md` (the next planned
+   sprint).
 2. Run the smoke check (current-state doc §7) against dev and prod and
-   confirm both report plugin `1.0.0-mobile-s08-fix3`.
+   confirm both report plugin `1.0.0-mobile-s11-fix3`.
 3. Report preflight status (git state of both repos, app/plugin versions)
-   and ask the owner for the current priority — closure commits for
-   Sprint 08 (+Fix-1..3) if accepted on-device, otherwise the next task.
+   and ask the owner for the current priority. Note: a temporary APK download
+   endpoint (`/apk/` on `jira.corbitlogic.com`, plus staged files) may still
+   be live from mobile build hand-offs — offer to tear it down.
 
 ----- PROMPT END -----

@@ -126,5 +126,66 @@ extends Entity {
 
     @Mutator(value="ARCHIVED_BY_USER_KEY")
     public void setArchivedByUserKey(String var1);
+
+    /**
+     * Group/Project custom chat avatar (Phase 1 — group admin & avatars).
+     * All columns are additive and nullable so Active Objects migrates them
+     * automatically on existing rows; a null {@code avatarStoragePath} means
+     * "no custom avatar" and the client falls back to initials/glyph. The
+     * stored file lives under {JiraHome}/data/corbitchat/avatars/{id}/; only
+     * metadata is kept here — never the bytes.
+     */
+    @StringLength(value=450)
+    @Accessor(value="AVATAR_STORAGE_PATH")
+    public String getAvatarStoragePath();
+
+    @Mutator(value="AVATAR_STORAGE_PATH")
+    public void setAvatarStoragePath(String var1);
+
+    @StringLength(value=100)
+    @Accessor(value="AVATAR_CONTENT_TYPE")
+    public String getAvatarContentType();
+
+    @Mutator(value="AVATAR_CONTENT_TYPE")
+    public void setAvatarContentType(String var1);
+
+    @Accessor(value="AVATAR_SIZE")
+    public Long getAvatarSize();
+
+    @Mutator(value="AVATAR_SIZE")
+    public void setAvatarSize(Long var1);
+
+    @StringLength(value=128)
+    @Accessor(value="AVATAR_CHECKSUM")
+    public String getAvatarChecksum();
+
+    @Mutator(value="AVATAR_CHECKSUM")
+    public void setAvatarChecksum(String var1);
+
+    @StringLength(value=255)
+    @Accessor(value="AVATAR_FILENAME")
+    public String getAvatarFilename();
+
+    @Mutator(value="AVATAR_FILENAME")
+    public void setAvatarFilename(String var1);
+
+    @Accessor(value="AVATAR_UPDATED_AT")
+    public Long getAvatarUpdatedAt();
+
+    @Mutator(value="AVATAR_UPDATED_AT")
+    public void setAvatarUpdatedAt(Long var1);
+
+    @StringLength(value=255)
+    @Accessor(value="AVATAR_UPDATED_BY_USER_KEY")
+    public String getAvatarUpdatedByUserKey();
+
+    @Mutator(value="AVATAR_UPDATED_BY_USER_KEY")
+    public void setAvatarUpdatedByUserKey(String var1);
+
+    @Accessor(value="AVATAR_VERSION")
+    public Long getAvatarVersion();
+
+    @Mutator(value="AVATAR_VERSION")
+    public void setAvatarVersion(Long var1);
 }
 

@@ -1,8 +1,9 @@
 # Comprehensive Handover Prompt — CorbitChat plugin + Hub mobile app
 
-> Updated 2026-07-04. The original version of this file predates the mobile
-> app; the app now EXISTS (Flutter, Sprint 08 Fix-3 shipped to dev+prod), so
-> this prompt onboards an agent onto the LIVE project, not a greenfield one.
+> Updated 2026-07-05. The original version of this file predates the mobile
+> app; the app now EXISTS (Flutter, through Sprint 11 + Sprint 11.4 UI polish
+> shipped/accepted), so this prompt onboards an agent onto the LIVE project,
+> not a greenfield one.
 
 The new agent has **direct access to this codebase**. Copy the block between
 `----- PROMPT BEGIN -----` and `----- PROMPT END -----` verbatim into the
@@ -18,11 +19,14 @@ file, this prompt references documents instead of inlining them.
 You are the engineering agent for **CorbitChat** (a Jira Data Center 9.17.x
 messenger plugin) and **Hub** (its Flutter mobile client, repo name
 "corbitchat-mobile"). Both are live products: the plugin runs on a dev/test
-server and a REAL production server; the app is at version `1.0.0+17`
-(`s08-fix3`) with direct/group/project chat, mentions, Jira Assistant,
-attachments (image/file/video/voice/contact/location), forwarding, boards,
-dashboards, push, and branding all working. You continue development,
-fix defects, and run deployments — you do not start from scratch.
+server and a REAL production server; the app is at version `1.0.0+26`
+(`s11.4-uipolish`) with direct/group/project chat, mentions, Jira Assistant,
+attachments (image/file/video/voice/contact/location), forwarding, dashboards,
+push, branding, issue comments/replies, workflow transitions/worklog/edit/
+assign/watch, and full boards (real lanes + drag-to-transition) all working.
+The app also builds in two brand flavors (standard **Hub** and customer
+**7G TECH**) from one codebase. You continue development, fix defects, and run
+deployments — you do not start from scratch.
 
 # Read these first, in this exact order
 
@@ -39,7 +43,8 @@ fix defects, and run deployments — you do not start from scratch.
    `corbit-prod`, backup → single-jar install → restart → smoke). Production
    deploys happen ONLY with explicit owner approval, never same-version.
 4. **`docs/mobile-roadmap/README.md`** + the sprint docs — where the
-   product is heading (Sprints 09–14 are planned but not built).
+   product is heading (Sprints 09–11 are DONE; Sprints 12–14 are planned but
+   not built; PWA work is also flagged as upcoming).
 5. Reference implementations when matching web behavior:
    `src/main/resources/js/jim-messenger.js` (web chat UX),
    `src/main/java/.../mobile/rest/*` (the BFF), and the mobile app under
@@ -61,9 +66,10 @@ fix defects, and run deployments — you do not start from scratch.
   Physical-device checks (camera/mic/push/share) are the owner's step —
   list exact test steps in your report.
 - Commit only when the owner accepts a sprint (sprint-per-commit,
-  `feat(scope): Sprint NN — summary`); never commit `dist/`, APKs, jars, or
-  secrets. Pushing currently requires a GitHub credential the host lacks —
-  surface this, don't hide it.
+  `feat(scope): Sprint NN — summary`); never commit `dist/`, `releases/`,
+  APKs, jars, or secrets. Pushing uses an owner-supplied classic PAT via a
+  transient credential helper (never persisted); remind the owner to rotate
+  it after. Both repos are currently pushed and in sync with origin.
 - Every report ends with: what changed, versions/artifacts, deployment
   status, tests performed, remaining risks, and exact device test steps.
 
@@ -72,17 +78,19 @@ fix defects, and run deployments — you do not start from scratch.
 - Dev/test: `https://jira.corbitlogic.com` (local Docker `jira-srv`).
 - Production: `https://jira.7gtech.net` (SSH `corbit-prod`) — REAL users;
   boots can take 5–25 minutes after restart, poll patiently.
-- Both currently run plugin `1.0.0-mobile-s08-fix3`.
+- Both currently run plugin `1.0.0-mobile-s11-fix3`.
 
 # Your first actions
 
 1. Read the four documents above, fully.
 2. Run the smoke check from `docs/handover-agent-current-state.md` §7
-   against dev AND prod; confirm both report `1.0.0-mobile-s08-fix3`.
-3. Report the preflight state (git status of both repos, versions) to the
-   owner and ask whether Sprint 08 (+Fix-1..3) is accepted on-device; if
-   yes, perform the closure commits described in the current-state doc §10.
-4. Only then take on the next task the owner gives you.
+   against dev AND prod; confirm both report `1.0.0-mobile-s11-fix3`.
+3. Report the preflight state (git status of both repos — currently pushed &
+   in sync, versions) to the owner. Check whether the temporary `/apk/`
+   download endpoint (current-state §4) is still live and offer to tear it
+   down.
+4. Ask the owner for the current priority (next planned: Sprint 12; PWA also
+   flagged), then take on the task.
 
 ----- PROMPT END -----
 

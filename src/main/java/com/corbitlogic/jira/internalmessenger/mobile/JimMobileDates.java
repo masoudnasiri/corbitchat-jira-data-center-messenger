@@ -188,6 +188,16 @@ public final class JimMobileDates {
      */
     public static CustomField findProposedCompletionField() {
         try {
+            // Highest priority: the admin-configured id for this environment, then
+            // the production fallback id (both type-guarded). This makes the
+            // proposed-completion field environment-independent like the rest of
+            // the approval workflow. Falls through to the legacy name match below
+            // so instances that only have the field by name still resolve.
+            CustomField byConfig = com.corbitlogic.jira.internalmessenger.schedule.JimApprovalFields
+                    .resolve(com.corbitlogic.jira.internalmessenger.schedule.JimApprovalFields.Key.PROPOSED_DATE);
+            if (byConfig != null) {
+                return byConfig;
+            }
             CustomFieldManager cfm = ComponentAccessor.getCustomFieldManager();
             if (cfm == null) {
                 return null;

@@ -75,13 +75,10 @@
             return request('POST', '/conversations/direct', { targetUserKey: targetUserKey });
         },
 
-        listMessages: function (conversationId, limit, beforeMessageId, since) {
+        listMessages: function (conversationId, limit, beforeMessageId) {
             var query = '?limit=' + encodeURIComponent(limit || 50);
             if (beforeMessageId) {
                 query += '&beforeMessageId=' + encodeURIComponent(beforeMessageId);
-            }
-            if (since) {
-                query += '&since=' + encodeURIComponent(since);
             }
             return request('GET', '/conversations/' + conversationId + '/messages' + query);
         },
@@ -212,6 +209,70 @@
 
         removeGroupMember: function (conversationId, userKey) {
             return request('DELETE', '/groups/' + conversationId + '/members/' + encodeURIComponent(userKey));
+        },
+
+        // Phase 1 (group admin & avatars): promote/demote a member (owner only).
+        setMemberRole: function (conversationId, userKey, role) {
+            return request('POST', '/groups/' + conversationId + '/members/' + encodeURIComponent(userKey) + '/role', { role: role });
+        },
+
+        // Rename a group/project chat (owner/admin).
+        renameGroup: function (conversationId, name) {
+            return request('POST', '/groups/' + conversationId + '/rename', { name: name });
+        },
+
+        // Reset (remove) the group/project custom avatar (owner/admin).
+        deleteConversationAvatar: function (conversationId) {
+            return request('DELETE', '/conversations/' + conversationId + '/avatar');
+        },
+
+        // Upload a group/project custom avatar (owner/admin). Multipart, mirrors
+        // uploadAttachment: no JSON Content-Type so the browser sets the boundary.
+        uploadConversationAvatar: function (conversationId, file) {
+            var formData = new FormData();
+            formData.append('file', file);
+
+            return fetch(apiBase() + '/conversations/' + conversationId + '/avatar', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Atlassian-Token': 'no-check'
+                },
+                body: formData
+            }).then(function (response) {
+                return response.text().then(function (text) {
+                    var payload = null;
+                    if (text) {
+                        try {
+                            payload = JSON.parse(text);
+                        } catch (parseError) {
+                            var htmlError = new Error('The server returned an unexpected response. Please refresh and try again.');
+                            htmlError.status = response.status;
+                            htmlError.nonJson = true;
+                            throw htmlError;
+                        }
+                    }
+
+                    if (!response.ok) {
+                        var message = 'Upload failed';
+                        if (response.status === 401 || response.status === 403) {
+                            message = 'You do not have permission to change this photo.';
+                        } else if (payload) {
+                            if (payload.message) {
+                                message = payload.message;
+                            } else if (payload.error) {
+                                message = payload.error;
+                            }
+                        }
+                        var error = new Error(message);
+                        error.status = response.status;
+                        error.payload = payload;
+                        throw error;
+                    }
+                    return payload;
+                });
+            });
         },
 
         uploadAttachment: function (conversationId, file, body) {

@@ -2,7 +2,6 @@ package com.corbitlogic.jira.internalmessenger.schedule;
 
 import com.atlassian.jira.component.ComponentAccessor;
 import com.atlassian.jira.event.type.EventDispatchOption;
-import com.atlassian.jira.issue.CustomFieldManager;
 import com.atlassian.jira.issue.Issue;
 import com.atlassian.jira.issue.MutableIssue;
 import com.atlassian.jira.issue.customfields.manager.OptionsManager;
@@ -13,6 +12,8 @@ import com.atlassian.jira.issue.fields.config.FieldConfig;
 import com.atlassian.jira.user.ApplicationUser;
 import com.corbitlogic.jira.internalmessenger.mobile.JimMobileDates;
 import java.util.Date;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,10 +38,16 @@ import org.slf4j.LoggerFactory;
 public final class JimScheduleApprovalConfig {
     private static final Logger log = LoggerFactory.getLogger(JimScheduleApprovalConfig.class);
 
-    public static final String APPROVER_FIELD_ID = "customfield_11305";
-    public static final String STATUS_FIELD_ID = "customfield_11503";
-    public static final String REASON_FIELD_ID = "customfield_11502";
-    public static final String APPROVED_DATE_FIELD_ID = "customfield_11501";
+    /**
+     * Production fallback ids. Retained for reference only — resolution now runs
+     * through {@link JimApprovalFields} (admin-configured id → these production
+     * fallbacks → notConfigured), so DEV/Server-2 work once fields are mapped or
+     * provisioned there.
+     */
+    public static final String APPROVER_FIELD_ID = JimApprovalFields.PRODUCTION_FALLBACK.get(JimApprovalFields.Key.APPROVER);
+    public static final String STATUS_FIELD_ID = JimApprovalFields.PRODUCTION_FALLBACK.get(JimApprovalFields.Key.STATUS);
+    public static final String REASON_FIELD_ID = JimApprovalFields.PRODUCTION_FALLBACK.get(JimApprovalFields.Key.REJECTION_REASON);
+    public static final String APPROVED_DATE_FIELD_ID = JimApprovalFields.PRODUCTION_FALLBACK.get(JimApprovalFields.Key.APPROVED_DATE);
 
     public static final String STATUS_APPROVED = "Approved";
     public static final String STATUS_PENDING = "Pending";
@@ -79,40 +86,19 @@ public final class JimScheduleApprovalConfig {
     // --- Field resolution (id + type guard) ----------------------------------
 
     public static CustomField resolveApproverField() {
-        return fieldOfType(APPROVER_FIELD_ID, "userpicker");
+        return JimApprovalFields.resolve(JimApprovalFields.Key.APPROVER);
     }
 
     static CustomField resolveStatusField() {
-        return fieldOfType(STATUS_FIELD_ID, "select");
+        return JimApprovalFields.resolve(JimApprovalFields.Key.STATUS);
     }
 
     static CustomField resolveReasonField() {
-        CustomField cf = fieldOfType(REASON_FIELD_ID, "textarea");
-        return cf != null ? cf : fieldOfType(REASON_FIELD_ID, "textfield");
+        return JimApprovalFields.resolve(JimApprovalFields.Key.REJECTION_REASON);
     }
 
     static CustomField resolveApprovedDateField() {
-        CustomField cf = fieldOfType(APPROVED_DATE_FIELD_ID, "datepicker");
-        return cf != null ? cf : fieldOfType(APPROVED_DATE_FIELD_ID, "datetime");
-    }
-
-    private static CustomField fieldOfType(String id, String typeKeySubstring) {
-        try {
-            CustomFieldManager cfm = ComponentAccessor.getCustomFieldManager();
-            if (cfm == null) {
-                return null;
-            }
-            CustomField cf = cfm.getCustomFieldObject(id);
-            if (cf == null || cf.getCustomFieldType() == null) {
-                return null;
-            }
-            String key = cf.getCustomFieldType().getKey();
-            if (key != null && key.toLowerCase().contains(typeKeySubstring)) {
-                return cf;
-            }
-        } catch (Throwable ignored) {
-        }
-        return null;
+        return JimApprovalFields.resolve(JimApprovalFields.Key.APPROVED_DATE);
     }
 
     // --- Reads ----------------------------------------------------------------
@@ -134,6 +120,26 @@ public final class JimScheduleApprovalConfig {
 
     public static Date getProposedDate(Issue issue) {
         CustomField cf = JimMobileDates.findProposedCompletionField();
+        if (cf == null || issue == null) {
+            return null;
+        }
+        try {
+            Object value = cf.getValue(issue);
+            if (value instanceof Date) {
+                return (Date) value;
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    /**
+     * Value of the Approved Completion Date field ({@link #APPROVED_DATE_FIELD_ID}),
+     * or null when unset/unconfigured. Used by the report engine's effective-
+     * deadline resolver as a fallback when the system Due Date is absent.
+     */
+    public static Date getApprovedDate(Issue issue) {
+        CustomField cf = resolveApprovedDateField();
         if (cf == null || issue == null) {
             return null;
         }
@@ -178,6 +184,65 @@ public final class JimScheduleApprovalConfig {
         } catch (Throwable ignored) {
         }
         return null;
+    }
+
+    /** JQL clause for the status field, e.g. {@code cf[11503]}; null if unconfigured. */
+    public static String statusFieldJql() {
+        CustomField cf = resolveStatusField();
+        return cf != null ? "cf[" + cf.getIdAsLong() + "]" : null;
+    }
+
+    /** JQL clause for the approver field, e.g. {@code cf[11305]}; null if unconfigured. */
+    public static String approverFieldJql() {
+        CustomField cf = resolveApproverField();
+        return cf != null ? "cf[" + cf.getIdAsLong() + "]" : null;
+    }
+
+    /**
+     * Null-safe search-item projection of the approval state for an issue, or
+     * {@code null} when the fields are not configured on this instance or the
+     * issue has no approval status set. Backward-compatible: callers put this
+     * under {@code scheduleApproval} and it is simply absent/null otherwise.
+     */
+    public static Map<String, Object> projection(Issue issue, ApplicationUser viewer) {
+        if (issue == null || !isConfigured()) {
+            return null;
+        }
+        String status = getStatusValue(issue);
+        if (status == null || status.trim().isEmpty()) {
+            return null;
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("status", status);
+        String reason = getRejectionReason(issue);
+        m.put("reason", reason);
+        ApplicationUser approver = null;
+        CustomField approverCf = resolveApproverField();
+        if (approverCf != null) {
+            try {
+                Object v = issue.getCustomFieldValue(approverCf);
+                if (v instanceof ApplicationUser) {
+                    approver = (ApplicationUser) v;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        m.put("approverName", approver != null ? approver.getDisplayName() : null);
+        ApplicationUser reporter = issue.getReporter();
+        m.put("requesterName", reporter != null ? reporter.getDisplayName() : null);
+        String resultType = STATUS_APPROVED.equalsIgnoreCase(status) ? "approved"
+                : (STATUS_REJECTED.equalsIgnoreCase(status) ? "rejected" : null);
+        m.put("resultType", resultType);
+        // No dedicated decision-time field exists; use the issue's last-updated
+        // time as a best-effort decision timestamp once a decision was recorded.
+        m.put("decidedAt",
+                (resultType != null && issue.getUpdated() != null) ? issue.getUpdated().getTime() : null);
+        m.put("isApprover", approver != null && viewer != null
+                && approver.getKey() != null && approver.getKey().equals(viewer.getKey()));
+        Date proposed = getProposedDate(issue);
+        m.put("proposedDateYmd",
+                proposed != null ? JimMobileDates.toYmd(new java.sql.Timestamp(proposed.getTime())) : null);
+        return m;
     }
 
     public static boolean isPending(Issue issue) {

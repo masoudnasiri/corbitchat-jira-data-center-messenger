@@ -4,14 +4,100 @@ Audience: the agent (or engineer) deploying a new CorbitChat plugin
 release to the **production** Jira server at `193.162.129.56`.
 
 This runbook is specific to the real production topology (verified
-2026-07-02, re-verified 2026-07-04 after the `1.0.0-mobile-s08-fix3`
+2026-07-02, re-verified after the `1.0.0-mobile-s11-fix3`
 deploy). It is different from the dev recipe in `AGENTS.md`
 only in that it adds backup + smoke-test + rollback steps; the
 underlying install mechanism is the same because production runs
 the same single-container Docker layout as dev.
 
-> **Current production plugin version: `1.0.0-mobile-s08-fix3`**
-> (deployed 2026-07-04). Bump past it for the next release.
+> **Current production plugin version: `1.0.0-s12e-reportscope1`.**
+> (Deployed 2026-07-29 via Path B — Phase 2 of the Report Applicability Policy.
+> Adds the compute-level applicability gate + admin settings + read-only impact
+> endpoint (`GET /rest/jim/1.0/admin/report-applicability/impact`). Shipped with
+> the policy **DISABLED** (`reportApplicabilityEnabled=false`) — no behaviour
+> change vs approvalfields4. NO provisioning, NO mapping change, NO ledger
+> refresh, NO settings enablement. Approval resolver still uses fallback IDs
+> (usingFallback=true, configuredFieldId=null). Verified: mobile/health version,
+> all 4 health endpoints 200, statusCounts, issues/reports, all 6 issue filters
+> (assigned/today/overdue/followup/awaiting/rejected), Assistant feed 200,
+> approval-field diagnostics unchanged, report queue depth 0. Jar sha256
+> `b3aa7fc3510731dc55c4501683d3d6402771800ef996bf57eedefc376e51c5ac`.
+> DB backup: `/root/jira-backups/jira-db-20260729-165852.sql`.
+> Rollback jar (approvalfields4):
+> `/root/jira-backups/installed-plugins-20260729-165852/corbitchat-jira-dc-1.0.0-s12e-approvalfields4.jar`.)
+> Previous marker below (`1.0.0-s12e-approvalfields4`) retained for history:
+> (Deployed 2026-07-28 via Path B, code-only rollout of the safe custom-field
+> provisioning / environment-specific approval-field resolver. NO Production
+> provisioning was executed and NO Production mapping was changed — Production
+> keeps resolving all 5 approval fields via the hardcoded fallback IDs
+> (status cf_11503, approver cf_11305, proposed cf_11309, approved cf_11501,
+> reason cf_11502). Diagnostics confirm all 5 `exists/typeOk/optionsOk=true`,
+> `usingFallback=true`, `configuredFieldId=null`; custom-field count unchanged
+> at 131. Admin provisioning/mapping endpoints exist but are SYSTEM_ADMIN-gated
+> and were not invoked. Rollback jar: `assistant-filters1` in
+> `/root/jira-backups/installed-plugins-20260728-135838/`.)
+> Previous marker below (`1.0.0-s12e-report5`) retained for history:
+> (Deployed 2026-07-19 via Path B. Cumulative over `usersearchfix1`. Two fixes:
+> (1) report lifecycle — a due-based CLOSED issue now auto-reopens when the
+> effective deadline is extended into the future (PM-79 was stuck "deadline
+> ended" after its due moved 07-15→07-20); added an effective-deadline resolver
+> (system Due → Approved cf_11501 → Proposed cf_11309, never First Report).
+> (2) Report tab web UI — the `jim-report-resources` web-resource now binds to
+> `jira.view.issue` + `jira.navigator` contexts (was context-less, so the
+> ajax-loaded tab JS never loaded → blank until refresh, and never in the Issue
+> Navigator); JS init switched to `JIRA.Events.NEW_CONTENT_ADDED` + per-issue-key
+> re-init (no stale data on navigator switch) + Retry error state. Verified on
+> prod: PM-79 ACTIVE/submitActive; report JS present in View-Issue and Navigator
+> batches; user-search fix intact. Rollback jar: `usersearchfix1` in
+> `/root/jira-backups/installed-plugins-20260719-183941/`.)
+> Previous marker below (`1.0.0-s12e-usersearchfix1`) retained for history:
+> (Deployed 2026-07-18 via Path B as a P0 hotfix: chat user-search /
+> member-picker filters were hiding the *configured reviewer user*
+> (`m.nasiri`, a real person) because they called `isReviewerUserKey`. Added a
+> narrow `isHiddenSystemAccountUser*` predicate that hides ONLY the dedicated
+> hidden account `pluginuser`, and pointed `JimUserSearchServiceImpl`,
+> `JimGroupServiceImpl.requireNotReviewer`, and `JimRestJsonMapper` member-list
+> at it. Verified on prod: search `masoud`/`nasiri`/`m.nasiri` now returns
+> `m.nasiri`; `pluginuser` stays hidden. Rollback jar: `s12e-groupadmin-avatar1`
+> in `/root/jira-backups/installed-plugins-20260718-065726/`.)
+> Previous marker below (`1.0.0-s12e-assistantfix3`) retained for history:
+> (Deployed 2026-07-17 via Path B as a P0 hotfix: `JimEventExecutor` now uses
+> two lanes — a `jim-assistant-event-processor` pool for latency-sensitive
+> Assistant cards and a separate `jim-maintenance-processor` for heavy
+> best-effort work (`report_recalc`, project-chat sync). Root cause was the old
+> single shared thread: `report_recalc` writes an issue field → synchronous
+> ISSUE_UPDATED → third-party Time-to-SLA recompute (~1s/query, ~60s/recalc)
+> blocked Assistant creation behind it for minutes-to-hours. Verified on prod:
+> mention → Assistant row in ~0.24s; report_recalc now isolated. KNOWN
+> FOLLOW-UP: report_recalc itself is ~57-60s/run and continuously backlogged on
+> the maintenance lane — needs a separate performance fix.)
+> Previous marker below (`1.0.0-s12e-assistantfix2`) retained for history:
+> (Deployed 2026-07-16 via Path B as a P0 hotfix: the Jira Assistant
+> feed no longer applies any age-based `since` window to the SYSTEM
+> conversation, so poll/refresh/resume/deep-link paths can no longer
+> empty it; `hasOlder` in the mobile BFF is now derived from the raw
+> batch. Built on top of `assistantfix1`, which itself carried the
+> reporting, comment-reactions, Jira-wide Jalali display and i18n work.)
+> Previous marker below (`1.0.0-s12e-loc5`) retained for history:
+> (Deployed 2026-07-13 via Path B. `loc3` added web-chat localization
+> — Persian UI + Jalali dates — on top of `s12e-sched5`; `loc4`
+> rendered the schedule/due-date approval card's "Proposed date" in the
+> effective calendar and localized its labels/status; `loc5` replaced
+> the Jalali converter with the verified Borkowski algorithm — the
+> previous JDN/break-table transcription was off by one year and
+> produced an out-of-range (undefined) month — and forces the approval
+> card RTL in Persian mode.)
+> Bump past it for the next release. Note: mobile-only changes
+> (e.g. the Sprint 11.4 UI polish) require NO production redeploy —
+> only a new app build.
+>
+> **Note (2026-07-13):** UPM "Upload app" is DISABLED on production
+> (`Plugins cannot be installed via upload`, HTTP 403), so Path A is
+> unavailable — use **Path B (file install + restart)**. Production's
+> Tomcat connector is already proxy-aware
+> (`scheme="https" proxyName="jira.7gtech.net" proxyPort="443"`), so
+> it does NOT have the dev XSRF/proxy issue documented in
+> `docs/reverse-proxy-xsrf-fix.md`; browser writes work there.
 
 ---
 

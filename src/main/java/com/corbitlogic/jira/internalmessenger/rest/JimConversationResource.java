@@ -34,8 +34,10 @@ import com.atlassian.jira.user.ApplicationUser;
 import com.corbitlogic.jira.internalmessenger.ao.JimConversation;
 import com.corbitlogic.jira.internalmessenger.ao.JimMessage;
 import com.corbitlogic.jira.internalmessenger.attachment.JimAttachmentStorageService;
+import com.corbitlogic.jira.internalmessenger.attachment.JimAvatarStorageService;
 import com.corbitlogic.jira.internalmessenger.attachment.JimMultipartParser;
 import com.corbitlogic.jira.internalmessenger.bootstrap.JimPluginBootstrap;
+import com.corbitlogic.jira.internalmessenger.service.JimGroupService;
 import com.corbitlogic.jira.internalmessenger.dto.CreateDirectConversationRequestDto;
 import com.corbitlogic.jira.internalmessenger.dto.SendMessageRequestDto;
 import com.corbitlogic.jira.internalmessenger.model.JimConversationType;
@@ -56,12 +58,15 @@ import com.corbitlogic.jira.internalmessenger.service.JimReadStateService;
 import com.corbitlogic.jira.internalmessenger.util.JimIssueUrlBuilder;
 import com.corbitlogic.jira.internalmessenger.util.JimValidation;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
+import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -69,8 +74,11 @@ import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
+import javax.ws.rs.core.CacheControl;
 import javax.ws.rs.core.Context;
+import javax.ws.rs.core.EntityTag;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.StreamingOutput;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -91,9 +99,11 @@ public class JimConversationResource {
     private final JimLicenseService licenseService;
     private final JimMessageUserStateService userStateService;
     private final JimActivityService activityService;
+    private final JimGroupService groupService;
+    private final JimAvatarStorageService avatarStorageService;
 
     @Inject
-    public JimConversationResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimAttachmentStorageService attachmentStorageService, JimPresenceService presenceService, JimRestJsonMapper restJsonMapper, JimAccessPolicyService accessPolicyService, JimLicenseService licenseService, JimMessageUserStateService userStateService, JimActivityService activityService, JimPluginBootstrap pluginBootstrap) {
+    public JimConversationResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimAttachmentStorageService attachmentStorageService, JimPresenceService presenceService, JimRestJsonMapper restJsonMapper, JimAccessPolicyService accessPolicyService, JimLicenseService licenseService, JimMessageUserStateService userStateService, JimActivityService activityService, JimGroupService groupService, JimAvatarStorageService avatarStorageService, JimPluginBootstrap pluginBootstrap) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
@@ -107,6 +117,8 @@ public class JimConversationResource {
         this.licenseService = licenseService;
         this.userStateService = userStateService;
         this.activityService = activityService;
+        this.groupService = groupService;
+        this.avatarStorageService = avatarStorageService;
     }
 
     private java.util.List<java.util.Map<String, Object>> activitiesFor(int conversationId, String viewerKey) {
@@ -258,7 +270,7 @@ public class JimConversationResource {
 
     @GET
     @Path(value="/{conversationId}/messages")
-    public Response listMessages(@PathParam(value="conversationId") int conversationId, @QueryParam(value="limit") @DefaultValue(value="50") int limit, @QueryParam(value="beforeMessageId") Integer beforeMessageId, @QueryParam(value="since") Long since) {
+    public Response listMessages(@PathParam(value="conversationId") int conversationId, @QueryParam(value="limit") @DefaultValue(value="50") int limit, @QueryParam(value="beforeMessageId") Integer beforeMessageId) {
         String userKey = this.resolveCurrentUserKey();
         if (userKey == null) {
             return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
@@ -268,7 +280,7 @@ public class JimConversationResource {
             ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
             this.presenceService.heartbeatConversation(currentUserKey, conversationId);
             JimConversation conversation = this.conversationService.getConversationForUser(conversationId, currentUserKey);
-            List<JimMessage> messages = this.messageService.listMessages(conversationId, limit, beforeMessageId, since);
+            List<JimMessage> messages = this.messageService.listMessages(conversationId, limit, beforeMessageId);
             // Sprint 12 hotfix: exclude messages the viewer chose "Delete for me"
             // (per-user hidden overlay). This web endpoint builds the list
             // directly, so the filter must be applied here too (matches mobile).
@@ -282,12 +294,12 @@ public class JimConversationResource {
                 }
                 messages = visible;
             }
-            boolean hasOlder = !messages.isEmpty()
-                    && this.messageService.hasMessagesBefore(conversationId, messages.get(0).getID());
             LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
             body.put("messages", this.restJsonMapper.toMessageMaps(messages, viewer, conversation, currentUserKey));
-            body.put("hasOlder", hasOlder);
             body.put("activities", this.activitiesFor(conversationId, currentUserKey));
+            // Server clock so the client can anchor edit-window countdowns to the
+            // server instead of a possibly-skewed browser clock.
+            body.put("serverNowMs", System.currentTimeMillis());
             return JimRestResponses.okJson(body);
         }
         catch (JimMessengerException ex) {
@@ -459,6 +471,111 @@ public class JimConversationResource {
         }
         catch (Exception ex) {
             return JimRestResponses.internalError(log, "POST /rest/jim/1.0/conversations/" + conversationId + "/read", userKey, ex, "internal_error", "An internal error occurred while marking the conversation as read.");
+        }
+    }
+
+    // --- Group/Project custom chat avatar (Phase 1) ---------------------------
+
+    @POST
+    @Path(value="/{conversationId}/avatar")
+    @Produces(value={"application/json"})
+    public Response uploadAvatar(@PathParam(value="conversationId") int conversationId, @Context HttpServletRequest request) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            File tempDirectory = this.avatarStorageService.createUploadTempDirectory();
+            JimMultipartParser.ParsedMultipartForm form = JimMultipartParser.parse(request, tempDirectory);
+            JimConversation conversation = this.groupService.uploadAvatar(conversationId, currentUserKey, form.getFile(), form.getContentType(), form.getOriginalFilename());
+            int unreadCount = this.readStateService.getUnreadCount(conversation.getID(), currentUserKey);
+            return JimRestResponses.okJson(this.restJsonMapper.toConversationMap(conversation, currentUserKey, viewer, unreadCount));
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST /rest/jim/1.0/conversations/" + conversationId + "/avatar", userKey, ex, "internal_error", "An internal error occurred while uploading the avatar.");
+        }
+    }
+
+    @DELETE
+    @Path(value="/{conversationId}/avatar")
+    @Produces(value={"application/json"})
+    public Response deleteAvatar(@PathParam(value="conversationId") int conversationId) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimConversation conversation = this.groupService.resetAvatar(conversationId, currentUserKey);
+            int unreadCount = this.readStateService.getUnreadCount(conversation.getID(), currentUserKey);
+            return JimRestResponses.okJson(this.restJsonMapper.toConversationMap(conversation, currentUserKey, viewer, unreadCount));
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return JimRestResponses.internalError(log, "DELETE /rest/jim/1.0/conversations/" + conversationId + "/avatar", userKey, ex, "internal_error", "An internal error occurred while resetting the avatar.");
+        }
+    }
+
+    @GET
+    @Path(value="/{conversationId}/avatar")
+    public Response getAvatar(@PathParam(value="conversationId") int conversationId) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            // Participant-checked + archived groups become 404 (client falls back).
+            JimConversation conversation = this.conversationService.getConversationForUser(conversationId, currentUserKey);
+            String storagePath = conversation.getAvatarStoragePath();
+            if (storagePath == null || storagePath.trim().isEmpty()) {
+                return Response.status(404).build();
+            }
+            final File file = this.avatarStorageService.resolveAvatarFile(storagePath);
+            String contentType = conversation.getAvatarContentType();
+            if (contentType == null || contentType.trim().isEmpty()) {
+                contentType = "image/png";
+            }
+            long version = conversation.getAvatarVersion() == null ? 0L : conversation.getAvatarVersion();
+            String checksum = conversation.getAvatarChecksum();
+            EntityTag etag = new EntityTag((checksum != null && !checksum.isEmpty() ? checksum : ("v" + version)));
+            CacheControl cc = new CacheControl();
+            cc.setPrivate(true);
+            cc.setMaxAge(31536000);
+            // Versioned + immutable: the ?v= query changes on every avatar update.
+            cc.getCacheExtension().put("immutable", "");
+            StreamingOutput stream = new StreamingOutput() {
+                @Override
+                public void write(java.io.OutputStream output) throws java.io.IOException {
+                    byte[] buffer = new byte[8192];
+                    try (InputStream input = new FileInputStream(file)) {
+                        int read;
+                        while ((read = input.read(buffer)) >= 0) {
+                            output.write(buffer, 0, read);
+                        }
+                        output.flush();
+                    }
+                }
+            };
+            return Response.ok(stream).type(contentType).tag(etag).cacheControl(cc)
+                    .header("Content-Length", file.length()).build();
+        }
+        catch (JimMessengerException ex) {
+            if (ex.getStatusCode() == 404) {
+                return Response.status(404).build();
+            }
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return JimRestResponses.internalError(log, "GET /rest/jim/1.0/conversations/" + conversationId + "/avatar", userKey, ex, "internal_error", "An internal error occurred while loading the avatar.");
         }
     }
 

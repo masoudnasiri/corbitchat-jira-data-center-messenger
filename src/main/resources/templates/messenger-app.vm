@@ -45,6 +45,7 @@
                        class="jim-search-input"
                        type="search"
                        autocomplete="off"
+                       data-i18n-ph="Search people"
                        placeholder="$i18n.getText('jim.search.placeholder')" />
                 <div id="jim-user-search-results" class="jim-search-results" hidden role="listbox" aria-label="User search results"></div>
             </div>
@@ -74,11 +75,12 @@
                 <div class="jim-sidebar-footer-name">$!currentUserDisplayName</div>
                 <div class="jim-sidebar-footer-status">
                     <span class="jim-presence-dot" aria-hidden="true"></span>
-                    <span class="jim-sidebar-footer-active">Active</span>
+                    <span class="jim-sidebar-footer-active" data-i18n="Active">Active</span>
                     <span class="jim-sidebar-footer-divider" aria-hidden="true"> &middot; </span>
                     <button id="jim-push-enable"
                             type="button"
                             class="jim-push-status-link"
+                            data-i18n="Enable notifications"
                             hidden>Enable notifications</button>
                 </div>
             </div>
@@ -87,7 +89,7 @@
 
         <main id="jim-chat-panel-shell" class="jim-main jim-chat-panel jim-chat-panel-empty" aria-label="Chat">
             <div id="jim-chat-empty" class="jim-chat-empty">
-                <p class="jim-chat-empty-text">$i18n.getText("jim.empty.selectConversation")</p>
+                <p class="jim-chat-empty-text" data-i18n="Select a conversation to start chatting">$i18n.getText("jim.empty.selectConversation")</p>
             </div>
 
             <div id="jim-chat-active" class="jim-chat-active jim-chat-panel-body" hidden>
@@ -95,13 +97,16 @@
 
                 <div id="jim-members-panel" class="jim-members-panel" hidden></div>
 
+                <input id="jim-avatar-input" type="file" class="jim-visually-hidden" tabindex="-1"
+                       aria-hidden="true" accept="image/png,image/jpeg,image/webp" />
+
                 <div id="jim-pinned-banner" class="jim-pinned-banner" hidden></div>
 
                 <div id="jim-message-list" class="jim-message-list" role="log" aria-live="polite" aria-relevant="additions"></div>
 
                 <div id="jim-composer" class="jim-composer" role="region" aria-label="Message composer">
                     <div id="jim-composer-error" class="jim-composer-error jim-inline-error" role="alert" hidden></div>
-                    <div id="jim-composer-readonly" class="jim-composer-readonly" hidden>
+                    <div id="jim-composer-readonly" class="jim-composer-readonly" data-i18n="This conversation is read-only" hidden>
                         $i18n.getText("jim.composer.readOnly")
                     </div>
                     <div id="jim-composer-inner" class="jim-composer-inner">
@@ -115,10 +120,10 @@
                         <div id="jim-composer-editing" class="jim-composer-editing" hidden>
                             <span class="jim-composer-editing-icon" aria-hidden="true">&#9998;</span>
                             <div class="jim-composer-editing-content">
-                                <span class="jim-composer-editing-label">Editing message</span>
+                                <span class="jim-composer-editing-label" data-i18n="Editing message">Editing message</span>
                                 <span id="jim-composer-editing-preview" class="jim-composer-editing-preview" dir="auto"></span>
                             </div>
-                            <span class="jim-composer-editing-hint">Esc to cancel</span>
+                            <span class="jim-composer-editing-hint" data-i18n="Esc to cancel">Esc to cancel</span>
                             <button id="jim-composer-editing-cancel" type="button" class="jim-composer-chip-remove" aria-label="Cancel edit">&times;</button>
                         </div>
                         <div id="jim-selected-attachment" class="jim-selected-attachment" hidden></div>
@@ -128,13 +133,13 @@
                             <span id="jim-selected-issue-summary" class="jim-selected-issue-summary"></span>
                             <button id="jim-selected-issue-remove" type="button" class="jim-composer-chip-remove" aria-label="Remove linked issue">&times;</button>
                         </div>
-                        <div id="jim-upload-progress" class="jim-upload-progress" hidden>Uploading...</div>
+                        <div id="jim-upload-progress" class="jim-upload-progress" data-i18n="Uploading..." hidden>Uploading...</div>
                         <div id="jim-voice-recording" class="jim-voice-recording" hidden>
                             <span class="jim-voice-rec-dot" aria-hidden="true"></span>
                             <span id="jim-voice-timer" class="jim-voice-timer">0:00</span>
-                            <span class="jim-voice-hint">Recording voice message...</span>
-                            <button id="jim-voice-cancel" type="button" class="jim-modal-button">Cancel</button>
-                            <button id="jim-voice-send" type="button" class="jim-modal-button jim-modal-button-primary">Send</button>
+                            <span class="jim-voice-hint" data-i18n="Recording voice message...">Recording voice message...</span>
+                            <button id="jim-voice-cancel" type="button" class="jim-modal-button" data-i18n="Cancel">Cancel</button>
+                            <button id="jim-voice-send" type="button" class="jim-modal-button jim-modal-button-primary" data-i18n="Send">Send</button>
                         </div>
                         <div class="jim-composer-surface">
                             <div id="jim-emoji-palette" class="jim-emoji-palette" hidden role="menu" aria-label="Emoji"></div>
@@ -144,6 +149,7 @@
                                        type="text"
                                        class="jim-issue-search-input"
                                        placeholder="Search issues (key or text)..."
+                                       data-i18n-ph="Search issues (key or text)..."
                                        autocomplete="off" />
                                 <div id="jim-issue-search-results" class="jim-issue-search-results"></div>
                             </div>
@@ -206,6 +212,7 @@
                                           maxlength="25000"
                                           dir="auto"
                                           aria-label="$i18n.getText('jim.composer.label')"
+                                          data-i18n-ph="Type a message"
                                           placeholder="$i18n.getText('jim.composer.placeholder')"></textarea>
                                 <button id="jim-send-button"
                                         type="button"
@@ -227,50 +234,50 @@
 
         <div id="jim-group-modal" class="jim-modal-overlay" hidden>
             <div class="jim-modal" role="dialog" aria-modal="true" aria-labelledby="jim-group-modal-title">
-                <h3 id="jim-group-modal-title" class="jim-modal-title">Create group</h3>
-                <label class="jim-modal-label" for="jim-group-name">Group name</label>
+                <h3 id="jim-group-modal-title" class="jim-modal-title" data-i18n="Create group">Create group</h3>
+                <label class="jim-modal-label" for="jim-group-name" data-i18n="Group name">Group name</label>
                 <input id="jim-group-name" class="jim-search-input" type="text" maxlength="120"
-                       autocomplete="off" placeholder="e.g. Dev Team" />
-                <label class="jim-modal-label" for="jim-group-member-search">Add people</label>
+                       autocomplete="off" placeholder="e.g. Dev Team" data-i18n-ph="e.g. Dev Team" />
+                <label class="jim-modal-label" for="jim-group-member-search" data-i18n="Add people">Add people</label>
                 <div class="jim-modal-search">
                     <input id="jim-group-member-search" class="jim-search-input" type="search"
-                           autocomplete="off" placeholder="Search teammates..." />
+                           autocomplete="off" placeholder="Search teammates..." data-i18n-ph="Search teammates..." />
                     <div id="jim-group-member-results" class="jim-search-results jim-modal-search-results" hidden role="listbox"></div>
                 </div>
                 <div id="jim-group-selected-members" class="jim-group-chips"></div>
                 <div id="jim-group-modal-error" class="jim-inline-error" role="alert" hidden></div>
                 <div class="jim-modal-actions">
-                    <button id="jim-group-cancel" type="button" class="jim-modal-button">Cancel</button>
-                    <button id="jim-group-create" type="button" class="jim-modal-button jim-modal-button-primary" disabled>Create group</button>
+                    <button id="jim-group-cancel" type="button" class="jim-modal-button" data-i18n="Cancel">Cancel</button>
+                    <button id="jim-group-create" type="button" class="jim-modal-button jim-modal-button-primary" data-i18n="Create group" disabled>Create group</button>
                 </div>
             </div>
         </div>
 
         <div id="jim-message-info-modal" class="jim-modal-overlay" hidden>
             <div class="jim-modal" role="dialog" aria-modal="true" aria-labelledby="jim-message-info-title">
-                <h3 id="jim-message-info-title" class="jim-modal-title">Message info</h3>
+                <h3 id="jim-message-info-title" class="jim-modal-title" data-i18n="Message info">Message info</h3>
                 <div id="jim-message-info-body" class="jim-message-info-body">
-                    <div class="jim-loading">Loading...</div>
+                    <div class="jim-loading" data-i18n="Loading...">Loading...</div>
                 </div>
                 <div class="jim-modal-actions">
-                    <button id="jim-message-info-close" type="button" class="jim-modal-button">Close</button>
+                    <button id="jim-message-info-close" type="button" class="jim-modal-button" data-i18n="Close">Close</button>
                 </div>
             </div>
         </div>
 
         <div id="jim-forward-modal" class="jim-modal-overlay" hidden>
             <div class="jim-modal jim-forward-modal" role="dialog" aria-modal="true" aria-labelledby="jim-forward-modal-title">
-                <h3 id="jim-forward-modal-title" class="jim-modal-title">Forward message</h3>
+                <h3 id="jim-forward-modal-title" class="jim-modal-title" data-i18n="Forward message">Forward message</h3>
                 <div id="jim-forward-preview" class="jim-forward-preview" dir="auto"></div>
-                <label class="jim-modal-label" for="jim-forward-search">Send to</label>
+                <label class="jim-modal-label" for="jim-forward-search" data-i18n="Send to">Send to</label>
                 <input id="jim-forward-search" class="jim-search-input" type="search" autocomplete="off"
-                       placeholder="Search conversations..." />
+                       placeholder="Search conversations..." data-i18n-ph="Search conversations..." />
                 <div id="jim-forward-targets" class="jim-forward-targets" role="listbox" aria-label="Forwarding targets">
-                    <div class="jim-loading">Loading conversations...</div>
+                    <div class="jim-loading" data-i18n="Loading conversations...">Loading conversations...</div>
                 </div>
                 <div id="jim-forward-error" class="jim-inline-error" role="alert" hidden></div>
                 <div class="jim-modal-actions">
-                    <button id="jim-forward-cancel" type="button" class="jim-modal-button">Cancel</button>
+                    <button id="jim-forward-cancel" type="button" class="jim-modal-button" data-i18n="Cancel">Cancel</button>
                 </div>
             </div>
         </div>
@@ -281,8 +288,8 @@
                 <figcaption class="jim-image-lightbox-caption">
                     <span id="jim-image-lightbox-name" class="jim-image-lightbox-name"></span>
                     <a id="jim-image-lightbox-download" class="jim-modal-button" href="#"
-                       target="_blank" rel="noopener noreferrer" download>Download</a>
-                    <button id="jim-image-lightbox-close" type="button" class="jim-modal-button">Close</button>
+                       target="_blank" rel="noopener noreferrer" data-i18n="Download" download>Download</a>
+                    <button id="jim-image-lightbox-close" type="button" class="jim-modal-button" data-i18n="Close">Close</button>
                 </figcaption>
             </figure>
         </div>

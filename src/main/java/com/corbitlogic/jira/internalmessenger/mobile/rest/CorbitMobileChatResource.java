@@ -7,6 +7,7 @@ import com.corbitlogic.jira.internalmessenger.ao.JimAttachment;
 import com.corbitlogic.jira.internalmessenger.ao.JimConversation;
 import com.corbitlogic.jira.internalmessenger.ao.JimMessage;
 import com.corbitlogic.jira.internalmessenger.attachment.JimAttachmentStorageService;
+import com.corbitlogic.jira.internalmessenger.attachment.JimAvatarStorageService;
 import com.atlassian.jira.component.ComponentAccessor;
 import com.atlassian.jira.issue.Issue;
 import com.atlassian.jira.issue.MutableIssue;
@@ -104,6 +105,7 @@ public class CorbitMobileChatResource {
     private final JimMobileFeatureService featureService;
     private final JimAttachmentService attachmentService;
     private final JimAttachmentStorageService attachmentStorageService;
+    private final JimAvatarStorageService avatarStorageService;
     private final JimGroupService groupService;
     private final JimProjectChatService projectChatService;
     private final JimMessageUserStateService userStateService;
@@ -125,6 +127,7 @@ public class CorbitMobileChatResource {
                                     JimMobileFeatureService featureService,
                                     JimAttachmentService attachmentService,
                                     JimAttachmentStorageService attachmentStorageService,
+                                    JimAvatarStorageService avatarStorageService,
                                     JimGroupService groupService,
                                     JimProjectChatService projectChatService,
                                     JimMessageUserStateService userStateService,
@@ -144,6 +147,7 @@ public class CorbitMobileChatResource {
         this.featureService = featureService;
         this.attachmentService = attachmentService;
         this.attachmentStorageService = attachmentStorageService;
+        this.avatarStorageService = avatarStorageService;
         this.groupService = groupService;
         this.projectChatService = projectChatService;
         this.userStateService = userStateService;
@@ -571,6 +575,156 @@ public class CorbitMobileChatResource {
     }
 
     /**
+     * Promote/demote a group member (Phase 1). Body {@code {"role":"ADMIN"|"MEMBER"}}.
+     * OWNER-only, enforced in the service. Mirrors
+     * {@code POST /rest/jim/1.0/groups/{id}/members/{userKey}/role}.
+     */
+    @POST
+    @Path("/conversations/{conversationId}/members/{memberUserKey}/role")
+    @Consumes({"application/json"})
+    public Response setMemberRole(@PathParam("conversationId") int conversationId,
+                                  @PathParam("memberUserKey") String memberUserKey,
+                                  Map<String, Object> requestBody) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        String role = str(requestBody, "role");
+        role = role == null ? "" : role.trim().toUpperCase();
+        if (!"ADMIN".equals(role) && !"MEMBER".equals(role)) {
+            return JimRestResponses.errorJson(400, "bad_request", "role must be ADMIN or MEMBER");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            if ("ADMIN".equals(role)) {
+                this.groupService.promoteToAdmin(conversationId, currentUserKey, memberUserKey);
+            } else {
+                this.groupService.demoteToMember(conversationId, currentUserKey, memberUserKey);
+            }
+            List<JimGroupMember> members = this.groupService.listMembers(conversationId, currentUserKey);
+            List<Map<String, Object>> memberMaps = this.restJsonMapper.toGroupMemberMaps(members, viewer);
+            rewriteGroupMemberAvatars(memberMaps);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("members", memberMaps);
+            return JimRestResponses.okJson(body);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/conversations/" + conversationId
+                            + "/members/" + memberUserKey + "/role",
+                    userKey, ex, "internal_error", "An internal error occurred while updating the member role.");
+        }
+    }
+
+    /** Rename a group/project chat (OWNER/ADMIN). Mirrors {@code POST /rest/jim/1.0/groups/{id}/rename}. */
+    @POST
+    @Path("/conversations/{conversationId}/rename")
+    @Consumes({"application/json"})
+    public Response renameGroup(@PathParam("conversationId") int conversationId,
+                                Map<String, Object> requestBody) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        String name = str(requestBody, "name");
+        if (name == null || name.trim().isEmpty()) {
+            return JimRestResponses.errorJson(400, "bad_request", "name is required");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimConversation conversation = this.groupService.renameGroup(conversationId, currentUserKey, name);
+            int unreadCount = this.readStateService.getUnreadCount(conversation.getID(), currentUserKey);
+            Map<String, Object> convMap =
+                    this.restJsonMapper.toConversationMap(conversation, currentUserKey, viewer, unreadCount);
+            rewriteConversationAvatar(conversation, convMap, currentUserKey);
+            return JimRestResponses.okJson(convMap);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/rename",
+                    userKey, ex, "internal_error", "An internal error occurred while renaming the group.");
+        }
+    }
+
+    /** Upload a group/project custom avatar (OWNER/ADMIN). Multipart field {@code file}. */
+    @POST
+    @Path("/conversations/{conversationId}/avatar")
+    @Produces({"application/json"})
+    public Response uploadAvatar(@PathParam("conversationId") int conversationId,
+                                 @Context HttpServletRequest request) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            File tempDirectory = this.avatarStorageService.createUploadTempDirectory();
+            JimMultipartParser.ParsedMultipartForm form = JimMultipartParser.parse(request, tempDirectory);
+            JimConversation conversation = this.groupService.uploadAvatar(conversationId, currentUserKey,
+                    form.getFile(), form.getContentType(), form.getOriginalFilename());
+            int unreadCount = this.readStateService.getUnreadCount(conversation.getID(), currentUserKey);
+            Map<String, Object> convMap =
+                    this.restJsonMapper.toConversationMap(conversation, currentUserKey, viewer, unreadCount);
+            rewriteConversationAvatar(conversation, convMap, currentUserKey);
+            return JimRestResponses.okJson(convMap);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/avatar",
+                    userKey, ex, "internal_error", "An internal error occurred while uploading the avatar.");
+        }
+    }
+
+    /** Reset a group/project custom avatar (OWNER/ADMIN). */
+    @DELETE
+    @Path("/conversations/{conversationId}/avatar")
+    @Produces({"application/json"})
+    public Response deleteAvatar(@PathParam("conversationId") int conversationId) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimConversation conversation = this.groupService.resetAvatar(conversationId, currentUserKey);
+            int unreadCount = this.readStateService.getUnreadCount(conversation.getID(), currentUserKey);
+            Map<String, Object> convMap =
+                    this.restJsonMapper.toConversationMap(conversation, currentUserKey, viewer, unreadCount);
+            rewriteConversationAvatar(conversation, convMap, currentUserKey);
+            return JimRestResponses.okJson(convMap);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "DELETE /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/avatar",
+                    userKey, ex, "internal_error", "An internal error occurred while resetting the avatar.");
+        }
+    }
+
+    /**
      * The official project chat for a project (Sprint 08 Fix-1) — mirrors
      * {@code GET /rest/jim/1.0/projects/{key}/conversation}: Browse-Project
      * gated, ensures the PROJECT conversation exists (lead = OWNER member),
@@ -704,6 +858,14 @@ public class CorbitMobileChatResource {
                     this.conversationService.getConversationForUser(conversationId, currentUserKey);
             List<JimMessage> messages =
                     this.messageService.listMessages(conversationId, limit, beforeMessageId, since);
+            // hasOlder must be derived from the RAW fetched batch (before the
+            // per-user "Delete for me" hidden filter below). Otherwise, if every
+            // item on this page is hidden for the viewer, the visible list would
+            // be empty and hasOlder would collapse to false — leaving the client
+            // unable to auto-load older pages and the feed stuck empty. Capturing
+            // the raw oldest id here keeps the "older exists" signal correct so
+            // the client can page back to real visible items.
+            Integer rawOldestId = messages.isEmpty() ? null : Integer.valueOf(messages.get(0).getID());
             // Sprint 12: drop messages the viewer chose "Delete for me".
             java.util.Set<Integer> hidden =
                     this.userStateService.hiddenMessageIds(currentUserKey, conversationId);
@@ -722,14 +884,16 @@ public class CorbitMobileChatResource {
             rewriteMessageAttachments(messageMaps);
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("messages", messageMaps);
-            // Whether older messages exist before the earliest returned one, so
-            // the client can keep infinite-scroll enabled even when the initial
-            // ~10-day window returned fewer than a full page.
-            boolean hasOlder = !messages.isEmpty()
-                    && this.messageService.hasMessagesBefore(conversationId, messages.get(0).getID());
+            // Whether older messages exist before the earliest RAW-returned one,
+            // so the client can keep infinite-scroll / auto-load-older enabled
+            // even when this page produced no visible items after hidden filtering.
+            boolean hasOlder = rawOldestId != null
+                    && this.messageService.hasMessagesBefore(conversationId, rawOldestId.intValue());
             body.put("hasOlder", hasOlder);
             // Ephemeral typing/recording/uploading of other participants (TTL).
             body.put("activities", activitiesFor(conversationId, currentUserKey));
+            // Server clock for client-side edit-window anchoring (no wall-clock reliance).
+            body.put("serverNowMs", System.currentTimeMillis());
             return JimRestResponses.okJson(body);
         } catch (JimMessengerException ex) {
             return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
@@ -1390,9 +1554,22 @@ public class CorbitMobileChatResource {
         if (conversation == null || item == null) {
             return;
         }
-        // Groups have no single counterpart avatar; the mapper already set
-        // avatarUrl=null and the client renders a group glyph (Sprint 08).
-        if (!JimConversationType.DIRECT.name().equals(conversation.getConversationType())) {
+        String type = conversation.getConversationType();
+        // GROUP/PROJECT: when a custom chat avatar is set, point the mobile client
+        // at the session-authenticated BFF conversation-avatar proxy (Phase 1).
+        // Otherwise leave avatarUrl null so the client renders a group glyph.
+        if (JimConversationType.GROUP.name().equals(type)
+                || JimConversationType.PROJECT.name().equals(type)) {
+            if (conversation.getAvatarStoragePath() != null
+                    && !conversation.getAvatarStoragePath().trim().isEmpty()) {
+                long version = conversation.getAvatarVersion() == null ? 0L : conversation.getAvatarVersion();
+                item.put("avatarUrl", JimMobileAvatars.conversationPath(conversation.getID()) + "?v=" + version);
+            } else {
+                item.put("avatarUrl", null);
+            }
+            return;
+        }
+        if (!JimConversationType.DIRECT.name().equals(type)) {
             return;
         }
         String other = currentUserKey != null && currentUserKey.equals(conversation.getUserAKey())

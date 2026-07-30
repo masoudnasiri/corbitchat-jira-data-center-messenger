@@ -6,6 +6,7 @@ import com.atlassian.jira.config.properties.ApplicationProperties;
 import com.atlassian.jira.issue.Issue;
 import com.atlassian.jira.jql.builder.JqlQueryBuilder;
 import com.atlassian.jira.user.ApplicationUser;
+import com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig;
 import com.corbitlogic.jira.internalmessenger.util.JimIssueUrlBuilder;
 import com.corbitlogic.jira.internalmessenger.util.JimSanitizer;
 import com.atlassian.query.Query;
@@ -29,7 +30,7 @@ public final class JimMobileIssues {
 
     /** The only filter tokens the client may request. */
     public static final List<String> FILTERS =
-            Arrays.asList("assigned", "today", "overdue", "followup");
+            Arrays.asList("assigned", "today", "overdue", "followup", "awaiting", "rejected");
 
     public static final int DEFAULT_PAGE_SIZE = 20;
     public static final int MAX_PAGE_SIZE = 50;
@@ -104,6 +105,14 @@ public final class JimMobileIssues {
      * standard duedate-only builder when the field is absent or parsing fails.</p>
      */
     public static Query buildQuery(ApplicationUser user, SearchService searchService, String filter) {
+        // Schedule-approval filters (awaiting/rejected) are custom-field based and
+        // require the caller's context; build them as server-owned JQL parsed via
+        // the SearchService (no client JQL crosses the boundary). The resource
+        // guards the not-configured case, so the fields resolve here.
+        if (("awaiting".equals(filter) || "rejected".equals(filter))
+                && user != null && searchService != null) {
+            return buildApprovalQuery(user, searchService, filter);
+        }
         if (user != null && searchService != null
                 && ("today".equals(filter) || "overdue".equals(filter))) {
             // "today" in the viewer's timezone — the single source of truth for
@@ -134,6 +143,43 @@ public final class JimMobileIssues {
      * Date-only literal comparison, so nothing shifts with timezone. The proposed
      * branch is added only when the field exists on this instance.
      */
+    /**
+     * Server-owned JQL for the approval filters:
+     * <ul>
+     *   <li><b>awaiting</b>: status = Pending AND approver = currentUser() (manager's
+     *       inbox) — still-open items only.</li>
+     *   <li><b>rejected</b>: status = Rejected AND reporter = currentUser() (the
+     *       requester who must resubmit).</li>
+     * </ul>
+     * Composed only from validated custom-field clauses + fixed option values —
+     * never client input. Throws when the fields are not resolvable (the resource
+     * guards the not-configured case before calling).
+     */
+    private static Query buildApprovalQuery(ApplicationUser user, SearchService searchService, String filter) {
+        String statusJql = JimScheduleApprovalConfig.statusFieldJql();
+        String approverJql = JimScheduleApprovalConfig.approverFieldJql();
+        String jql;
+        if ("awaiting".equals(filter)) {
+            if (statusJql == null || approverJql == null) {
+                throw new IllegalArgumentException("Approval fields not resolvable for 'awaiting'.");
+            }
+            jql = statusJql + " = \"" + JimScheduleApprovalConfig.STATUS_PENDING + "\""
+                    + " AND " + approverJql + " = currentUser()"
+                    + " AND resolution is EMPTY ORDER BY updated DESC";
+        } else {
+            if (statusJql == null) {
+                throw new IllegalArgumentException("Approval fields not resolvable for 'rejected'.");
+            }
+            jql = statusJql + " = \"" + JimScheduleApprovalConfig.STATUS_REJECTED + "\""
+                    + " AND reporter = currentUser() ORDER BY updated DESC";
+        }
+        SearchService.ParseResult parsed = searchService.parseQuery(user, jql);
+        if (parsed == null || !parsed.isValid()) {
+            throw new IllegalArgumentException("Could not parse approval filter JQL.");
+        }
+        return parsed.getQuery();
+    }
+
     private static String effectiveDueJql(String filter, String clause, String today) {
         String op = "overdue".equals(filter) ? "<" : "=";
         StringBuilder sb = new StringBuilder(
@@ -209,6 +255,11 @@ public final class JimMobileIssues {
         // Task-type colored pill (customfield_10903) — null when absent/hidden.
         map.put("taskType", JimMobileTaskType.pillForIssue(issue));
         map.put("url", JimIssueUrlBuilder.buildBrowseUrl(applicationProperties, issue));
+        // Null-safe schedule-approval projection (status/reason/approver/…): null
+        // when the approval fields are unconfigured or the issue has no approval
+        // state. Lets the redesigned rejected card render real data without an
+        // extra fetch; absent for all items on instances without the fields.
+        map.put("scheduleApproval", JimScheduleApprovalConfig.projection(issue, viewer));
         return map;
     }
 }

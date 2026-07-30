@@ -93,6 +93,8 @@ public class CorbitMobileIssueResource {
     private final ApplicationProperties applicationProperties;
     private final JimMobileFeatureService featureService;
     private final JimAttachmentStorageService attachmentStorageService;
+    private final com.corbitlogic.jira.internalmessenger.report.JimReportService reportService;
+    private final com.corbitlogic.jira.internalmessenger.service.JimCommentReactionService commentReactionService;
 
     @Inject
     public CorbitMobileIssueResource(JiraAuthenticationContext authenticationContext,
@@ -100,13 +102,425 @@ public class CorbitMobileIssueResource {
                                      AvatarService avatarService,
                                      ApplicationProperties applicationProperties,
                                      JimMobileFeatureService featureService,
-                                     JimAttachmentStorageService attachmentStorageService) {
+                                     JimAttachmentStorageService attachmentStorageService,
+                                     com.corbitlogic.jira.internalmessenger.report.JimReportService reportService,
+                                     com.corbitlogic.jira.internalmessenger.service.JimCommentReactionService commentReactionService) {
         this.authenticationContext = authenticationContext;
         this.searchService = searchService;
         this.avatarService = avatarService;
         this.applicationProperties = applicationProperties;
         this.featureService = featureService;
         this.attachmentStorageService = attachmentStorageService;
+        this.reportService = reportService;
+        this.commentReactionService = commentReactionService;
+    }
+
+    // --- Report compliance (Sprint 12 Phase D — mobile parity) ----------------
+
+    /** Report summary + report-comment list for an issue (mobile-shaped, session-authed). */
+    @GET
+    @Path("/{issueKey}/report")
+    public Response getReport(@PathParam("issueKey") String issueKey) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            return JimRestResponses.okJson(reportSummaryMap(issue, viewer));
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log, "GET /rest/corbit-mobile/1.0/issues/" + issueKey + "/report",
+                    viewer.getKey(), ex, "internal_error", "An internal error occurred while loading the report.");
+        }
+    }
+
+    /** Submit a report (text only) — creates a #marker Jira comment. */
+    @POST
+    @Path("/{issueKey}/report/submit")
+    @Consumes({"application/json"})
+    public Response submitReport(@PathParam("issueKey") String issueKey, Map<String, Object> body) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        String text = body != null && body.get("text") != null ? String.valueOf(body.get("text")).trim() : "";
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            return doReportSubmit(issue, viewer, text, Collections.<String>emptyList());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST /rest/corbit-mobile/1.0/issues/" + issueKey + "/report/submit",
+                    viewer.getKey(), ex, "internal_error", "An internal error occurred while submitting the report.");
+        }
+    }
+
+    /** Submit a report WITH an attachment (multipart). */
+    @POST
+    @Path("/{issueKey}/report/submit")
+    @Consumes({"multipart/form-data"})
+    public Response submitReportMultipart(@PathParam("issueKey") String issueKey,
+                                          @Context HttpServletRequest request) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            if (!ComponentAccessor.getPermissionManager()
+                    .hasPermission(ProjectPermissions.CREATE_ATTACHMENTS, (Issue) issue, viewer)) {
+                return JimRestResponses.errorJson(403, "no_permission",
+                        "You do not have permission to attach files to this issue.");
+            }
+            File tempDir = this.attachmentStorageService.createUploadTempDirectory();
+            JimMultipartParser.ParsedMultipartForm form = JimMultipartParser.parse(request, tempDir);
+            String text = trimToNull(form.getBody());
+            String token = uploadIssueAttachment(issue, viewer, form);
+            List<String> tokens = token == null ? Collections.<String>emptyList() : Collections.singletonList(token);
+            return doReportSubmit(issue, viewer, text == null ? "" : text, tokens);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST(multipart) /rest/corbit-mobile/1.0/issues/" + issueKey + "/report/submit",
+                    viewer.getKey(), ex, "internal_error", "An internal error occurred while submitting the report.");
+        }
+    }
+
+    /** Reply to a report (text only). */
+    @POST
+    @Path("/{issueKey}/report/reply/{commentId}")
+    @Consumes({"application/json"})
+    public Response replyReport(@PathParam("issueKey") String issueKey,
+                                @PathParam("commentId") long commentId, Map<String, Object> body) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        String text = body != null && body.get("text") != null ? String.valueOf(body.get("text")).trim() : "";
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            return doReportReply(issue, viewer, commentId, text, Collections.<String>emptyList());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST /rest/corbit-mobile/1.0/issues/" + issueKey + "/report/reply/" + commentId,
+                    viewer.getKey(), ex, "internal_error", "An internal error occurred while posting the reply.");
+        }
+    }
+
+    /** Reply to a report WITH an attachment (multipart). */
+    @POST
+    @Path("/{issueKey}/report/reply/{commentId}")
+    @Consumes({"multipart/form-data"})
+    public Response replyReportMultipart(@PathParam("issueKey") String issueKey,
+                                         @PathParam("commentId") long commentId,
+                                         @Context HttpServletRequest request) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            if (!ComponentAccessor.getPermissionManager()
+                    .hasPermission(ProjectPermissions.CREATE_ATTACHMENTS, (Issue) issue, viewer)) {
+                return JimRestResponses.errorJson(403, "no_permission",
+                        "You do not have permission to attach files to this issue.");
+            }
+            File tempDir = this.attachmentStorageService.createUploadTempDirectory();
+            JimMultipartParser.ParsedMultipartForm form = JimMultipartParser.parse(request, tempDir);
+            String text = trimToNull(form.getBody());
+            String token = uploadIssueAttachment(issue, viewer, form);
+            List<String> tokens = token == null ? Collections.<String>emptyList() : Collections.singletonList(token);
+            return doReportReply(issue, viewer, commentId, text == null ? "" : text, tokens);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST(multipart) /rest/corbit-mobile/1.0/issues/" + issueKey + "/report/reply/" + commentId,
+                    viewer.getKey(), ex, "internal_error", "An internal error occurred while posting the reply.");
+        }
+    }
+
+    /** Toggle an emoji reaction on a report comment / reply. */
+    @POST
+    @Path("/{issueKey}/report/react/{commentId}")
+    @Consumes({"application/json"})
+    public Response reactReport(@PathParam("issueKey") String issueKey,
+                                @PathParam("commentId") long commentId, Map<String, Object> body) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        String emoji = body != null && body.get("emoji") != null ? String.valueOf(body.get("emoji")).trim() : "";
+        if (emoji.isEmpty()) {
+            return JimRestResponses.errorJson(400, "bad_request", "emoji is required");
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            Comment c = ComponentAccessor.getCommentManager().getCommentById(commentId);
+            if (c == null || c.getIssue() == null || !c.getIssue().getId().equals(issue.getId())) {
+                return notFound();
+            }
+            List<Map<String, Object>> reactions =
+                    this.commentReactionService.toggle(commentId, issue.getKey(), viewer.getKey(), emoji);
+            Map<String, Object> out = new LinkedHashMap<String, Object>();
+            out.put("commentId", commentId);
+            out.put("reactions", reactions);
+            return JimRestResponses.okJson(out);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST /rest/corbit-mobile/1.0/issues/" + issueKey + "/report/react/" + commentId,
+                    viewer.getKey(), ex, "internal_error", "An internal error occurred while updating the reaction.");
+        }
+    }
+
+    private Response doReportSubmit(MutableIssue issue, ApplicationUser viewer, String text, List<String> tokens) {
+        if (!ComponentAccessor.getPermissionManager()
+                .hasPermission(ProjectPermissions.ADD_COMMENTS, (Issue) issue, viewer)) {
+            return JimRestResponses.errorJson(403, "no_permission", "You do not have permission to comment on this issue.");
+        }
+        if (!com.corbitlogic.jira.internalmessenger.report.JimReportConfig.isFeatureEnabled()) {
+            return JimRestResponses.errorJson(409, "not_enabled", "Report compliance is not enabled.");
+        }
+        com.corbitlogic.jira.internalmessenger.report.JimReportSummary pre = this.reportService.computeSummary(issue);
+        if (!pre.submitActive) {
+            return JimRestResponses.errorJson(409, "reporting_closed", reportReasonMessage(pre.inactiveReason));
+        }
+        StringBuilder b = new StringBuilder(com.corbitlogic.jira.internalmessenger.report.JimReportConfig.marker());
+        if (text != null && !text.isEmpty()) {
+            b.append("\n\n").append(text);
+        }
+        appendReportTokens(b, tokens);
+        String finalBody = b.length() > MAX_COMMENT_CHARS ? b.substring(0, MAX_COMMENT_CHARS) : b.toString();
+        ComponentAccessor.getCommentManager().create(issue, viewer, finalBody, true);
+        return JimRestResponses.okJson(reportSummaryMap(issue, viewer));
+    }
+
+    private Response doReportReply(MutableIssue issue, ApplicationUser viewer, long commentId,
+                                   String text, List<String> tokens) {
+        if (!ComponentAccessor.getPermissionManager()
+                .hasPermission(ProjectPermissions.ADD_COMMENTS, (Issue) issue, viewer)) {
+            return JimRestResponses.errorJson(403, "no_permission", "You do not have permission to comment on this issue.");
+        }
+        Comment parent = findVisibleComment(ComponentAccessor.getCommentManager(), issue, viewer, commentId);
+        if (parent == null) {
+            return notFound();
+        }
+        StringBuilder b = new StringBuilder(buildReplyBody(issue, parent, viewer, text == null ? "" : text));
+        appendReportTokens(b, tokens);
+        if (b.toString().trim().isEmpty()) {
+            return JimRestResponses.errorJson(400, "bad_request", "Reply text or an attachment is required.");
+        }
+        String finalBody = b.length() > MAX_COMMENT_CHARS ? b.substring(0, MAX_COMMENT_CHARS) : b.toString();
+        ComponentAccessor.getCommentManager().create(issue, viewer, finalBody, true);
+        return JimRestResponses.okJson(reportSummaryMap(issue, viewer));
+    }
+
+    private void appendReportTokens(StringBuilder b, List<String> tokens) {
+        if (tokens == null) {
+            return;
+        }
+        for (String t : tokens) {
+            if (t != null && !t.isEmpty()) {
+                if (b.length() > 0) {
+                    b.append("\n\n");
+                }
+                b.append(t);
+            }
+        }
+    }
+
+    /** Mobile report summary + items (attachment URLs already session-proxied by commentMap). */
+    private Map<String, Object> reportSummaryMap(Issue issue, ApplicationUser viewer) {
+        com.corbitlogic.jira.internalmessenger.report.JimReportSummary s = this.reportService.computeSummary(issue);
+        Map<String, Object> m = new LinkedHashMap<String, Object>();
+        m.put("issueKey", issue.getKey());
+        m.put("featureEnabled", s.featureEnabled);
+        m.put("fieldsConfigured", s.fieldsConfigured);
+        m.put("configured", s.configured);
+        m.put("applicable", s.applicable);
+        m.put("applicabilityReason", s.applicabilityReason);
+        m.put("levelCode", s.levelCode);
+        m.put("levelText", s.levelText);
+        m.put("intervalMinutes", s.intervalMinutes);
+        m.put("windowStartMinute", s.windowStartMinute);
+        m.put("windowEndMinute", s.windowEndMinute);
+        m.put("countMode", s.countMode);
+        m.put("activeUntil", s.activeUntil);
+        m.put("requiredCount", s.requiredCount);
+        m.put("validCount", s.validCount);
+        m.put("rawCount", s.rawCount);
+        m.put("outOfWindowCount", s.outOfWindowCount);
+        m.put("duplicateCount", s.duplicateCount);
+        m.put("missedCount", s.missedCount);
+        m.put("totalRequiredReportsUntilEnd", s.totalRequiredUntilEnd);
+        m.put("currentMissedReportStreak", s.currentMissedStreak);
+        m.put("maxMissedReportStreak", s.maxMissedStreak);
+        m.put("nextExpectedMs", s.nextExpectedMs);
+        m.put("compliance", s.compliance);
+        m.put("statusCode", s.statusCode);
+        m.put("submitActive", s.submitActive);
+        m.put("inactiveReason", s.inactiveReason);
+        m.put("allowWithoutConfig", s.allowWithoutConfig);
+        m.put("tzOffsetMinutes", s.tzOffsetMinutes);
+        m.put("dueMissing", s.dueMissing);
+        m.put("reportingEndsMs", s.reportingEndsMs);
+        m.put("issueCreatedMs", s.issueCreatedMs);
+        m.put("canComment", ComponentAccessor.getPermissionManager()
+                .hasPermission(ProjectPermissions.ADD_COMMENTS, issue, viewer));
+        m.put("canAttach", ComponentAccessor.getPermissionManager()
+                .hasPermission(ProjectPermissions.CREATE_ATTACHMENTS, issue, viewer));
+        CommentManager cm = ComponentAccessor.getCommentManager();
+        List<Map<String, Object>> items = new ArrayList<Map<String, Object>>();
+        for (com.corbitlogic.jira.internalmessenger.report.JimReportSummary.Item it : s.items) {
+            Comment c = null;
+            try {
+                c = cm.getCommentById(it.commentId);
+            } catch (Throwable ignored) {
+            }
+            if (c == null) {
+                continue;
+            }
+            Map<String, Object> im;
+            try {
+                im = JimMobileIssueDetail.commentMap(issue, c, viewer, this.avatarService);
+            } catch (Throwable t) {
+                im = new LinkedHashMap<String, Object>();
+                im.put("id", it.commentId);
+                im.put("body", c.getBody());
+            }
+            im.put("status", it.status);
+            im.put("createdMs", it.createdMs);
+            try {
+                im.put("reactions", this.commentReactionService.listForComment(it.commentId, viewer.getKey()));
+            } catch (Throwable ignored) {
+                im.put("reactions", new ArrayList<Object>());
+            }
+            items.add(im);
+        }
+        m.put("items", items);
+        return m;
+    }
+
+    /**
+     * Bounded report-list for the redesigned Reports surface (Phase 3B-4R). Runs
+     * the report summary for the caller's assigned, report-configured issues,
+     * capped at {@code maxResults} (≤10) so it is never an unbounded N+1. Returns
+     * per-issue report cards + a real aggregate (compliance score) for the gauge.
+     * Degrades to an empty/available=false payload when nothing is configured.
+     */
+    @GET
+    @Path("/reports")
+    public Response reportList(@QueryParam("startAt") @DefaultValue("0") int startAt,
+                               @QueryParam("maxResults") @DefaultValue("10") int maxResults) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.TASKS)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.TASKS);
+        }
+        int start = Math.max(0, startAt);
+        int max = Math.min(Math.max(1, maxResults), 10); // hard cap — bounded, no unbounded N+1
+        try {
+            Query query = JimMobileIssues.buildQuery(viewer, this.searchService, "assigned");
+            PagerFilter<Issue> pager = new PagerFilter<Issue>(max);
+            pager.setStart(start);
+            SearchResults<Issue> results = this.searchService.search(viewer, query, pager);
+            List<Map<String, Object>> items = new ArrayList<Map<String, Object>>();
+            long tot = 0, val = 0, oow = 0, missed = 0, reqSoFar = 0, valSoFar = 0;
+            int configured = 0;
+            for (Issue issue : results.getResults()) {
+                com.corbitlogic.jira.internalmessenger.report.JimReportSummary s =
+                        this.reportService.computeSummary(issue);
+                if (s == null || !s.configured || s.levelCode == null || !s.applicable) {
+                    continue; // out-of-scope issues are excluded from current reports
+                }
+                items.add(reportListItemMap(issue, s, viewer));
+                configured++;
+                tot += s.rawCount;
+                val += s.validCount;
+                oow += s.outOfWindowCount;
+                missed += s.missedCount;
+                reqSoFar += s.requiredSoFar;
+                valSoFar += s.validSoFar;
+            }
+            Map<String, Object> agg = new LinkedHashMap<String, Object>();
+            agg.put("total", tot);
+            agg.put("valid", val);
+            agg.put("outOfWindow", oow);
+            agg.put("missed", missed);
+            agg.put("requiredSoFar", reqSoFar);
+            agg.put("validSoFar", valSoFar);
+            // Real compliance score in [0,1]: valid-so-far / required-so-far.
+            double score = reqSoFar > 0
+                    ? Math.max(0.0, Math.min(1.0, (double) valSoFar / (double) reqSoFar))
+                    : (configured > 0 && oow == 0 && missed == 0 ? 1.0 : 0.0);
+            agg.put("score", score);
+            agg.put("available", configured > 0);
+            Map<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("items", items);
+            body.put("aggregate", agg);
+            body.put("startAt", start);
+            body.put("maxResults", max);
+            body.put("total", results.getTotal());
+            body.put("isLast", start + results.getResults().size() >= results.getTotal());
+            body.put("reportConfigured", configured > 0);
+            return JimRestResponses.okJson(body);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/reports", viewer.getKey(), ex,
+                    "internal_error", "Could not load reports.");
+        }
+    }
+
+    /** Lightweight report card for the list (no per-comment items — those load in detail). */
+    private Map<String, Object> reportListItemMap(Issue issue,
+            com.corbitlogic.jira.internalmessenger.report.JimReportSummary s, ApplicationUser viewer) {
+        Map<String, Object> m = new LinkedHashMap<String, Object>();
+        m.put("issueKey", issue.getKey());
+        m.put("summary", com.corbitlogic.jira.internalmessenger.util.JimSanitizer.sanitizeText(issue.getSummary()));
+        m.put("levelText", s.levelText);
+        m.put("levelCode", s.levelCode);
+        m.put("countMode", s.countMode);
+        m.put("intervalMinutes", s.intervalMinutes);
+        m.put("windowStartMinute", s.windowStartMinute);
+        m.put("windowEndMinute", s.windowEndMinute);
+        m.put("requiredCount", s.requiredCount);
+        m.put("validCount", s.validCount);
+        m.put("rawCount", s.rawCount);
+        m.put("outOfWindowCount", s.outOfWindowCount);
+        m.put("missedCount", s.missedCount);
+        m.put("statusCode", s.statusCode);
+        m.put("compliance", s.compliance);
+        m.put("submitActive", s.submitActive);
+        m.put("activeUntil", s.activeUntil);
+        m.put("reportingEndsMs", s.reportingEndsMs);
+        m.put("nextExpectedMs", s.nextExpectedMs);
+        m.put("canComment", ComponentAccessor.getPermissionManager()
+                .hasPermission(ProjectPermissions.ADD_COMMENTS, issue, viewer));
+        return m;
+    }
+
+    private String reportReasonMessage(String reason) {
+        if ("done".equals(reason)) {
+            return "\u062a\u0633\u06a9 Done \u0634\u062f\u0647 \u0648 \u062b\u0628\u062a \u06af\u0632\u0627\u0631\u0634 \u0641\u0639\u0627\u0644 \u0646\u06cc\u0633\u062a";
+        }
+        if ("due_passed".equals(reason)) {
+            return "\u0645\u0647\u0644\u062a Due Date \u0628\u0647 \u067e\u0627\u06cc\u0627\u0646 \u0631\u0633\u06cc\u062f\u0647 \u0627\u0633\u062a";
+        }
+        if ("not_configured".equals(reason) || "no_follow_up_level".equals(reason)) {
+            return "\u062b\u0628\u062a \u06af\u0632\u0627\u0631\u0634 \u0641\u0639\u0627\u0644 \u0646\u06cc\u0633\u062a\u060c \u0686\u0648\u0646 \u0633\u0637\u062d \u067e\u06cc\u06af\u06cc\u0631\u06cc \u06cc\u0627 \u062a\u0646\u0638\u06cc\u0645\u0627\u062a \u06af\u0632\u0627\u0631\u0634\u200c\u062f\u0647\u06cc \u06a9\u0627\u0645\u0644 \u0646\u06cc\u0633\u062a.";
+        }
+        return "\u0645\u0647\u0644\u062a \u062b\u0628\u062a \u06af\u0632\u0627\u0631\u0634 \u0628\u0647 \u067e\u0627\u06cc\u0627\u0646 \u0631\u0633\u06cc\u062f\u0647 \u0627\u0633\u062a";
     }
 
     @GET
@@ -127,6 +541,21 @@ public class CorbitMobileIssueResource {
         }
         int start = JimMobileIssues.normalizeStartAt(startAt);
         int max = JimMobileIssues.normalizePageSize(maxResults);
+        // Approval filters require the schedule-approval fields. When they are not
+        // configured on this instance there are no such items — return a correct
+        // empty page (not an error, and never masking a permission failure).
+        if (("awaiting".equals(filter) || "rejected".equals(filter))
+                && !com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.isConfigured()) {
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("filter", filter);
+            empty.put("startAt", start);
+            empty.put("maxResults", max);
+            empty.put("total", 0);
+            empty.put("isLast", true);
+            empty.put("issues", new ArrayList<Map<String, Object>>());
+            empty.put("notConfigured", true);
+            return JimRestResponses.okJson(empty);
+        }
         try {
             Query query = JimMobileIssues.buildQuery(viewer, this.searchService, filter);
             PagerFilter<Issue> pager = new PagerFilter<>(max);

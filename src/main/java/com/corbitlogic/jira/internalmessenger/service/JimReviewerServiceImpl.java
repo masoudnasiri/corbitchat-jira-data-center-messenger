@@ -67,6 +67,30 @@ public class JimReviewerServiceImpl implements JimReviewerService {
     }
 
     @Override
+    public boolean isHiddenSystemAccountUsername(String username) {
+        // ONLY the dedicated hidden account (pluginuser) — never the configured
+        // reviewer user (m.nasiri), admins, or any ordinary user.
+        return username != null && USERNAME.equalsIgnoreCase(username.trim());
+    }
+
+    @Override
+    public boolean isHiddenSystemAccountUserKey(String userKey) {
+        if (userKey == null) {
+            return false;
+        }
+        // Legacy plugin-owned reviewer session sentinel resolves to no Jira user.
+        if (SESSION_USER_KEY.equals(userKey)) {
+            return true;
+        }
+        try {
+            ApplicationUser user = this.userManager.getUserByKey(userKey);
+            return user != null && isHiddenSystemAccountUsername(user.getUsername());
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    @Override
     public void ensureSeeded() {
         try {
             if (findRow() != null) {
