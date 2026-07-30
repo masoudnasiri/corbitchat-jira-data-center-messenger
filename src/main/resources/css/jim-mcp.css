@@ -1,0 +1,30 @@
+#jim-mcp-admin { max-width: 1100px; }
+#jim-mcp-admin .jim-mcp-sub { color: #626f86; margin: 4px 0 16px; }
+#jim-mcp-admin .jim-mcp-card {
+    background: #fff; border: 1px solid #dfe1e6; border-radius: 6px;
+    padding: 14px 16px; margin-bottom: 16px;
+}
+#jim-mcp-admin .jim-mcp-card h3 { margin-top: 0; }
+#jim-mcp-admin .jim-mcp-badges { margin-bottom: 8px; }
+#jim-mcp-admin .jim-mcp-badge {
+    display: inline-block; padding: 2px 8px; margin: 2px 6px 2px 0;
+    border-radius: 10px; font-size: 12px; background: #f4f5f7; border: 1px solid #dfe1e6;
+}
+#jim-mcp-admin .jim-mcp-ok { background: #e3fcef; border-color: #abf5d1; }
+#jim-mcp-admin .jim-mcp-off { background: #ffebe6; border-color: #ffbdad; color: #bf2600; }
+#jim-mcp-admin .jim-mcp-warn { background: #fffae6; border-color: #ffe380; }
+#jim-mcp-admin .jim-mcp-info { background: #deebff; border-color: #b3d4ff; }
+#jim-mcp-admin .jim-mcp-counts { color: #42526e; font-size: 13px; }
+#jim-mcp-admin .jim-mcp-global-controls { margin: 8px 0; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+#jim-mcp-admin .jim-mcp-global-controls .text { min-width: 220px; }
+#jim-mcp-admin .jim-mcp-toolbar { margin-bottom: 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+#jim-mcp-admin .jim-mcp-toolbar .text { min-width: 240px; }
+#jim-mcp-admin table.aui { width: 100%; }
+#jim-mcp-admin .jim-mcp-desc { color: #7a869a; font-size: 12px; }
+#jim-mcp-admin .jim-mcp-tag {
+    display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 11px; font-weight: 600;
+}
+#jim-mcp-admin .jim-mcp-tag-read { background: #deebff; color: #0747a6; }
+#jim-mcp-admin .jim-mcp-tag-write { background: #fffae6; color: #974f0c; }
+#jim-mcp-admin .jim-mcp-tag-destructive { background: #ffebe6; color: #bf2600; }
+#jim-mcp-admin .jim-mcp-off { color: #bf2600; }

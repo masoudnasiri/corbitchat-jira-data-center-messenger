@@ -33,6 +33,7 @@
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimLastSeen</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimReportControl</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimReportWindow</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimMcpToolPolicy</entity>
     </ao>
 
     <component-import key="activeObjects" interface="com.atlassian.activeobjects.external.ActiveObjects"/>
@@ -119,6 +120,17 @@
                class="com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsServiceImpl">
         <description>Admin console settings for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService</interface>
+    </component>
+
+    <component key="jimMcpService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMcpServiceImpl">
+        <description>MCP Control Plane: settings, tool policy, signed policy for the Corbit Logic Gateway</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimMcpService</interface>
+    </component>
+
+    <component key="jimMcpAdminServlet"
+               class="com.corbitlogic.jira.internalmessenger.web.JimMcpAdminServlet">
+        <description>MCP Control Plane admin console page servlet</description>
     </component>
 
     <component key="jimWebLocaleService"
@@ -410,6 +422,12 @@
         <url-pattern>/jim/admin</url-pattern>
     </servlet>
 
+    <servlet key="jim-mcp-admin-servlet"
+             name="MCP Control Plane"
+             class="com.corbitlogic.jira.internalmessenger.web.JimMcpAdminServlet">
+        <url-pattern>/jim/mcp-admin</url-pattern>
+    </servlet>
+
     <component key="jimBoardGalleryServlet"
                class="com.corbitlogic.jira.internalmessenger.web.JimBoardGalleryServlet">
         <description>Board gallery page servlet (visual directory of Jira boards)</description>
@@ -490,6 +508,12 @@
         <resource type="download" name="jim-admin.js" location="/js/jim-admin.js"/>
     </web-resource>
 
+    <web-resource key="jim-mcp-resources" name="MCP Control Plane Resources">
+        <dependency>com.atlassian.auiplugin:ajs</dependency>
+        <resource type="download" name="jim-mcp.css" location="/css/jim-mcp.css"/>
+        <resource type="download" name="jim-mcp.js" location="/js/jim-mcp.js"/>
+    </web-resource>
+
     <web-section key="jim-admin-section"
                  name="CorbitChat Admin Section"
                  location="admin_plugins_menu"
@@ -504,6 +528,15 @@
               weight="10">
         <label key="jim.admin.link.label"/>
         <link linkId="jim-admin">/plugins/servlet/jim/admin</link>
+        <condition class="com.atlassian.jira.plugin.webfragment.conditions.UserIsSysAdminCondition"/>
+    </web-item>
+
+    <web-item key="jim-mcp-admin-link"
+              name="MCP Control Plane"
+              section="admin_plugins_menu/jim-admin-section"
+              weight="20">
+        <label key="jim.mcp.admin.link.label"/>
+        <link linkId="jim-mcp-admin">/plugins/servlet/jim/mcp-admin</link>
         <condition class="com.atlassian.jira.plugin.webfragment.conditions.UserIsSysAdminCondition"/>
     </web-item>
 

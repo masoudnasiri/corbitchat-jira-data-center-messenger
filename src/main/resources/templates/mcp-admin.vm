@@ -1,0 +1,60 @@
+<html>
+<head>
+    <title>MCP Control Plane</title>
+    <meta name="decorator" content="atl.admin"/>
+    <meta name="admin.active.section" content="admin_plugins_menu/jim-admin-section"/>
+    <meta name="admin.active.tab" content="jim-mcp-admin-link"/>
+</head>
+<body>
+<div id="jim-mcp-admin">
+    <h2>MCP Control Plane</h2>
+    <p class="jim-mcp-sub">Administrative control plane for the Corbit Logic Jira MCP integration.
+        Policy is enforced by the Corbit Logic Gateway; the raw MCP backend stays private.</p>
+
+    <div id="jim-mcp-status" class="jim-mcp-card">Loading status&hellip;</div>
+
+    <div class="jim-mcp-card">
+        <h3>Global</h3>
+        <div class="jim-mcp-global-controls">
+            <label><input type="checkbox" id="jim-mcp-enabled"/> MCP enabled</label>
+            <span class="jim-mcp-classes">Classes:
+                <label><input type="checkbox" id="jim-mcp-class-read"/> read</label>
+                <label><input type="checkbox" id="jim-mcp-class-write"/> write</label>
+                <label><input type="checkbox" id="jim-mcp-class-destructive"/> destructive</label>
+            </span>
+            <button class="aui-button" id="jim-mcp-save-global">Save global</button>
+        </div>
+        <div class="jim-mcp-global-controls">
+            <label>Allowed projects (CSV, empty = all):
+                <input type="text" id="jim-mcp-projects" class="text" placeholder="MIT"/></label>
+            <label>Gateway URL:
+                <input type="text" id="jim-mcp-gwurl" class="text" placeholder="http://127.0.0.1:9100"/></label>
+        </div>
+    </div>
+
+    <div class="jim-mcp-card">
+        <h3>Tools</h3>
+        <div class="jim-mcp-toolbar">
+            <input type="text" id="jim-mcp-search" class="text" placeholder="Search tools&hellip;"/>
+            <button class="aui-button" data-bulk="enable_all">Enable all</button>
+            <button class="aui-button" data-bulk="disable_all">Disable all</button>
+            <button class="aui-button" data-bulk="enable_read">Enable read</button>
+            <button class="aui-button" data-bulk="enable_write">Enable write</button>
+            <button class="aui-button" data-bulk="enable_destructive">Enable destructive</button>
+        </div>
+        <table class="aui" id="jim-mcp-tools">
+            <thead><tr>
+                <th>Tool</th><th>Toolset</th><th>Class</th><th>Verification</th>
+                <th>Available</th><th>Enabled</th><th>Confirm</th>
+            </tr></thead>
+            <tbody><tr><td colspan="7">Loading&hellip;</td></tr></tbody>
+        </table>
+    </div>
+
+    <div class="jim-mcp-card">
+        <h3>Diagnostics</h3>
+        <div id="jim-mcp-diag">&mdash;</div>
+    </div>
+</div>
+</body>
+</html>
