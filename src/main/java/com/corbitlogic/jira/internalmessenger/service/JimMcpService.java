@@ -38,6 +38,14 @@ public interface JimMcpService {
     /** Record an authenticated heartbeat from the Corbit Logic Gateway. */
     void recordHeartbeat(Map<String, Object> heartbeat);
 
+    /**
+     * Verify a signed machine-to-machine request from the Gateway (token + timestamp +
+     * nonce + HMAC signature, replay protection, rate limiting). Returns null when valid,
+     * otherwise a short reason code.
+     */
+    String verifyGatewayRequest(String token, String method, String path,
+                                String timestamp, String nonce, String signature);
+
     /** True when both the shared signing secret and gateway pull token are configured. */
     boolean isConfigured();
 

@@ -292,6 +292,42 @@ public class JimMcpServiceImpl implements JimMcpService {
         return constantTimeEquals(stored, sha256(provided));
     }
 
+    private static final long SIG_SKEW_MS = 300000L;
+    private static final int MAX_AUTH_FAILS_PER_MIN = 30;
+    private final java.util.concurrent.ConcurrentHashMap<String, Long> seenNonces =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicInteger authFailures =
+            new java.util.concurrent.atomic.AtomicInteger();
+    private volatile long authFailWindowStart = System.currentTimeMillis();
+
+    @Override
+    public String verifyGatewayRequest(String token, String method, String path,
+                                       String timestamp, String nonce, String signature) {
+        long now = System.currentTimeMillis();
+        if (now - this.authFailWindowStart > 60000L) { this.authFailWindowStart = now; this.authFailures.set(0); }
+        if (this.authFailures.get() > MAX_AUTH_FAILS_PER_MIN) return "rate_limited";
+        if (!checkGatewayToken(token)) { this.authFailures.incrementAndGet(); return "bad_token"; }
+        String secret = get("sharedSecret", "");
+        if (!secret.isEmpty()) {
+            if (timestamp == null || nonce == null || signature == null) {
+                this.authFailures.incrementAndGet(); return "missing_signature";
+            }
+            long tsMs;
+            try { tsMs = Long.parseLong(timestamp) * 1000L; }
+            catch (NumberFormatException e) { this.authFailures.incrementAndGet(); return "bad_timestamp"; }
+            if (Math.abs(now - tsMs) > SIG_SKEW_MS) { this.authFailures.incrementAndGet(); return "stale_timestamp"; }
+            for (java.util.Iterator<java.util.Map.Entry<String, Long>> it = this.seenNonces.entrySet().iterator(); it.hasNext(); ) {
+                if (it.next().getValue() < now) it.remove();
+            }
+            if (this.seenNonces.putIfAbsent(nonce, now + SIG_SKEW_MS) != null) {
+                this.authFailures.incrementAndGet(); return "replayed_nonce";
+            }
+            String expected = hmacSha256Hex(secret, method + "\n" + path + "\n" + timestamp + "\n" + nonce);
+            if (!constantTimeEquals(expected, signature)) { this.authFailures.incrementAndGet(); return "bad_signature"; }
+        }
+        return null;
+    }
+
     @Override
     public void recordHeartbeat(Map<String, Object> hb) {
         put("hbAt", Long.toString(System.currentTimeMillis()));

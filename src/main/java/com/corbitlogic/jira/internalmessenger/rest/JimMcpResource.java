@@ -60,10 +60,14 @@ public class JimMcpResource {
     @GET
     @Path("/policy")
     @AnonymousAllowed
-    public Response policy(@HeaderParam("X-MCP-Gateway-Token") String token) {
-        if (!this.mcpService.checkGatewayToken(token)) {
-            return JimRestResponses.errorJson(401, "unauthorized",
-                    "valid X-MCP-Gateway-Token required");
+    public Response policy(@HeaderParam("X-MCP-Gateway-Token") String token,
+                           @HeaderParam("X-MCP-Timestamp") String ts,
+                           @HeaderParam("X-MCP-Nonce") String nonce,
+                           @HeaderParam("X-MCP-Signature") String sig) {
+        String reason = this.mcpService.verifyGatewayRequest(token, "GET", "/mcp/policy", ts, nonce, sig);
+        if (reason != null) {
+            log.warn("MCP policy pull rejected: {}", reason);
+            return JimRestResponses.errorJson(401, "unauthorized", reason);
         }
         try {
             return JimRestResponses.okJson(this.mcpService.buildSignedPolicy());
@@ -78,9 +82,15 @@ public class JimMcpResource {
     @Path("/heartbeat")
     @AnonymousAllowed
     @Consumes({"application/json"})
-    public Response heartbeat(@HeaderParam("X-MCP-Gateway-Token") String token, Map<String, Object> body) {
-        if (!this.mcpService.checkGatewayToken(token)) {
-            return JimRestResponses.errorJson(401, "unauthorized", "valid X-MCP-Gateway-Token required");
+    public Response heartbeat(@HeaderParam("X-MCP-Gateway-Token") String token,
+                              @HeaderParam("X-MCP-Timestamp") String ts,
+                              @HeaderParam("X-MCP-Nonce") String nonce,
+                              @HeaderParam("X-MCP-Signature") String sig,
+                              Map<String, Object> body) {
+        String reason = this.mcpService.verifyGatewayRequest(token, "POST", "/mcp/heartbeat", ts, nonce, sig);
+        if (reason != null) {
+            log.warn("MCP heartbeat rejected: {}", reason);
+            return JimRestResponses.errorJson(401, "unauthorized", reason);
         }
         this.mcpService.recordHeartbeat(body == null ? new LinkedHashMap<>() : body);
         LinkedHashMap<String, Object> out = new LinkedHashMap<>();
