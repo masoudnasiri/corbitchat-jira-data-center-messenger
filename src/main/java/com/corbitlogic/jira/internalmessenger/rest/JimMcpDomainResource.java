@@ -125,36 +125,56 @@ public class JimMcpDomainResource {
             pager.setStart(start);
             SearchResults<Issue> results = this.searchService.search(viewer, query, pager);
             List<Map<String, Object>> items = new ArrayList<Map<String, Object>>();
-            int req = 0, submitted = 0, valid = 0, invalid = 0, missing = 0, maxStreak = 0, configured = 0;
+            int req = 0, submitted = 0, valid = 0, oow = 0, dup = 0, missing = 0, maxStreak = 0, configured = 0;
+            Integer tzOff = null;
             for (Issue issue : results.getResults()) {
                 JimReportSummary s = this.reportService.computeSummary(issue);
                 if (s == null || !s.configured || s.levelCode == null || !s.applicable) continue;
+                if (tzOff == null) tzOff = s.tzOffsetMinutes;
                 Map<String, Object> it = new LinkedHashMap<String, Object>();
+                it.put("scopeType", "issue_lifetime");
                 it.put("issueKey", issue.getKey());
                 it.put("projectKey", projectOf(issue.getKey()));
                 it.put("summary", issue.getSummary());
                 it.put("levelCode", s.levelCode);
+                it.put("countMode", s.countMode);
                 it.put("statusCode", s.statusCode);
                 it.put("reportingControlState", s.reportingControlState);
+                it.put("windowStartMinute", s.windowStartMinute);
+                it.put("windowEndMinute", s.windowEndMinute);
+                it.put("intervalMinutes", s.intervalMinutes);
+                it.put("requiredCount", s.requiredCount);
                 it.put("requiredSoFar", s.requiredSoFar);
+                it.put("submittedCount", s.rawCount);
+                it.put("validCount", s.validCount);
                 it.put("validSoFar", s.validSoFar);
+                it.put("outOfWindowCount", s.outOfWindowCount);
+                it.put("duplicateCount", s.duplicateCount);
                 it.put("missedCount", s.missedCount);
                 it.put("maxConsecutiveMissed", s.maxMissedStreak);
                 it.put("submitActive", s.submitActive);
+                it.put("tzOffsetMinutes", s.tzOffsetMinutes);
                 items.add(it);
                 configured++;
                 req += s.requiredSoFar; submitted += s.rawCount; valid += s.validSoFar;
-                invalid += s.outOfWindowCount; missing += s.missedCount;
+                oow += s.outOfWindowCount; dup += s.duplicateCount; missing += s.missedCount;
                 if (s.maxMissedStreak > maxStreak) maxStreak = s.maxMissedStreak;
             }
             Map<String, Object> summary = new LinkedHashMap<String, Object>();
+            summary.put("scope", "issue_lifetime_sum");
             summary.put("requiredCount", req);
             summary.put("submittedCount", submitted);
             summary.put("validCount", valid);
-            summary.put("invalidCount", invalid);
+            summary.put("outsideWindowCount", oow);
+            summary.put("duplicateCount", dup);
+            summary.put("invalidCount", oow + dup);
             summary.put("missingCount", missing);
             summary.put("maximumConsecutiveMissing", maxStreak);
             Map<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("scopeType", "issue_lifetime");
+            body.put("scopeNote", "Per-issue LIFETIME compliance from JimReportService (not a weekly/user-period aggregate). Report the plugin numbers verbatim; do not re-classify reports or recompute from raw comments.");
+            body.put("timezone", "GMT" + (tzOff == null ? "" : (tzOff >= 0 ? "+" : "-") + String.format("%02d:%02d", Math.abs(tzOff) / 60, Math.abs(tzOff) % 60)));
+            body.put("tzOffsetMinutes", tzOff == null ? 0 : tzOff.intValue());
             body.put("reports", items);
             body.put("summary", summary);
             body.put("reportConfiguredIssues", configured);
@@ -217,12 +237,46 @@ public class JimMcpDomainResource {
         out.put("issueKey", issue.getKey());
         out.put("projectKey", projectOf(issue.getKey()));
         out.put("summary", issue.getSummary());
-        out.put("configured", JimScheduleApprovalConfig.isConfigured());
+        boolean configured = JimScheduleApprovalConfig.isConfigured();
+        out.put("configured", configured);
         if (p != null) out.putAll(p);
-        try {
-            Date approved = JimScheduleApprovalConfig.getApprovedDate(issue);
-            out.put("approvedDateYmd", approved == null ? null : JimMobileDates.toYmd(approved));
-        } catch (Exception ignore) { }
+        Date proposed = null, approved = null;
+        ApplicationUser approver = null;
+        String status = null;
+        try { proposed = JimScheduleApprovalConfig.getProposedDate(issue); } catch (Exception ignore) { }
+        try { approved = JimScheduleApprovalConfig.getApprovedDate(issue); } catch (Exception ignore) { }
+        try { approver = JimScheduleApprovalConfig.getApprover(issue); } catch (Exception ignore) { }
+        try { status = JimScheduleApprovalConfig.getStatusValue(issue); } catch (Exception ignore) { }
+        out.put("proposedDateYmd", proposed == null ? null : JimMobileDates.toYmd(proposed));
+        out.put("approvedDateYmd", approved == null ? null : JimMobileDates.toYmd(approved));
+        boolean approverConfigured = approver != null;
+        boolean isApprover = approver != null && approver.getKey().equals(viewer.getKey());
+        boolean canEdit = ComponentAccessor.getPermissionManager()
+                .hasPermission(ProjectPermissions.EDIT_ISSUES, (Issue) issue, viewer);
+        boolean pending = status == null || status.isEmpty() || "Pending".equalsIgnoreCase(status);
+        List<String> blocking = new ArrayList<String>();
+        if (!configured) blocking.add("not_configured");
+        if (configured && !approverConfigured) blocking.add("approver_not_configured");
+        if (configured && JimMobileDates.findProposedCompletionField() == null) blocking.add("proposed_field_not_mapped");
+        if (configured && !canEdit) blocking.add("no_edit_permission");
+        boolean canSubmit = configured && canEdit && JimMobileDates.findProposedCompletionField() != null;
+        List<String> decideBlocking = new ArrayList<String>();
+        if (!configured) decideBlocking.add("not_configured");
+        if (!isApprover) decideBlocking.add("not_approver");
+        if (proposed == null) decideBlocking.add("no_proposed_value");
+        if (!pending) decideBlocking.add("already_decided");
+        boolean canDecide = configured && isApprover && proposed != null && pending;
+        out.put("approverConfigured", approverConfigured);
+        out.put("isApprover", isApprover);
+        out.put("canSubmit", canSubmit);
+        out.put("canDecide", canDecide);
+        out.put("requiredFormat", "yyyy-MM-dd");
+        out.put("blockingReasons", blocking);
+        out.put("decisionBlockingReasons", decideBlocking);
+        List<String> actions = new ArrayList<String>();
+        if (canSubmit) actions.add("submit");
+        if (canDecide) { actions.add("approve"); actions.add("reject"); }
+        out.put("allowedActions", actions);
         out.put("domain", "corbit_schedule_approval");
         return out;
     }
@@ -256,12 +310,47 @@ public class JimMcpDomainResource {
         }
         String proposedYmd = body == null ? null : (body.get("proposed_date") == null ? null : String.valueOf(body.get("proposed_date")));
         String approverName = body == null ? null : (body.get("approver_username") == null ? null : String.valueOf(body.get("approver_username")));
+        boolean validateOnly = body != null && Boolean.TRUE.equals(body.get("validate_only"));
         try {
             Date proposed = null;
+            boolean parseError = false;
             if (proposedYmd != null && !proposedYmd.trim().isEmpty() && !"null".equals(proposedYmd)) {
-                proposed = new java.text.SimpleDateFormat("yyyy-MM-dd").parse(proposedYmd.trim());
+                try { proposed = new java.text.SimpleDateFormat("yyyy-MM-dd").parse(proposedYmd.trim()); }
+                catch (java.text.ParseException pe) { parseError = true; }
             }
             ApplicationUser approver = approverName == null ? null : ComponentAccessor.getUserManager().getUserByName(approverName);
+            if (validateOnly) {
+                Map<String, Object> v = new LinkedHashMap<String, Object>();
+                Map<String, Object> proj = scheduleProjection(issue, viewer);
+                List<String> reasons = new ArrayList<String>();
+                Object pb = proj.get("blockingReasons");
+                if (pb instanceof List) reasons.addAll((List<String>) pb);
+                if (approver != null) reasons.remove("approver_not_configured");  // caller supplies approver
+                if (parseError) reasons.add("bad_date_format");
+                if (approverName != null && approver == null) reasons.add("approver_not_found");
+                if (proposed == null && !parseError) reasons.add("no_proposed_value");
+                boolean valid = reasons.isEmpty();
+                v.put("issueKey", issue.getKey());
+                v.put("validateOnly", true);
+                v.put("valid", valid);
+                v.put("canSubmit", Boolean.TRUE.equals(proj.get("canSubmit")) && !parseError);
+                v.put("normalizedValue", proposed == null ? null : JimMobileDates.toYmd(proposed));
+                v.put("requiredFormat", "yyyy-MM-dd");
+                v.put("approverConfigured", proj.get("approverConfigured"));
+                v.put("resultingApprovalState", "Pending");
+                v.put("blockingReasons", reasons);
+                v.put("warnings", new ArrayList<String>());
+                v.put("sideEffects", false);
+                v.put("domain", "corbit_schedule_approval");
+                return JimRestResponses.okJson(v);
+            }
+            if (parseError) return JimRestResponses.errorJson(400, "bad_date", "proposed_date must be yyyy-MM-dd");
+            ApplicationUser existingApprover = null;
+            try { existingApprover = JimScheduleApprovalConfig.getApprover(issue); } catch (Exception ignore) { }
+            if (approver == null && existingApprover == null) {
+                return JimRestResponses.errorJson(409, "approver_not_configured",
+                        "An approver must be provided (approver_username); none is configured on this issue.");
+            }
             com.atlassian.jira.issue.fields.CustomField proposedCf = JimMobileDates.findProposedCompletionField();
             com.atlassian.jira.issue.fields.CustomField approverCf = JimScheduleApprovalConfig.resolveApproverField();
             if (proposedCf == null || approverCf == null) {
@@ -273,8 +362,6 @@ public class JimMcpDomainResource {
                     com.atlassian.jira.event.type.EventDispatchOption.ISSUE_UPDATED, false);
             MutableIssue refreshed = loadBrowsable(issueKey, viewer);
             return JimRestResponses.okJson(scheduleProjection(refreshed != null ? refreshed : issue, viewer));
-        } catch (java.text.ParseException pe) {
-            return JimRestResponses.errorJson(400, "bad_date", "proposed_date must be yyyy-MM-dd");
         } catch (Exception e) {
             log.error("mcp-domain schedule submit failed", e);
             return JimRestResponses.errorJson(500, "error", "Failed to submit proposed schedule");
