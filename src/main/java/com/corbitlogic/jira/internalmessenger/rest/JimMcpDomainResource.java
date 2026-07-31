@@ -584,7 +584,7 @@ public class JimMcpDomainResource {
             winStart = dayStart + s.windowStartMinute * 60000L;
             winEnd = dayStart + s.windowEndMinute * 60000L;
             if (val > 0) { state = "covered"; hasValid = true; }
-            else if (sub > 0) { state = "invalid_only"; }
+            else if (sub > 0) { state = "invalid_only"; actionRequired = true; }
             else if (inHours && s.submitActive) { state = "missing"; actionRequired = true; }
             else { state = "not_due"; }
         } else {
@@ -598,7 +598,7 @@ public class JimMcpDomainResource {
                 currentExists = true; winStart = cur.windowStart; winEnd = cur.windowEnd;
                 subCur = cur.rawCount; valCur = cur.validCount; dupCur = cur.duplicateCount;
                 if (cur.validCount > 0) { state = "covered"; hasValid = true; }
-                else if (cur.rawCount > 0) { state = "invalid_only"; }
+                else if (cur.rawCount > 0) { state = "invalid_only"; actionRequired = true; }
                 else { state = "missing"; actionRequired = true; }
             }
         }
