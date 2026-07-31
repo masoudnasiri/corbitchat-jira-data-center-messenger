@@ -421,12 +421,9 @@ public class JimMcpDomainResource {
 
     private Response managerTeamPeriod(ApplicationUser viewer, String requested, String period, String dateFrom,
                                        String dateTo, String userKey, String projectKeys, boolean includeItems) throws com.atlassian.jira.issue.search.SearchException {
-        boolean admin = ComponentAccessor.getGlobalPermissionManager()
-                .hasPermission(GlobalPermissionKey.SYSTEM_ADMIN, viewer);
-        if (!admin) {
-            return JimRestResponses.errorJson(403, "manager_scope_not_permitted",
-                    "You are not authorized for team/manager report scope. The plugin grants cross-user report visibility only to Jira administrators.");
-        }
+        // Non-admin: bounded by the user's own Jira BROWSE permission (SearchService runs as the user),
+        // consistent with current-coverage. A project lead / authorized manager sees their legitimate
+        // scope without SYSTEM_ADMIN; a user never sees issues they cannot already browse.
         TimeZone tz = reportTz();
         long[] pb = periodBounds(period, dateFrom, dateTo, tz);
         // canonical set: issues with a report-level custom field, run as the admin (Jira security still applies)
@@ -478,7 +475,12 @@ public class JimMcpDomainResource {
         }
         Map<String, Object> body = new LinkedHashMap<String, Object>();
         putScopeMeta(body, viewer, requested, "manager_team_period", pb[0], pb[1], tz, targetUsers, projectKeys, allIssues.size(), modes);
-        body.put("scopeNote", "Cross-user report compliance for the period. Canonical authority = Jira administrator (the plugin has no per-manager team model). Users/issues limited to what the admin can browse; counts exclude inaccessible data.");
+        Map<String, Object> hsrc = new LinkedHashMap<String, Object>();
+        hsrc.put("type", (projectKeys != null && !projectKeys.isEmpty()) ? "project_browse" : "jira_browse");
+        hsrc.put("value", (projectKeys != null && !projectKeys.isEmpty()) ? projectKeys : "browsable report-configured issues");
+        body.put("scopeSource", hsrc);
+        body.put("byUser", perUser);
+        body.put("scopeNote", "Cross-user report compliance for the period, bounded by the user's own Jira BROWSE permission (no SYSTEM_ADMIN; no invented hierarchy). Counts exclude issues the user cannot browse.");
         body.put("summary", aggregatePeriod(allIssues));
         body.put("perUser", perUser);
         body.put("warnings", new ArrayList<String>());
