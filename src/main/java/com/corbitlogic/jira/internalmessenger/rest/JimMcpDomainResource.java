@@ -526,6 +526,189 @@ public class JimMcpDomainResource {
         }
     }
 
+    // ---------------------------------------------------------------- current-window reporting
+    private int minuteOfDay(long ms, TimeZone tz) {
+        Calendar c = Calendar.getInstance(tz); c.setTimeInMillis(ms);
+        return c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE);
+    }
+    private long startOfDay(long ms, TimeZone tz) {
+        Calendar c = Calendar.getInstance(tz); c.setTimeInMillis(ms);
+        c.set(Calendar.HOUR_OF_DAY, 0); c.set(Calendar.MINUTE, 0); c.set(Calendar.SECOND, 0); c.set(Calendar.MILLISECOND, 0);
+        return c.getTimeInMillis();
+    }
+    private String localWall(Long ms, int offMin) {
+        if (ms == null) return null;
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
+        f.setTimeZone(TimeZone.getTimeZone("GMT"));
+        return f.format(new Date(ms + offMin * 60000L));
+    }
+
+    /** Canonical CURRENT-window projection for one issue. Historical misses never set current state. */
+    private Map<String, Object> currentWindowMap(Issue issue) {
+        JimReportSummary s = this.reportService.computeSummary(issue);
+        TimeZone tz = reportTz();
+        long now = System.currentTimeMillis();
+        Map<String, Object> m = new LinkedHashMap<String, Object>();
+        m.put("issueKey", issue.getKey());
+        m.put("projectKey", projectOf(issue.getKey()));
+        m.put("summary", issue.getSummary());
+        int off = s != null ? s.tzOffsetMinutes : tz.getOffset(now) / 60000;
+        m.put("tzOffsetMinutes", off);
+        m.put("reportingEnabled", s != null && s.configured);
+        m.put("reportLevel", s == null ? null : s.levelCode);
+        m.put("countMode", s == null ? null : s.countMode);
+        m.put("responsibleUserKey", s == null ? null : s.responsibleUserKey);
+        m.put("responsibleUserName", s == null ? null : s.responsibleUserName);
+        String state; boolean actionRequired = false, hasValid = false, currentExists = false;
+        Integer subCur = null, valCur = null, dupCur = null; Long winStart = null, winEnd = null;
+        if (s == null || !s.configured || s.levelCode == null || !s.applicable) {
+            state = "not_applicable";
+        } else if (!s.fieldsConfigured || s.reportConfigError) {
+            state = "configuration_incomplete";
+        } else if ("CLOSED".equals(s.reportingControlState)) {
+            state = "closed";
+        } else if ("fixed_minimum".equals(s.countMode)) {
+            long dayStart = startOfDay(now, tz);
+            long dayEnd = dayStart + 86400000L;
+            int sub = 0, val = 0, dup = 0;
+            if (s.items != null) for (JimReportSummary.Item it : s.items) {
+                if (it.createdMs < dayStart || it.createdMs >= dayEnd) continue;
+                sub++; if (it.status == 0) val++; else if (it.status == 1) dup++;
+            }
+            subCur = sub; valCur = val; dupCur = dup;
+            int mod = minuteOfDay(now, tz);
+            boolean inHours = mod >= s.windowStartMinute && mod < s.windowEndMinute;
+            currentExists = inHours;
+            winStart = dayStart + s.windowStartMinute * 60000L;
+            winEnd = dayStart + s.windowEndMinute * 60000L;
+            if (val > 0) { state = "covered"; hasValid = true; }
+            else if (sub > 0) { state = "invalid_only"; }
+            else if (inHours && s.submitActive) { state = "missing"; actionRequired = true; }
+            else { state = "not_due"; }
+        } else {
+            JimReportSummary.WindowInfo cur = null;
+            if (s.windowLedger != null) for (JimReportSummary.WindowInfo w : s.windowLedger) {
+                if (w.windowStart <= now && now < w.windowEnd) { cur = w; break; }
+            }
+            if (cur == null) {
+                state = "not_due";
+            } else {
+                currentExists = true; winStart = cur.windowStart; winEnd = cur.windowEnd;
+                subCur = cur.rawCount; valCur = cur.validCount; dupCur = cur.duplicateCount;
+                if (cur.validCount > 0) { state = "covered"; hasValid = true; }
+                else if (cur.rawCount > 0) { state = "invalid_only"; }
+                else { state = "missing"; actionRequired = true; }
+            }
+        }
+        m.put("currentWindowState", state);
+        m.put("actionRequiredNow", actionRequired);
+        m.put("reportRequiredNow", actionRequired);
+        m.put("hasValidReportInCurrentWindow", hasValid);
+        m.put("currentWindowExists", currentExists);
+        m.put("currentWindowStartMs", winStart);
+        m.put("currentWindowStartLocal", localWall(winStart, off));
+        m.put("currentWindowEndMs", winEnd);
+        m.put("currentWindowEndLocal", localWall(winEnd, off));
+        m.put("currentWindowSubmittedCount", subCur);
+        m.put("currentWindowValidCount", valCur);
+        m.put("currentWindowDuplicateCount", dupCur);
+        Long nextDue = s == null ? null : (s.nextReportDueMs != null ? s.nextReportDueMs : s.nextExpectedMs);
+        m.put("nextDeadlineMs", nextDue);
+        m.put("nextDeadlineLocal", localWall(nextDue, off));
+        Map<String, Object> hist = new LinkedHashMap<String, Object>();
+        hist.put("requiredCount", s == null ? 0 : s.requiredCount);
+        hist.put("validCount", s == null ? 0 : s.validCount);
+        hist.put("missedCount", s == null ? 0 : s.missedCount);
+        hist.put("maximumConsecutiveMissed", s == null ? 0 : s.maxMissedStreak);
+        m.put("historicalContext", hist);
+        return m;
+    }
+
+    @GET
+    @Path("/reports/current-window/{issueKey}")
+    public Response reportsCurrentWindow(@PathParam("issueKey") String issueKey) {
+        ApplicationUser viewer = viewer();
+        if (viewer == null) return JimRestResponses.errorJson(401, "unauthorized", "Not authenticated");
+        MutableIssue issue = loadBrowsable(issueKey, viewer);
+        if (issue == null) return JimRestResponses.errorJson(404, "not_found", "Issue not found or not accessible");
+        Map<String, Object> m = currentWindowMap(issue);
+        m.put("scopeType", "issue_current_window");
+        m.put("timezone", tzLabel(i(m.get("tzOffsetMinutes"))));
+        m.put("domain", "corbit_report");
+        return JimRestResponses.okJson(m);
+    }
+
+    @GET
+    @Path("/reports/current-coverage")
+    public Response reportsCurrentCoverage(@QueryParam("scope") String scope,
+                                           @QueryParam("project_key") String projectKey,
+                                           @QueryParam("user_key") String userKey,
+                                           @QueryParam("include_covered") Boolean includeCovered,
+                                           @QueryParam("maxResults") Integer maxResults) throws com.atlassian.jira.issue.search.SearchException {
+        ApplicationUser viewer = viewer();
+        if (viewer == null) return JimRestResponses.errorJson(401, "unauthorized", "Not authenticated");
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.TASKS)) {
+            return JimRestResponses.errorJson(403, "feature_disabled", "Reports feature not enabled for your account");
+        }
+        String sc = scope == null || scope.trim().isEmpty() ? "my_current_window" : scope.trim();
+        int max = maxResults == null || maxResults < 1 || maxResults > 200 ? 100 : maxResults;
+        boolean team = sc.startsWith("team") || sc.startsWith("project");
+        List<Issue> issues = new ArrayList<Issue>();
+        Map<String, Object> scopeSource = new LinkedHashMap<String, Object>();
+        if (team) {
+            boolean admin = ComponentAccessor.getGlobalPermissionManager().hasPermission(GlobalPermissionKey.SYSTEM_ADMIN, viewer);
+            if (!admin) return JimRestResponses.errorJson(403, "manager_scope_not_permitted",
+                    "Team/project current-window coverage requires Jira administrator authority (the plugin has no per-manager team model).");
+            com.atlassian.jira.issue.fields.CustomField lvl = JimReportConfig.resolveLevelField();
+            String cfNum = lvl == null ? null : lvl.getId().replaceAll("[^0-9]", "");
+            StringBuilder sb = new StringBuilder();
+            sb.append(cfNum != null && !cfNum.isEmpty() ? "cf[" + cfNum + "] IS NOT EMPTY" : "resolution IS EMPTY OR resolution IS NOT EMPTY");
+            if (userKey != null && !userKey.isEmpty()) {
+                ApplicationUser tgt = ComponentAccessor.getUserManager().getUserByKey(userKey);
+                if (tgt == null) tgt = ComponentAccessor.getUserManager().getUserByName(userKey);
+                if (tgt != null) sb.append(" AND assignee = \"").append(tgt.getUsername()).append("\"");
+            }
+            if (projectKey != null && !projectKey.isEmpty()) sb.append(" AND project = \"").append(projectKey).append("\"");
+            SearchService.ParseResult pr = this.searchService.parseQuery(viewer, sb.toString());
+            if (!pr.isValid()) return JimRestResponses.errorJson(400, "bad_query", "Coverage query could not be parsed");
+            issues.addAll(this.searchService.search(viewer, pr.getQuery(), new PagerFilter<Issue>(max)).getResults());
+            scopeSource.put("type", "system_admin"); scopeSource.put("value", "Jira administrator");
+        } else {
+            Query q = JimMobileIssues.buildQuery(viewer, this.searchService, "assigned");
+            issues.addAll(this.searchService.search(viewer, q, new PagerFilter<Issue>(max)).getResults());
+            scopeSource.put("type", "assignee"); scopeSource.put("value", viewer.getKey());
+        }
+        Map<String, Integer> counts = new LinkedHashMap<String, Integer>();
+        for (String k : new String[]{"currentlyRequired", "covered", "missing", "invalidOnly", "notDue", "closed", "notApplicable", "configurationIncomplete"}) counts.put(k, 0);
+        List<Map<String, Object>> missing = new ArrayList<Map<String, Object>>();
+        List<Map<String, Object>> invalidOnly = new ArrayList<Map<String, Object>>();
+        List<Map<String, Object>> covered = new ArrayList<Map<String, Object>>();
+        boolean incCov = Boolean.TRUE.equals(includeCovered);
+        for (Issue issue : issues) {
+            Map<String, Object> cw = currentWindowMap(issue);
+            String st = String.valueOf(cw.get("currentWindowState"));
+            if ("covered".equals(st)) { counts.put("covered", counts.get("covered") + 1); counts.put("currentlyRequired", counts.get("currentlyRequired") + 1); if (incCov) covered.add(cw); }
+            else if ("missing".equals(st)) { counts.put("missing", counts.get("missing") + 1); counts.put("currentlyRequired", counts.get("currentlyRequired") + 1); missing.add(cw); }
+            else if ("invalid_only".equals(st)) { counts.put("invalidOnly", counts.get("invalidOnly") + 1); counts.put("currentlyRequired", counts.get("currentlyRequired") + 1); invalidOnly.add(cw); }
+            else if ("not_due".equals(st)) counts.put("notDue", counts.get("notDue") + 1);
+            else if ("closed".equals(st)) counts.put("closed", counts.get("closed") + 1);
+            else if ("configuration_incomplete".equals(st)) counts.put("configurationIncomplete", counts.get("configurationIncomplete") + 1);
+            else counts.put("notApplicable", counts.get("notApplicable") + 1);
+        }
+        Map<String, Object> body = new LinkedHashMap<String, Object>();
+        body.put("scopeType", team ? "manager_team_current_window" : "my_current_window");
+        body.put("scopeSource", scopeSource);
+        body.put("summary", counts);
+        body.put("missingCurrentReports", missing);
+        body.put("invalidOnlyCurrentReports", invalidOnly);
+        if (incCov) body.put("coveredCurrentReports", covered);
+        body.put("timezone", tzLabel(reportTz().getOffset(System.currentTimeMillis()) / 60000));
+        body.put("issueCount", issues.size());
+        body.put("domain", "corbit_report");
+        body.put("warnings", new ArrayList<String>());
+        return JimRestResponses.okJson(body);
+    }
+
     // ---------------------------------------------------------------- schedule approval (by issue key)
     private Map<String, Object> scheduleProjection(Issue issue, ApplicationUser viewer) {
         Map<String, Object> p = JimScheduleApprovalConfig.projection(issue, viewer);
