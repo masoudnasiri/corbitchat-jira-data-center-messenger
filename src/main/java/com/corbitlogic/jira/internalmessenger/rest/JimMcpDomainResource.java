@@ -652,27 +652,45 @@ public class JimMcpDomainResource {
         }
         String sc = scope == null || scope.trim().isEmpty() ? "my_current_window" : scope.trim();
         int max = maxResults == null || maxResults < 1 || maxResults > 200 ? 100 : maxResults;
-        boolean team = sc.startsWith("team") || sc.startsWith("project");
+        boolean team = sc.startsWith("team") || sc.startsWith("project") || sc.startsWith("configured_supervisor") || sc.startsWith("schedule_approver");
         List<Issue> issues = new ArrayList<Issue>();
         Map<String, Object> scopeSource = new LinkedHashMap<String, Object>();
         if (team) {
-            boolean admin = ComponentAccessor.getGlobalPermissionManager().hasPermission(GlobalPermissionKey.SYSTEM_ADMIN, viewer);
-            if (!admin) return JimRestResponses.errorJson(403, "manager_scope_not_permitted",
-                    "Team/project current-window coverage requires Jira administrator authority (the plugin has no per-manager team model).");
+            // Oversight scope is bounded by the user's own Jira BROWSE permission (SearchService runs
+            // as the user), so a project lead / authorized manager sees their legitimate scope WITHOUT
+            // SYSTEM_ADMIN, and a user never sees issues they cannot already browse. No invented hierarchy.
+            if ((sc.startsWith("project") || sc.startsWith("schedule_approver")) && (projectKey == null || projectKey.isEmpty())
+                    && (userKey == null || userKey.isEmpty())) {
+                return JimRestResponses.errorJson(400, "project_key_required", "project_key (or user_key) is required for project/approver scope.");
+            }
             com.atlassian.jira.issue.fields.CustomField lvl = JimReportConfig.resolveLevelField();
             String cfNum = lvl == null ? null : lvl.getId().replaceAll("[^0-9]", "");
             StringBuilder sb = new StringBuilder();
-            sb.append(cfNum != null && !cfNum.isEmpty() ? "cf[" + cfNum + "] IS NOT EMPTY" : "resolution IS EMPTY OR resolution IS NOT EMPTY");
+            sb.append(cfNum != null && !cfNum.isEmpty() ? "cf[" + cfNum + "] IS NOT EMPTY" : "created is not EMPTY");
             if (userKey != null && !userKey.isEmpty()) {
                 ApplicationUser tgt = ComponentAccessor.getUserManager().getUserByKey(userKey);
                 if (tgt == null) tgt = ComponentAccessor.getUserManager().getUserByName(userKey);
                 if (tgt != null) sb.append(" AND assignee = \"").append(tgt.getUsername()).append("\"");
             }
+            if (sc.startsWith("schedule_approver")) {
+                String approverJql = JimScheduleApprovalConfig.approverFieldJql();
+                if (approverJql != null) sb.append(" AND ").append(approverJql).append(" = currentUser()");
+            }
             if (projectKey != null && !projectKey.isEmpty()) sb.append(" AND project = \"").append(projectKey).append("\"");
             SearchService.ParseResult pr = this.searchService.parseQuery(viewer, sb.toString());
             if (!pr.isValid()) return JimRestResponses.errorJson(400, "bad_query", "Coverage query could not be parsed");
             issues.addAll(this.searchService.search(viewer, pr.getQuery(), new PagerFilter<Issue>(max)).getResults());
-            scopeSource.put("type", "system_admin"); scopeSource.put("value", "Jira administrator");
+            // scopeSource reflects the canonical basis for the visibility
+            if (sc.startsWith("schedule_approver")) { scopeSource.put("type", "schedule_approver"); scopeSource.put("value", viewer.getKey()); }
+            else if (projectKey != null && !projectKey.isEmpty()) {
+                boolean lead = false;
+                try {
+                    com.atlassian.jira.project.Project p = ComponentAccessor.getProjectManager().getProjectObjByKey(projectKey);
+                    lead = p != null && p.getProjectLead() != null && p.getProjectLead().getKey().equals(viewer.getKey());
+                } catch (Exception ignore) { }
+                scopeSource.put("type", lead ? "project_lead" : "project_browse");
+                scopeSource.put("value", projectKey);
+            } else { scopeSource.put("type", "jira_browse"); scopeSource.put("value", "browsable report-configured issues"); }
         } else {
             Query q = JimMobileIssues.buildQuery(viewer, this.searchService, "assigned");
             issues.addAll(this.searchService.search(viewer, q, new PagerFilter<Issue>(max)).getResults());
