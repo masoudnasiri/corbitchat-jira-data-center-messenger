@@ -19,8 +19,12 @@ import com.corbitlogic.jira.internalmessenger.ao.JimMessage;
 import com.corbitlogic.jira.internalmessenger.mobile.JimMobileDates;
 import com.corbitlogic.jira.internalmessenger.mobile.JimMobileFeatures;
 import com.corbitlogic.jira.internalmessenger.mobile.JimMobileIssues;
+import com.corbitlogic.jira.internalmessenger.report.JimReportConfig;
 import com.corbitlogic.jira.internalmessenger.report.JimReportService;
 import com.corbitlogic.jira.internalmessenger.report.JimReportSummary;
+import com.atlassian.jira.permission.GlobalPermissionKey;
+import java.util.Calendar;
+import java.util.TimeZone;
 import com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalActions;
 import com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
@@ -109,84 +113,376 @@ public class JimMcpDomainResource {
     }
 
     // ---------------------------------------------------------------- reports
+    private static final java.util.Set<String> PERIOD_EXCLUDE =
+            new java.util.HashSet<String>(java.util.Arrays.asList("CLOSED_NOT_REQUIRED", "EXEMPT", "FUTURE"));
+
+    private static String tzLabel(int off) {
+        return "GMT" + (off >= 0 ? "+" : "-") + String.format("%02d:%02d", Math.abs(off) / 60, Math.abs(off) % 60);
+    }
+
+    private TimeZone reportTz() {
+        try { TimeZone tz = JimReportConfig.reportTimeZone(); if (tz != null) return tz; } catch (Exception ignore) { }
+        return TimeZone.getDefault();
+    }
+
+    private String ymdInTz(long ms, TimeZone tz) {
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd");
+        f.setTimeZone(tz);
+        return f.format(new Date(ms));
+    }
+
+    private long parseYmd(String ymd, TimeZone tz, long dflt, boolean endOfDay) {
+        if (ymd == null || ymd.trim().isEmpty()) return dflt;
+        try {
+            java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd");
+            f.setTimeZone(tz);
+            Calendar c = Calendar.getInstance(tz);
+            c.setTime(f.parse(ymd.trim()));
+            if (endOfDay) { c.set(Calendar.HOUR_OF_DAY, 23); c.set(Calendar.MINUTE, 59); c.set(Calendar.SECOND, 59); c.set(Calendar.MILLISECOND, 999); }
+            else { c.set(Calendar.HOUR_OF_DAY, 0); c.set(Calendar.MINUTE, 0); c.set(Calendar.SECOND, 0); c.set(Calendar.MILLISECOND, 0); }
+            return c.getTimeInMillis();
+        } catch (Exception e) { return dflt; }
+    }
+
+    /** [fromMs, toMs] in the canonical report timezone. Iranian week starts Saturday. */
+    private long[] periodBounds(String period, String dateFrom, String dateTo, TimeZone tz) {
+        long now = System.currentTimeMillis();
+        Calendar c = Calendar.getInstance(tz);
+        c.setTimeInMillis(now);
+        c.set(Calendar.HOUR_OF_DAY, 0); c.set(Calendar.MINUTE, 0); c.set(Calendar.SECOND, 0); c.set(Calendar.MILLISECOND, 0);
+        long startToday = c.getTimeInMillis();
+        String p = period == null ? "" : period.trim().toLowerCase();
+        boolean hasDates = (dateFrom != null && !dateFrom.isEmpty()) || (dateTo != null && !dateTo.isEmpty());
+        if (hasDates) p = "custom";
+        if (p.isEmpty()) p = "current_week";
+        long from, to = now;
+        if (p.equals("today")) {
+            from = startToday;
+        } else if (p.equals("last_3_days")) {
+            from = startToday - 2L * 86400000L;
+        } else if (p.equals("current_month")) {
+            Calendar m = Calendar.getInstance(tz); m.setTimeInMillis(startToday); m.set(Calendar.DAY_OF_MONTH, 1);
+            from = m.getTimeInMillis();
+        } else if (p.equals("custom")) {
+            from = parseYmd(dateFrom, tz, startToday, false);
+            to = parseYmd(dateTo, tz, now, true);
+        } else { // current_week (Saturday-based)
+            Calendar w = Calendar.getInstance(tz); w.setTimeInMillis(startToday); w.setFirstDayOfWeek(Calendar.SATURDAY);
+            int dow = w.get(Calendar.DAY_OF_WEEK);
+            int diff = (dow - Calendar.SATURDAY + 7) % 7;
+            w.add(Calendar.DAY_OF_MONTH, -diff);
+            from = w.getTimeInMillis();
+        }
+        return new long[]{from, to};
+    }
+
+    /** Canonical period metrics for one issue: windows (interval/daily) + items (all modes). No gateway recompute. */
+    private Map<String, Object> periodMetrics(Issue issue, long from, long to) {
+        JimReportSummary s = this.reportService.computeSummary(issue);
+        Map<String, Object> m = new LinkedHashMap<String, Object>();
+        m.put("issueKey", issue.getKey());
+        m.put("projectKey", projectOf(issue.getKey()));
+        m.put("summary", issue.getSummary());
+        if (s == null || !s.configured || s.levelCode == null || !s.applicable) { m.put("configured", false); return m; }
+        m.put("configured", true);
+        m.put("levelCode", s.levelCode);
+        m.put("countMode", s.countMode);
+        m.put("deadlineState", s.statusCode);
+        m.put("reportingControlState", s.reportingControlState);
+        m.put("tzOffsetMinutes", s.tzOffsetMinutes);
+        m.put("responsibleUserKey", s.responsibleUserKey);
+        m.put("responsibleUserName", s.responsibleUserName);
+        int submitted = 0, valid = 0, oow = 0, dup = 0;
+        if (s.items != null) for (JimReportSummary.Item it : s.items) {
+            if (it.createdMs < from || it.createdMs >= to) continue;
+            submitted++;
+            if (it.status == 0) valid++; else if (it.status == 1) dup++; else oow++;
+        }
+        boolean hasWindows = s.windowLedger != null && !s.windowLedger.isEmpty();
+        Integer required = null; int missed = 0, maxStreak = 0, streak = 0;
+        if (hasWindows) {
+            java.util.List<JimReportSummary.WindowInfo> ws = new ArrayList<JimReportSummary.WindowInfo>();
+            for (JimReportSummary.WindowInfo w : s.windowLedger) {
+                if (w.windowStart < from || w.windowStart >= to) continue;
+                if (PERIOD_EXCLUDE.contains(w.status)) continue;
+                ws.add(w);
+            }
+            java.util.Collections.sort(ws, new java.util.Comparator<JimReportSummary.WindowInfo>() {
+                public int compare(JimReportSummary.WindowInfo a, JimReportSummary.WindowInfo b) { return Long.compare(a.windowStart, b.windowStart); }
+            });
+            required = 0;
+            for (JimReportSummary.WindowInfo w : ws) {
+                required++;
+                if ("MISSED".equals(w.status)) { missed++; streak++; if (streak > maxStreak) maxStreak = streak; }
+                else if ("SATISFIED".equals(w.status) || "LATE".equals(w.status)) { streak = 0; }
+            }
+        } else {
+            m.put("note", "fixed_minimum: period required-count is not window-scoped; counts are report-item based");
+        }
+        m.put("requiredCount", required);
+        m.put("submittedCount", submitted);
+        m.put("validCount", valid);
+        m.put("outOfWindowCount", oow);
+        m.put("duplicateCount", dup);
+        m.put("missedCount", hasWindows ? missed : 0);
+        m.put("maximumConsecutiveMissed", hasWindows ? maxStreak : 0);
+        return m;
+    }
+
+    private static int i(Object o) { return o instanceof Number ? ((Number) o).intValue() : 0; }
+
     @GET
     @Path("/reports")
-    public Response reportsList(@QueryParam("startAt") Integer startAt, @QueryParam("maxResults") Integer maxResults) {
+    public Response reportsList(@QueryParam("scope_type") String scopeType,
+                               @QueryParam("issue_key") String issueKey,
+                               @QueryParam("date_from") String dateFrom,
+                               @QueryParam("date_to") String dateTo,
+                               @QueryParam("period") String period,
+                               @QueryParam("user_key") String userKey,
+                               @QueryParam("project_keys") String projectKeys,
+                               @QueryParam("include_items") Boolean includeItems,
+                               @QueryParam("startAt") Integer startAt,
+                               @QueryParam("maxResults") Integer maxResults) {
         ApplicationUser viewer = viewer();
         if (viewer == null) return JimRestResponses.errorJson(401, "unauthorized", "Not authenticated");
         if (!this.featureService.isAllowed(viewer, JimMobileFeatures.TASKS)) {
             return JimRestResponses.errorJson(403, "feature_disabled", "Reports feature not enabled for your account");
         }
-        int start = startAt == null || startAt < 0 ? 0 : startAt;
-        int max = maxResults == null || maxResults < 1 || maxResults > 50 ? 25 : maxResults;
+        String requested = scopeType == null ? "" : scopeType.trim();
+        String applied = requested;
+        if (applied.isEmpty()) {
+            if (issueKey != null && !issueKey.isEmpty()) applied = "issue_lifetime";
+            else if (period != null || dateFrom != null || dateTo != null) applied = "self_period";
+            else applied = "issue_lifetime";
+        }
         try {
-            Query query = JimMobileIssues.buildQuery(viewer, this.searchService, "assigned");
-            PagerFilter<Issue> pager = new PagerFilter<Issue>(max);
-            pager.setStart(start);
-            SearchResults<Issue> results = this.searchService.search(viewer, query, pager);
-            List<Map<String, Object>> items = new ArrayList<Map<String, Object>>();
-            int req = 0, submitted = 0, valid = 0, oow = 0, dup = 0, missing = 0, maxStreak = 0, configured = 0;
-            Integer tzOff = null;
-            for (Issue issue : results.getResults()) {
-                JimReportSummary s = this.reportService.computeSummary(issue);
-                if (s == null || !s.configured || s.levelCode == null || !s.applicable) continue;
-                if (tzOff == null) tzOff = s.tzOffsetMinutes;
-                Map<String, Object> it = new LinkedHashMap<String, Object>();
-                it.put("scopeType", "issue_lifetime");
-                it.put("issueKey", issue.getKey());
-                it.put("projectKey", projectOf(issue.getKey()));
-                it.put("summary", issue.getSummary());
-                it.put("levelCode", s.levelCode);
-                it.put("countMode", s.countMode);
-                it.put("statusCode", s.statusCode);
-                it.put("reportingControlState", s.reportingControlState);
-                it.put("windowStartMinute", s.windowStartMinute);
-                it.put("windowEndMinute", s.windowEndMinute);
-                it.put("intervalMinutes", s.intervalMinutes);
-                it.put("requiredCount", s.requiredCount);
-                it.put("requiredSoFar", s.requiredSoFar);
-                it.put("submittedCount", s.rawCount);
-                it.put("validCount", s.validCount);
-                it.put("validSoFar", s.validSoFar);
-                it.put("outOfWindowCount", s.outOfWindowCount);
-                it.put("duplicateCount", s.duplicateCount);
-                it.put("missedCount", s.missedCount);
-                it.put("maxConsecutiveMissed", s.maxMissedStreak);
-                it.put("submitActive", s.submitActive);
-                it.put("tzOffsetMinutes", s.tzOffsetMinutes);
-                items.add(it);
-                configured++;
-                req += s.requiredSoFar; submitted += s.rawCount; valid += s.validSoFar;
-                oow += s.outOfWindowCount; dup += s.duplicateCount; missing += s.missedCount;
-                if (s.maxMissedStreak > maxStreak) maxStreak = s.maxMissedStreak;
-            }
-            Map<String, Object> summary = new LinkedHashMap<String, Object>();
-            summary.put("scope", "issue_lifetime_sum");
-            summary.put("requiredCount", req);
-            summary.put("submittedCount", submitted);
-            summary.put("validCount", valid);
-            summary.put("outsideWindowCount", oow);
-            summary.put("duplicateCount", dup);
-            summary.put("invalidCount", oow + dup);
-            summary.put("missingCount", missing);
-            summary.put("maximumConsecutiveMissing", maxStreak);
-            Map<String, Object> body = new LinkedHashMap<String, Object>();
-            body.put("scopeType", "issue_lifetime");
-            body.put("scopeNote", "Per-issue LIFETIME compliance from JimReportService (not a weekly/user-period aggregate). Report the plugin numbers verbatim; do not re-classify reports or recompute from raw comments.");
-            body.put("timezone", "GMT" + (tzOff == null ? "" : (tzOff >= 0 ? "+" : "-") + String.format("%02d:%02d", Math.abs(tzOff) / 60, Math.abs(tzOff) % 60)));
-            body.put("tzOffsetMinutes", tzOff == null ? 0 : tzOff.intValue());
-            body.put("reports", items);
-            body.put("summary", summary);
-            body.put("reportConfiguredIssues", configured);
-            body.put("startAt", start);
-            body.put("maxResults", max);
-            body.put("total", results.getTotal());
-            body.put("warnings", new ArrayList<String>());
-            return JimRestResponses.okJson(body);
+            if (applied.equals("manager_team_period")) return managerTeamPeriod(viewer, requested, period, dateFrom, dateTo, userKey, projectKeys, Boolean.TRUE.equals(includeItems));
+            if (applied.equals("self_period")) return selfPeriod(viewer, requested, period, dateFrom, dateTo, Boolean.TRUE.equals(includeItems));
+            return issueLifetime(viewer, requested, issueKey, startAt, maxResults);
         } catch (Exception e) {
-            log.error("mcp-domain reports list failed", e);
+            log.error("mcp-domain reports failed", e);
             return JimRestResponses.errorJson(500, "error", "Failed to list reports");
         }
+    }
+
+    private Response issueLifetime(ApplicationUser viewer, String requested, String issueKey, Integer startAt, Integer maxResults) throws com.atlassian.jira.issue.search.SearchException {
+        int start = startAt == null || startAt < 0 ? 0 : startAt;
+        int max = maxResults == null || maxResults < 1 || maxResults > 50 ? 25 : maxResults;
+        List<Issue> issues = new ArrayList<Issue>();
+        int total;
+        if (issueKey != null && !issueKey.isEmpty()) {
+            MutableIssue one = loadBrowsable(issueKey, viewer);
+            if (one == null) return JimRestResponses.errorJson(404, "not_found", "Issue not found or not accessible");
+            issues.add(one); total = 1;
+        } else {
+            Query query = JimMobileIssues.buildQuery(viewer, this.searchService, "assigned");
+            PagerFilter<Issue> pager = new PagerFilter<Issue>(max); pager.setStart(start);
+            SearchResults<Issue> results = this.searchService.search(viewer, query, pager);
+            issues.addAll(results.getResults()); total = results.getTotal();
+        }
+        List<Map<String, Object>> items = new ArrayList<Map<String, Object>>();
+        int req = 0, submitted = 0, valid = 0, oow = 0, dup = 0, missing = 0, maxStreak = 0, configured = 0;
+        Integer tzOff = null;
+        for (Issue issue : issues) {
+            JimReportSummary s = this.reportService.computeSummary(issue);
+            if (s == null || !s.configured || s.levelCode == null || !s.applicable) continue;
+            if (tzOff == null) tzOff = s.tzOffsetMinutes;
+            Map<String, Object> it = new LinkedHashMap<String, Object>();
+            it.put("scopeType", "issue_lifetime");
+            it.put("issueKey", issue.getKey());
+            it.put("projectKey", projectOf(issue.getKey()));
+            it.put("summary", issue.getSummary());
+            it.put("levelCode", s.levelCode);
+            it.put("countMode", s.countMode);
+            it.put("statusCode", s.statusCode);
+            it.put("reportingControlState", s.reportingControlState);
+            it.put("windowStartMinute", s.windowStartMinute);
+            it.put("windowEndMinute", s.windowEndMinute);
+            it.put("intervalMinutes", s.intervalMinutes);
+            it.put("requiredCount", s.requiredCount);
+            it.put("requiredSoFar", s.requiredSoFar);
+            it.put("submittedCount", s.rawCount);
+            it.put("validCount", s.validCount);
+            it.put("validSoFar", s.validSoFar);
+            it.put("outOfWindowCount", s.outOfWindowCount);
+            it.put("duplicateCount", s.duplicateCount);
+            it.put("missedCount", s.missedCount);
+            it.put("maxConsecutiveMissed", s.maxMissedStreak);
+            it.put("submitActive", s.submitActive);
+            it.put("tzOffsetMinutes", s.tzOffsetMinutes);
+            items.add(it);
+            configured++;
+            req += s.requiredSoFar; submitted += s.rawCount; valid += s.validSoFar;
+            oow += s.outOfWindowCount; dup += s.duplicateCount; missing += s.missedCount;
+            if (s.maxMissedStreak > maxStreak) maxStreak = s.maxMissedStreak;
+        }
+        Map<String, Object> summary = new LinkedHashMap<String, Object>();
+        summary.put("scope", "issue_lifetime_sum");
+        summary.put("requiredCount", req);
+        summary.put("submittedCount", submitted);
+        summary.put("validCount", valid);
+        summary.put("outsideWindowCount", oow);
+        summary.put("duplicateCount", dup);
+        summary.put("invalidCount", oow + dup);
+        summary.put("missingCount", missing);
+        summary.put("maximumConsecutiveMissing", maxStreak);
+        int off = tzOff == null ? reportTz().getOffset(System.currentTimeMillis()) / 60000 : tzOff.intValue();
+        Map<String, Object> body = new LinkedHashMap<String, Object>();
+        body.put("domain", "corbit_report");
+        body.put("requestedScopeType", requested.isEmpty() ? "issue_lifetime" : requested);
+        body.put("appliedScopeType", "issue_lifetime");
+        body.put("scopeType", "issue_lifetime");
+        body.put("scopeNote", "Per-issue LIFETIME compliance from JimReportService. Report numbers verbatim; do not re-classify or recompute from raw comments; do not present a lifetime total as a weekly/user-period total.");
+        body.put("authenticatedUser", viewer.getKey());
+        body.put("timezone", tzLabel(off));
+        body.put("tzOffsetMinutes", off);
+        body.put("reports", items);
+        body.put("summary", summary);
+        body.put("issueCount", configured);
+        body.put("reportConfiguredIssues", configured);
+        body.put("startAt", start);
+        body.put("maxResults", max);
+        body.put("total", total);
+        body.put("generatedAt", System.currentTimeMillis());
+        body.put("warnings", new ArrayList<String>());
+        return JimRestResponses.okJson(body);
+    }
+
+    private Map<String, Object> aggregatePeriod(List<Map<String, Object>> perIssue) {
+        int req = 0, submitted = 0, valid = 0, oow = 0, dup = 0, missed = 0, maxStreak = 0; String maxKey = null;
+        boolean anyRequired = false;
+        for (Map<String, Object> pm : perIssue) {
+            if (!Boolean.TRUE.equals(pm.get("configured"))) continue;
+            Object r = pm.get("requiredCount");
+            if (r instanceof Number) { req += ((Number) r).intValue(); anyRequired = true; }
+            submitted += i(pm.get("submittedCount")); valid += i(pm.get("validCount"));
+            oow += i(pm.get("outOfWindowCount")); dup += i(pm.get("duplicateCount")); missed += i(pm.get("missedCount"));
+            int ms = i(pm.get("maximumConsecutiveMissed"));
+            if (ms > maxStreak) { maxStreak = ms; maxKey = String.valueOf(pm.get("issueKey")); }
+        }
+        Map<String, Object> a = new LinkedHashMap<String, Object>();
+        a.put("requiredCount", anyRequired ? (Object) req : null);
+        a.put("submittedCount", submitted);
+        a.put("validCount", valid);
+        a.put("outOfWindowCount", oow);
+        a.put("duplicateCount", dup);
+        a.put("invalidCount", oow + dup);
+        a.put("missedCount", missed);
+        a.put("maximumConsecutiveMissedPerIssue", maxStreak);
+        a.put("maximumConsecutiveMissedIssueKey", maxKey);
+        return a;
+    }
+
+    private void putScopeMeta(Map<String, Object> body, ApplicationUser viewer, String requested, String applied,
+                              long from, long to, TimeZone tz, List<String> targetUsers, String projectKeys,
+                              int issueCount, java.util.Set<String> modes) {
+        int off = tz.getOffset(System.currentTimeMillis()) / 60000;
+        body.put("domain", "corbit_report");
+        body.put("requestedScopeType", requested.isEmpty() ? applied : requested);
+        body.put("appliedScopeType", applied);
+        body.put("scopeType", applied);
+        body.put("authenticatedUser", viewer.getKey());
+        body.put("targetUsers", targetUsers);
+        body.put("targetUserCount", targetUsers.size());
+        body.put("projectKeys", projectKeys == null || projectKeys.isEmpty() ? new ArrayList<String>() : java.util.Arrays.asList(projectKeys.split(",")));
+        body.put("issueCount", issueCount);
+        body.put("periodStartMs", from);
+        body.put("periodEndMs", to);
+        body.put("periodStart", ymdInTz(from, tz));
+        body.put("periodEnd", ymdInTz(to, tz));
+        body.put("timezone", tzLabel(off));
+        body.put("tzOffsetMinutes", off);
+        body.put("calculationModes", new ArrayList<String>(modes));
+        body.put("generatedAt", System.currentTimeMillis());
+    }
+
+    private Response selfPeriod(ApplicationUser viewer, String requested, String period, String dateFrom, String dateTo, boolean includeItems) throws com.atlassian.jira.issue.search.SearchException {
+        TimeZone tz = reportTz();
+        long[] pb = periodBounds(period, dateFrom, dateTo, tz);
+        Query query = JimMobileIssues.buildQuery(viewer, this.searchService, "assigned");
+        SearchResults<Issue> results = this.searchService.search(viewer, query, new PagerFilter<Issue>(200));
+        List<Map<String, Object>> perIssue = new ArrayList<Map<String, Object>>();
+        java.util.Set<String> modes = new java.util.LinkedHashSet<String>();
+        for (Issue issue : results.getResults()) {
+            Map<String, Object> pm = periodMetrics(issue, pb[0], pb[1]);
+            if (!Boolean.TRUE.equals(pm.get("configured"))) continue;
+            if (pm.get("countMode") != null) modes.add(String.valueOf(pm.get("countMode")));
+            perIssue.add(pm);
+        }
+        Map<String, Object> body = new LinkedHashMap<String, Object>();
+        putScopeMeta(body, viewer, requested, "self_period", pb[0], pb[1], tz,
+                new ArrayList<String>(java.util.Arrays.asList(viewer.getKey())), null, perIssue.size(), modes);
+        body.put("scopeNote", "Reports the authenticated user submitted/were required within the period, computed from canonical plugin windows (interval/daily) or report items (fixed_minimum). Not a lifetime total. Consecutive-missing is per-issue only.");
+        body.put("summary", aggregatePeriod(perIssue));
+        if (includeItems) body.put("perIssue", perIssue);
+        body.put("warnings", new ArrayList<String>());
+        return JimRestResponses.okJson(body);
+    }
+
+    private Response managerTeamPeriod(ApplicationUser viewer, String requested, String period, String dateFrom,
+                                       String dateTo, String userKey, String projectKeys, boolean includeItems) throws com.atlassian.jira.issue.search.SearchException {
+        boolean admin = ComponentAccessor.getGlobalPermissionManager()
+                .hasPermission(GlobalPermissionKey.SYSTEM_ADMIN, viewer);
+        if (!admin) {
+            return JimRestResponses.errorJson(403, "manager_scope_not_permitted",
+                    "You are not authorized for team/manager report scope. The plugin grants cross-user report visibility only to Jira administrators.");
+        }
+        TimeZone tz = reportTz();
+        long[] pb = periodBounds(period, dateFrom, dateTo, tz);
+        // canonical set: issues with a report-level custom field, run as the admin (Jira security still applies)
+        String jql;
+        try {
+            com.atlassian.jira.issue.fields.CustomField lvl = JimReportConfig.resolveLevelField();
+            String cfNum = lvl == null ? null : lvl.getId().replaceAll("[^0-9]", "");
+            StringBuilder sb = new StringBuilder();
+            if (cfNum != null && !cfNum.isEmpty()) sb.append("cf[").append(cfNum).append("] IS NOT EMPTY");
+            else sb.append("resolution IS NOT NULL OR resolution IS EMPTY"); // fallback: all issues
+            if (userKey != null && !userKey.isEmpty()) {
+                ApplicationUser tgt = ComponentAccessor.getUserManager().getUserByKey(userKey);
+                if (tgt == null) tgt = ComponentAccessor.getUserManager().getUserByName(userKey);
+                if (tgt != null) sb.append(" AND assignee = \"").append(tgt.getUsername()).append("\"");
+            }
+            if (projectKeys != null && !projectKeys.isEmpty()) sb.append(" AND project in (").append(projectKeys).append(")");
+            sb.append(" ORDER BY assignee ASC");
+            jql = sb.toString();
+        } catch (Exception e) { return JimRestResponses.errorJson(500, "error", "Failed to build team query"); }
+        SearchService.ParseResult pr = this.searchService.parseQuery(viewer, jql);
+        if (!pr.isValid()) return JimRestResponses.errorJson(400, "bad_query", "Team query could not be parsed");
+        SearchResults<Issue> results = this.searchService.search(viewer, pr.getQuery(), new PagerFilter<Issue>(500));
+        Map<String, List<Map<String, Object>>> byUser = new java.util.LinkedHashMap<String, List<Map<String, Object>>>();
+        Map<String, String> userNames = new java.util.HashMap<String, String>();
+        List<Map<String, Object>> allIssues = new ArrayList<Map<String, Object>>();
+        java.util.Set<String> modes = new java.util.LinkedHashSet<String>();
+        for (Issue issue : results.getResults()) {
+            Map<String, Object> pm = periodMetrics(issue, pb[0], pb[1]);
+            if (!Boolean.TRUE.equals(pm.get("configured"))) continue;
+            String uk = pm.get("responsibleUserKey") == null ? "(unassigned)" : String.valueOf(pm.get("responsibleUserKey"));
+            userNames.put(uk, pm.get("responsibleUserName") == null ? uk : String.valueOf(pm.get("responsibleUserName")));
+            if (pm.get("countMode") != null) modes.add(String.valueOf(pm.get("countMode")));
+            if (!byUser.containsKey(uk)) byUser.put(uk, new ArrayList<Map<String, Object>>());
+            byUser.get(uk).add(pm);
+            allIssues.add(pm);
+        }
+        List<Map<String, Object>> perUser = new ArrayList<Map<String, Object>>();
+        List<String> targetUsers = new ArrayList<String>();
+        for (Map.Entry<String, List<Map<String, Object>>> e : byUser.entrySet()) {
+            Map<String, Object> agg = aggregatePeriod(e.getValue());
+            Map<String, Object> u = new LinkedHashMap<String, Object>();
+            u.put("jiraUserKey", e.getKey());
+            u.put("displayName", userNames.get(e.getKey()));
+            u.putAll(agg);
+            u.put("highestRiskIssue", agg.get("maximumConsecutiveMissedIssueKey"));
+            if (includeItems) u.put("perIssue", e.getValue());
+            perUser.add(u);
+            targetUsers.add(e.getKey());
+        }
+        Map<String, Object> body = new LinkedHashMap<String, Object>();
+        putScopeMeta(body, viewer, requested, "manager_team_period", pb[0], pb[1], tz, targetUsers, projectKeys, allIssues.size(), modes);
+        body.put("scopeNote", "Cross-user report compliance for the period. Canonical authority = Jira administrator (the plugin has no per-manager team model). Users/issues limited to what the admin can browse; counts exclude inaccessible data.");
+        body.put("summary", aggregatePeriod(allIssues));
+        body.put("perUser", perUser);
+        body.put("warnings", new ArrayList<String>());
+        return JimRestResponses.okJson(body);
     }
 
     @POST
@@ -259,7 +555,8 @@ public class JimMcpDomainResource {
         if (configured && !approverConfigured) blocking.add("approver_not_configured");
         if (configured && JimMobileDates.findProposedCompletionField() == null) blocking.add("proposed_field_not_mapped");
         if (configured && !canEdit) blocking.add("no_edit_permission");
-        boolean canSubmit = configured && canEdit && JimMobileDates.findProposedCompletionField() != null;
+        boolean baseSubmit = configured && canEdit && JimMobileDates.findProposedCompletionField() != null;
+        boolean canSubmit = baseSubmit && approverConfigured;
         List<String> decideBlocking = new ArrayList<String>();
         if (!configured) decideBlocking.add("not_configured");
         if (!isApprover) decideBlocking.add("not_approver");
@@ -269,12 +566,13 @@ public class JimMcpDomainResource {
         out.put("approverConfigured", approverConfigured);
         out.put("isApprover", isApprover);
         out.put("canSubmit", canSubmit);
+        out.put("canSubmitWithApprover", baseSubmit);
         out.put("canDecide", canDecide);
         out.put("requiredFormat", "yyyy-MM-dd");
         out.put("blockingReasons", blocking);
         out.put("decisionBlockingReasons", decideBlocking);
         List<String> actions = new ArrayList<String>();
-        if (canSubmit) actions.add("submit");
+        if (baseSubmit) actions.add("submit");
         if (canDecide) { actions.add("approve"); actions.add("reject"); }
         out.put("allowedActions", actions);
         out.put("domain", "corbit_schedule_approval");
@@ -333,7 +631,7 @@ public class JimMcpDomainResource {
                 v.put("issueKey", issue.getKey());
                 v.put("validateOnly", true);
                 v.put("valid", valid);
-                v.put("canSubmit", Boolean.TRUE.equals(proj.get("canSubmit")) && !parseError);
+                v.put("canSubmit", valid);
                 v.put("normalizedValue", proposed == null ? null : JimMobileDates.toYmd(proposed));
                 v.put("requiredFormat", "yyyy-MM-dd");
                 v.put("approverConfigured", proj.get("approverConfigured"));
