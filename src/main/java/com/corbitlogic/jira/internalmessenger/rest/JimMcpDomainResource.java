@@ -27,7 +27,9 @@ import java.util.Calendar;
 import java.util.TimeZone;
 import com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalActions;
 import com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig;
+import com.corbitlogic.jira.internalmessenger.ao.JimGroupMember;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
+import com.corbitlogic.jira.internalmessenger.service.JimGroupService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
 import com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService;
 import com.corbitlogic.jira.internalmessenger.service.JimReadStateService;
@@ -726,6 +728,327 @@ public class JimMcpDomainResource {
         body.put("issueCount", issues.size());
         body.put("domain", "corbit_report");
         body.put("warnings", new ArrayList<String>());
+        return JimRestResponses.okJson(body);
+    }
+
+    // ---------------------------------------------------------------- managed (Project Lead) projects
+    /** Canonical Project Lead resolution: projects whose Jira Lead == the authenticated user, browsable.
+     *  NEVER inferred from assignee/reporter/membership/browse/admin/schedule-approver/chat/feature. */
+    private List<com.atlassian.jira.project.Project> resolveLeadProjects(ApplicationUser viewer) {
+        List<com.atlassian.jira.project.Project> out = new ArrayList<com.atlassian.jira.project.Project>();
+        com.atlassian.jira.security.PermissionManager pmg = ComponentAccessor.getPermissionManager();
+        for (com.atlassian.jira.project.Project p : ComponentAccessor.getProjectManager().getProjectObjects()) {
+            ApplicationUser lead = p.getProjectLead();
+            if (lead == null || !lead.getKey().equals(viewer.getKey())) continue;   // canonical Jira lead identity only
+            if (!pmg.hasPermission(ProjectPermissions.BROWSE_PROJECTS, p, viewer)) continue;
+            out.add(p);
+        }
+        return out;
+    }
+
+    private Map<String, Object> leadProjectDto(com.atlassian.jira.project.Project p) {
+        Map<String, Object> m = new LinkedHashMap<String, Object>();
+        ApplicationUser lead = p.getProjectLead();
+        m.put("projectKey", p.getKey());
+        m.put("projectId", String.valueOf(p.getId()));
+        m.put("projectName", p.getName());
+        m.put("leadUserKey", lead == null ? null : lead.getKey());
+        m.put("leadDisplayName", lead == null ? null : lead.getDisplayName());
+        m.put("browsable", true);
+        m.put("archived", false);
+        return m;
+    }
+
+    @GET
+    @Path("/projects/managed")
+    public Response projectsManaged() {
+        ApplicationUser viewer = viewer();
+        if (viewer == null) return JimRestResponses.errorJson(401, "unauthorized", "Not authenticated");
+        List<com.atlassian.jira.project.Project> lead = resolveLeadProjects(viewer);
+        List<Map<String, Object>> projects = new ArrayList<Map<String, Object>>();
+        List<String> keys = new ArrayList<String>();
+        for (com.atlassian.jira.project.Project p : lead) { projects.add(leadProjectDto(p)); keys.add(p.getKey()); }
+        Map<String, Object> ju = new LinkedHashMap<String, Object>();
+        ju.put("jiraUserKey", viewer.getKey());
+        ju.put("username", viewer.getUsername());
+        ju.put("displayName", viewer.getDisplayName());
+        Map<String, Object> ss = new LinkedHashMap<String, Object>();
+        ss.put("type", "jira_project_lead"); ss.put("jiraUserKey", viewer.getKey());
+        Map<String, Object> body = new LinkedHashMap<String, Object>();
+        body.put("domain", "projects");
+        body.put("scopeType", "project_lead_projects");
+        body.put("scopeSource", ss);
+        body.put("scopeProjectCount", projects.size());
+        body.put("scopeProjectKeys", keys);
+        body.put("jiraUser", ju);
+        body.put("projectCount", projects.size());
+        body.put("projects", projects);
+        body.put("complete", true);
+        body.put("partial", false);
+        body.put("truncated", false);
+        body.put("fallbackUsed", false);
+        body.put("warnings", new ArrayList<Object>());
+        return JimRestResponses.okJson(body);
+    }
+
+    private Map<String, Object> histSummary(Map<String, Object> agg) {
+        Map<String, Object> h = new LinkedHashMap<String, Object>();
+        h.put("requiredCount", agg.get("requiredCount"));
+        h.put("submittedCount", agg.get("submittedCount"));
+        h.put("validCount", agg.get("validCount"));
+        h.put("duplicateCount", agg.get("duplicateCount"));
+        h.put("outOfWindowCount", agg.get("outOfWindowCount"));
+        h.put("missedCount", agg.get("missedCount"));
+        h.put("maximumConsecutiveMissed", agg.get("maximumConsecutiveMissedPerIssue"));
+        return h;
+    }
+
+    private Map<String, Object> warnObj(String code, String message) {
+        Map<String, Object> w = new LinkedHashMap<String, Object>();
+        w.put("code", code); w.put("message", message);
+        return w;
+    }
+
+    /** Timeout-safe, per-project bounded portfolio for the authenticated user's canonical Project Lead projects.
+     *  Current-window and historical-period results are kept strictly separate. Never widens to browse. */
+    @GET
+    @Path("/reports/managed-overview")
+    public Response managedOverview(@QueryParam("period") String period,
+                                    @QueryParam("date_from") String dateFrom,
+                                    @QueryParam("date_to") String dateTo,
+                                    @QueryParam("includeCurrentWindow") Boolean includeCurrentWindow,
+                                    @QueryParam("includeHistorical") Boolean includeHistorical,
+                                    @QueryParam("includeUsers") Boolean includeUsers,
+                                    @QueryParam("projectLimit") Integer projectLimit,
+                                    @QueryParam("issuePageSize") Integer issuePageSize,
+                                    @QueryParam("continuationCursor") Integer continuationCursor)
+            throws com.atlassian.jira.issue.search.SearchException {
+        ApplicationUser viewer = viewer();
+        if (viewer == null) return JimRestResponses.errorJson(401, "unauthorized", "Not authenticated");
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.TASKS))
+            return JimRestResponses.errorJson(403, "feature_disabled", "Reports feature not enabled for your account");
+        boolean incCur = includeCurrentWindow == null || includeCurrentWindow.booleanValue();
+        boolean incHist = includeHistorical == null || includeHistorical.booleanValue();
+        boolean incUsers = includeUsers != null && includeUsers.booleanValue();
+        int projLimit = projectLimit == null || projectLimit < 1 || projectLimit > 100 ? 50 : projectLimit;
+        int perProjectCap = issuePageSize == null || issuePageSize < 1 || issuePageSize > 1000 ? 500 : (issuePageSize < 50 ? 50 : issuePageSize);
+        long budgetMs = 20000L;                 // overall interactive budget, safely under the 30s Gateway timeout
+        long startNs = System.nanoTime();
+        int cursor = continuationCursor == null || continuationCursor < 0 ? 0 : continuationCursor.intValue();
+        TimeZone tz = reportTz();
+        long[] pb = periodBounds(period, dateFrom, dateTo, tz);
+
+        List<com.atlassian.jira.project.Project> lead = resolveLeadProjects(viewer);   // canonical, single resolution
+        List<String> allLeadKeys = new ArrayList<String>();
+        for (com.atlassian.jira.project.Project p : lead) allLeadKeys.add(p.getKey());
+        com.atlassian.jira.issue.fields.CustomField lvl = JimReportConfig.resolveLevelField();
+        String cfNum = lvl == null ? null : lvl.getId().replaceAll("[^0-9]", "");
+
+        Map<String, Integer> curAgg = new LinkedHashMap<String, Integer>();
+        for (String k : new String[]{"currentlyRequired","covered","missing","invalidOnly","notDue","closed","notApplicable","configurationIncomplete"}) curAgg.put(k, 0);
+        List<Map<String, Object>> histAll = new ArrayList<Map<String, Object>>();
+        List<Map<String, Object>> projectResults = new ArrayList<Map<String, Object>>();
+        List<Object> warnings = new ArrayList<Object>();
+        int issuesEvaluated = 0, projectsEvaluated = 0;
+        boolean truncated = false;
+        Integer nextCursor = null;
+        int end = Math.min(lead.size(), cursor + projLimit);
+        int i = cursor;
+        for (; i < end; i++) {
+            if (i > cursor && (System.nanoTime() - startNs) / 1000000L > budgetMs) break;   // budget reached -> continue later
+            com.atlassian.jira.project.Project p = lead.get(i);
+            long pStartNs = System.nanoTime();
+            String jql = (cfNum != null && !cfNum.isEmpty() ? "cf[" + cfNum + "] IS NOT EMPTY" : "created is not EMPTY")
+                    + " AND project = \"" + p.getKey() + "\" ORDER BY assignee ASC";
+            Map<String, Object> prow = new LinkedHashMap<String, Object>();
+            prow.put("projectKey", p.getKey());
+            prow.put("projectName", p.getName());
+            SearchService.ParseResult pr = this.searchService.parseQuery(viewer, jql);
+            if (!pr.isValid()) { prow.put("complete", false); prow.put("partial", false); prow.put("error", "bad_query"); projectResults.add(prow); continue; }
+            SearchResults<Issue> sr = this.searchService.search(viewer, pr.getQuery(), new PagerFilter<Issue>(perProjectCap + 1));
+            List<Issue> issues = sr.getResults();
+            boolean projTrunc = issues.size() > perProjectCap;
+            if (projTrunc) issues = issues.subList(0, perProjectCap);
+            Map<String, Integer> pcur = new LinkedHashMap<String, Integer>();
+            for (String k : new String[]{"currentlyRequired","covered","missing","invalidOnly","notDue","closed","notApplicable","configurationIncomplete"}) pcur.put(k, 0);
+            List<Map<String, Object>> pHist = new ArrayList<Map<String, Object>>();
+            Map<String, String> users = new LinkedHashMap<String, String>();
+            int evaluated = 0;
+            for (Issue issue : issues) {
+                if (incCur) {
+                    String st = String.valueOf(currentWindowMap(issue).get("currentWindowState"));
+                    if ("covered".equals(st)) { pcur.put("covered", pcur.get("covered")+1); pcur.put("currentlyRequired", pcur.get("currentlyRequired")+1); }
+                    else if ("missing".equals(st)) { pcur.put("missing", pcur.get("missing")+1); pcur.put("currentlyRequired", pcur.get("currentlyRequired")+1); }
+                    else if ("invalid_only".equals(st)) { pcur.put("invalidOnly", pcur.get("invalidOnly")+1); pcur.put("currentlyRequired", pcur.get("currentlyRequired")+1); }
+                    else if ("not_due".equals(st)) pcur.put("notDue", pcur.get("notDue")+1);
+                    else if ("closed".equals(st)) pcur.put("closed", pcur.get("closed")+1);
+                    else if ("configuration_incomplete".equals(st)) pcur.put("configurationIncomplete", pcur.get("configurationIncomplete")+1);
+                    else pcur.put("notApplicable", pcur.get("notApplicable")+1);
+                }
+                if (incHist) {
+                    Map<String, Object> pm = periodMetrics(issue, pb[0], pb[1]);
+                    if (Boolean.TRUE.equals(pm.get("configured"))) {
+                        pHist.add(pm);
+                        if (incUsers) { Object uk = pm.get("responsibleUserKey"); if (uk != null) users.put(String.valueOf(uk), String.valueOf(pm.get("responsibleUserName"))); }
+                    }
+                }
+                evaluated++;
+            }
+            for (String k : pcur.keySet()) curAgg.put(k, curAgg.get(k) + pcur.get(k));
+            histAll.addAll(pHist);
+            issuesEvaluated += evaluated; projectsEvaluated++;
+            prow.put("issueCountEvaluated", evaluated);
+            prow.put("issueCountTotal", projTrunc ? (perProjectCap + "+") : String.valueOf(evaluated));
+            prow.put("complete", !projTrunc);
+            prow.put("partial", projTrunc);
+            if (incCur) prow.put("current", pcur);
+            if (incHist) prow.put("historical", histSummary(aggregatePeriod(pHist)));
+            if (incUsers) {
+                List<Map<String, Object>> us = new ArrayList<Map<String, Object>>();
+                for (Map.Entry<String, String> e : users.entrySet()) { Map<String, Object> u = new LinkedHashMap<String, Object>(); u.put("jiraUserKey", e.getKey()); u.put("displayName", e.getValue()); us.add(u); }
+                prow.put("users", us);
+            }
+            prow.put("durationMs", (System.nanoTime() - pStartNs) / 1000000L);
+            if (projTrunc) { truncated = true; warnings.add(warnObj("project_issue_cap_reached", "Project " + p.getKey() + " exceeded " + perProjectCap + " report issues; showing first " + perProjectCap + ".")); }
+            projectResults.add(prow);
+        }
+        boolean complete = (i >= lead.size());
+        boolean partial = !complete;
+        if (!complete) { nextCursor = Integer.valueOf(i); warnings.add(warnObj("portfolio_partial_timeout", projectsEvaluated + " of " + lead.size() + " managed projects were completed.")); }
+
+        Map<String, Object> scope = new LinkedHashMap<String, Object>();
+        scope.put("scopeType", "project_lead_portfolio");
+        scope.put("scopeSource", "jira_project_lead");
+        scope.put("projects", allLeadKeys);
+        scope.put("projectCount", lead.size());
+        Map<String, Object> psum = new LinkedHashMap<String, Object>();
+        psum.put("projectsEvaluated", projectsEvaluated);
+        psum.put("issuesEvaluated", issuesEvaluated);
+        if (incCur) psum.put("current", curAgg);
+        if (incHist) psum.put("historical", histSummary(aggregatePeriod(histAll)));
+
+        Map<String, Object> body = new LinkedHashMap<String, Object>();
+        body.put("domain", "corbit_report");
+        body.put("scopeType", "project_lead_portfolio");
+        body.put("scope", scope);
+        body.put("scopeSource", "jira_project_lead");
+        body.put("authenticatedUser", viewer.getKey());
+        body.put("period", period == null || period.isEmpty() ? "this_month" : period);
+        body.put("timezone", tzLabel(tz.getOffset(System.currentTimeMillis()) / 60000));
+        body.put("periodStartMs", pb[0]);
+        body.put("periodEndMs", pb[1]);
+        body.put("scopeProjectKeys", allLeadKeys);
+        body.put("scopeProjectCount", lead.size());
+        body.put("portfolioSummary", psum);
+        body.put("projects", projectResults);
+        body.put("projectsEvaluated", projectsEvaluated);
+        body.put("projectsTotal", lead.size());
+        body.put("issuesEvaluated", issuesEvaluated);
+        body.put("complete", complete);
+        body.put("partial", partial);
+        body.put("truncated", truncated);
+        body.put("continuationCursor", nextCursor);
+        body.put("fallbackUsed", false);
+        body.put("warnings", warnings);
+        return JimRestResponses.okJson(body);
+    }
+
+    // ---------------------------------------------------------------- chat: read conversation / members / search
+    private Map<String, Object> conversationDto(JimConversation c) {
+        Map<String, Object> m = new LinkedHashMap<String, Object>();
+        m.put("conversationId", c.getID());
+        m.put("conversationType", c.getConversationType());
+        m.put("groupName", c.getGroupName());
+        m.put("projectKey", c.getProjectKey());
+        m.put("userAKey", c.getUserAKey());
+        m.put("userBKey", c.getUserBKey());
+        m.put("createdByUserKey", c.getCreatedByUserKey());
+        m.put("archived", c.getArchived() != null && c.getArchived().intValue() == 1);
+        m.put("lastMessageAt", c.getLastMessageAt());
+        m.put("lastMessagePreview", c.getLastMessagePreview());
+        return m;
+    }
+
+    private Map<String, Object> memberDto(String userKey, String role, Long joinedAt) {
+        Map<String, Object> m = new LinkedHashMap<String, Object>();
+        ApplicationUser u = userKey == null ? null : ComponentAccessor.getUserManager().getUserByKey(userKey);
+        m.put("jiraUserKey", userKey);
+        m.put("username", u == null ? null : u.getUsername());
+        m.put("displayName", u == null ? userKey : u.getDisplayName());
+        m.put("role", role);
+        m.put("joinedAt", joinedAt);
+        return m;
+    }
+
+    @GET
+    @Path("/chat/conversations/{id}")
+    public Response chatGetConversation(@PathParam("id") int id) {
+        ApplicationUser viewer = viewer();
+        if (viewer == null) return JimRestResponses.errorJson(401, "unauthorized", "Not authenticated");
+        JimConversation c = this.conversationService.getConversationForUser(id, viewer.getKey());
+        if (c == null) return JimRestResponses.errorJson(404, "not_found", "Conversation not found or you are not a member");
+        return JimRestResponses.okJson(conversationDto(c));
+    }
+
+    @GET
+    @Path("/chat/conversations/{id}/members")
+    public Response chatGetMembers(@PathParam("id") int id) {
+        ApplicationUser viewer = viewer();
+        if (viewer == null) return JimRestResponses.errorJson(401, "unauthorized", "Not authenticated");
+        JimConversation c = this.conversationService.getConversationForUser(id, viewer.getKey());
+        if (c == null) return JimRestResponses.errorJson(404, "not_found", "Conversation not found or you are not a member");
+        String type = c.getConversationType() == null ? "" : c.getConversationType();
+        List<Map<String, Object>> members = new ArrayList<Map<String, Object>>();
+        if ("GROUP".equalsIgnoreCase(type)) {
+            try {
+                JimGroupService gs = ComponentAccessor.getOSGiComponentInstanceOfType(JimGroupService.class);
+                for (JimGroupMember gm : gs.listMembers(id, viewer.getKey())) {
+                    members.add(memberDto(gm.getUserKey(), gm.getRole(), gm.getJoinedAt()));
+                }
+            } catch (Exception e) { return JimRestResponses.errorJson(403, "forbidden", "Cannot list members: " + e.getMessage()); }
+        } else if ("DIRECT".equalsIgnoreCase(type)) {
+            members.add(memberDto(c.getUserAKey(), "member", null));
+            members.add(memberDto(c.getUserBKey(), "member", null));
+        }
+        Map<String, Object> body = new LinkedHashMap<String, Object>();
+        body.put("conversationId", id);
+        body.put("conversationType", type);
+        body.put("memberCount", members.size());
+        body.put("members", members);
+        if (!"GROUP".equalsIgnoreCase(type) && !"DIRECT".equalsIgnoreCase(type)) {
+            body.put("note", "Membership for " + type + " conversations is derived from project/system scope, not an explicit member list.");
+        }
+        return JimRestResponses.okJson(body);
+    }
+
+    @GET
+    @Path("/chat/conversations/{id}/messages/search")
+    public Response chatSearchMessages(@PathParam("id") int id, @QueryParam("q") String q, @QueryParam("limit") Integer limit) {
+        ApplicationUser viewer = viewer();
+        if (viewer == null) return JimRestResponses.errorJson(401, "unauthorized", "Not authenticated");
+        if (q == null || q.trim().isEmpty()) return JimRestResponses.errorJson(400, "bad_request", "q (search text) is required");
+        JimConversation c = this.conversationService.getConversationForUser(id, viewer.getKey());
+        if (c == null) return JimRestResponses.errorJson(404, "not_found", "Conversation not found or you are not a member");
+        int scan = 500;   // bounded scan window (newest messages)
+        List<JimMessage> msgs = this.messageService.listMessages(id, scan, null);
+        String needle = q.trim().toLowerCase();
+        int max = limit == null || limit < 1 || limit > 100 ? 50 : limit.intValue();
+        List<JimMessage> hits = new ArrayList<JimMessage>();
+        for (JimMessage m : msgs) {
+            if (m.getDeleted() != null && m.getDeleted().intValue() == 1) continue;
+            String b = m.getBody();
+            if (b != null && b.toLowerCase().contains(needle)) {
+                hits.add(m);
+                if (hits.size() >= max) break;
+            }
+        }
+        Map<String, Object> body = new LinkedHashMap<String, Object>();
+        body.put("conversationId", id);
+        body.put("query", q.trim());
+        body.put("matchCount", hits.size());
+        body.put("scannedWindow", Math.min(scan, msgs.size()));
+        body.put("truncated", msgs.size() >= scan);
+        body.put("messages", this.restJsonMapper.toMessageMaps(hits, viewer, c, viewer.getKey()));
         return JimRestResponses.okJson(body);
     }
 
