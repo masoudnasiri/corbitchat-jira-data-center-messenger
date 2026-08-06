@@ -20,6 +20,7 @@ import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Response;
 
 import org.slf4j.Logger;
@@ -172,6 +173,60 @@ public class JimMcpResource {
         out.put("ok", true);
         out.put("revision", this.mcpService.getRevision());
         return JimRestResponses.okJson(out);
+    }
+
+    // -------------------------------------------------------------- MCP Access management (Phase 2)
+    @GET
+    @Path("/admin/access-policy")
+    public Response getAccessPolicy() {
+        Response denied = requireSysAdmin();
+        if (denied != null) return denied;
+        return JimRestResponses.okJson(this.mcpService.getAccessPolicy());
+    }
+
+    @POST
+    @Path("/admin/access-policy")
+    @Consumes({"application/json"})
+    public Response applyAccessPolicy(Map<String, Object> body) {
+        Response denied = requireSysAdmin();
+        if (denied != null) return denied;
+        String actor = null;
+        try { ApplicationUser u = this.authenticationContext.getLoggedInUser(); actor = u == null ? null : u.getKey(); } catch (Exception ignore) { }
+        Map<String, Object> res = this.mcpService.setAccessPolicy(body, actor);
+        if (Boolean.TRUE.equals(res.get("ok"))) return JimRestResponses.okJson(res);
+        String err = String.valueOf(res.getOrDefault("error", "error"));
+        int code = "revision_conflict".equals(err) ? 409 : 400;
+        return JimRestResponses.errorJson(code, err, String.valueOf(res.getOrDefault("message", "apply failed")));
+    }
+
+    @GET
+    @Path("/admin/access-simulate")
+    public Response simulateAccess(@QueryParam("user") String user, @QueryParam("tool") String tool) {
+        Response denied = requireSysAdmin();
+        if (denied != null) return denied;
+        if (user == null || user.isEmpty() || tool == null || tool.isEmpty())
+            return JimRestResponses.errorJson(400, "bad_request", "user and tool query params are required");
+        return JimRestResponses.okJson(this.mcpService.simulateAccess(user, tool));
+    }
+
+    @GET
+    @Path("/access-policy")
+    @AnonymousAllowed
+    public Response accessPolicy(@HeaderParam("X-MCP-Gateway-Token") String token,
+                                 @HeaderParam("X-MCP-Timestamp") String ts,
+                                 @HeaderParam("X-MCP-Nonce") String nonce,
+                                 @HeaderParam("X-MCP-Signature") String sig) {
+        String reason = this.mcpService.verifyGatewayRequest(token, "GET", "/mcp/access-policy", ts, nonce, sig);
+        if (reason != null) {
+            log.warn("MCP access-policy pull rejected: {}", reason);
+            return JimRestResponses.errorJson(401, "unauthorized", reason);
+        }
+        try {
+            return JimRestResponses.okJson(this.mcpService.buildSignedAccessPolicy());
+        } catch (Exception e) {
+            log.error("MCP buildSignedAccessPolicy failed", e);
+            return JimRestResponses.errorJson(500, "policy_error", "failed to build access policy");
+        }
     }
 
     @POST

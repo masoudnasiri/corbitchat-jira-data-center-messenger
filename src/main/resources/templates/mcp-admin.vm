@@ -52,6 +52,84 @@
     </div>
 
     <div class="jim-mcp-card">
+        <h3>MCP Access &middot; دسترسی‌های MCP</h3>
+        <p class="jim-mcp-sub">Per-user / per-group access presets. Enforced at tool execution by the Gateway
+            (pulled automatically &mdash; no file editing). Tools always remain discoverable in the catalog;
+            policy only decides execution. Presets: read_only, standard, full_controlled, blocked.</p>
+        <div id="jim-acc-sync" class="jim-mcp-sub">&mdash;</div>
+        <div class="jim-mcp-global-controls">
+            <label>Global mode:
+                <select id="jim-acc-mode" class="select">
+                    <option value="all">all</option>
+                    <option value="allowlist">allowlist</option>
+                    <option value="disabled">disabled</option>
+                </select></label>
+            <label>Default preset:
+                <select id="jim-acc-default" class="select">
+                    <option value="read_only">read_only</option>
+                    <option value="standard">standard</option>
+                    <option value="full_controlled">full_controlled</option>
+                    <option value="blocked">blocked</option>
+                </select></label>
+        </div>
+
+        <h4>Users</h4>
+        <table class="aui" id="jim-acc-users">
+            <thead><tr><th>Jira user key</th><th>Preset</th><th>Actions</th></tr></thead>
+            <tbody><tr><td colspan="3">Loading&hellip;</td></tr></tbody>
+        </table>
+        <div class="jim-mcp-global-controls">
+            <input type="text" id="jim-acc-user-key" class="text" placeholder="JIRAUSER10000"/>
+            <select id="jim-acc-user-preset" class="select">
+                <option value="read_only">read_only</option><option value="standard">standard</option>
+                <option value="full_controlled">full_controlled</option><option value="blocked">blocked</option>
+            </select>
+            <button class="aui-button" id="jim-acc-user-add">Add / update user</button>
+        </div>
+
+        <h4>Groups</h4>
+        <table class="aui" id="jim-acc-groups">
+            <thead><tr><th>Jira group</th><th>Preset</th><th>Actions</th></tr></thead>
+            <tbody><tr><td colspan="3">&mdash;</td></tr></tbody>
+        </table>
+        <div class="jim-mcp-global-controls">
+            <input type="text" id="jim-acc-group-name" class="text" placeholder="jira-developers"/>
+            <select id="jim-acc-group-preset" class="select">
+                <option value="read_only">read_only</option><option value="standard">standard</option>
+                <option value="full_controlled">full_controlled</option><option value="blocked">blocked</option>
+            </select>
+            <button class="aui-button" id="jim-acc-group-add">Add / update group</button>
+        </div>
+
+        <h4>Project restrictions</h4>
+        <div class="jim-mcp-global-controls">
+            <label>Mode:
+                <select id="jim-acc-proj-mode" class="select">
+                    <option value="jira">jira (native permissions only)</option>
+                    <option value="restrict">restrict to listed</option>
+                    <option value="block">block listed</option>
+                </select></label>
+            <label>Projects (CSV):
+                <input type="text" id="jim-acc-proj-list" class="text" placeholder="MIT,COR"/></label>
+        </div>
+
+        <div class="jim-mcp-global-controls">
+            <button class="aui-button aui-button-primary" id="jim-acc-apply">Apply access policy</button>
+            <span id="jim-acc-apply-msg"></span>
+        </div>
+
+        <h4>Effective-access simulator</h4>
+        <p class="jim-mcp-sub">Preview the decision for a user/tool without executing it. Jira/plugin permissions
+            are additionally enforced at execution.</p>
+        <div class="jim-mcp-global-controls">
+            <input type="text" id="jim-acc-sim-user" class="text" placeholder="JIRAUSER10000"/>
+            <input type="text" id="jim-acc-sim-tool" class="text" placeholder="corbit_chat_execute_multi_send"/>
+            <button class="aui-button" id="jim-acc-sim-run">Simulate</button>
+        </div>
+        <div id="jim-acc-sim-result">&mdash;</div>
+    </div>
+
+    <div class="jim-mcp-card">
         <h3>Diagnostics</h3>
         <div id="jim-mcp-diag">&mdash;</div>
     </div>

@@ -29,30 +29,39 @@
         var el = document.getElementById('jim-mcp-status');
         if (!s) { el.textContent = 'Status unavailable'; return; }
         var c = s.toolCounts || {};
-        var gwLabel = s.gatewayConfigured
-            ? (s.gatewayReachable ? ('heartbeat ' + (s.gatewayHeartbeatAgeSec != null ? s.gatewayHeartbeatAgeSec + 's ago' : 'ok'))
-                                  : (s.gatewayStatus === 'never' ? 'no heartbeat yet' : 'STALE'))
-            : 'not set';
+        var sv = s.servedCatalog || {};
+        var gwOk = !!s.gatewayReachable;                 // fresh heartbeat received (decoupled)
+        var gwLabel = gwOk ? ((s.gatewayRelease || s.gatewayVersion || 'up') + ' · heartbeat ' +
+                              (s.gatewayHeartbeatAgeSec != null ? s.gatewayHeartbeatAgeSec + 's ago' : 'ok'))
+                           : (s.gatewayStatus === 'stale' ? 'STALE heartbeat' : 'no heartbeat yet');
         el.innerHTML =
             '<div class="jim-mcp-badges">' +
             badge('MCP', s.mcpEnabled ? 'ON' : 'OFF', s.mcpEnabled ? 'ok' : 'off') +
-            badge('Gateway', gwLabel, s.gatewayReachable ? 'ok' : 'off') +
-            badge('Backend (MCP)', s.backendReachable === true ? 'reachable' : (s.backendReachable === false ? 'down' : 'unknown'),
+            badge('Gateway', gwLabel, gwOk ? 'ok' : 'off') +
+            badge('Backend (MCP)', s.backendReachable === true ? ('reachable ' + (s.backendVersion || '')) : (s.backendReachable === false ? 'down' : 'unknown'),
                 s.backendReachable === true ? 'ok' : 'off') +
             badge('Jira', s.jiraConnectivity ? 'connected' : '?', s.jiraConnectivity ? 'ok' : 'off') +
             badge('Secrets', s.configured ? 'configured' : 'missing', s.configured ? 'ok' : 'off') +
+            badge('Shared fallback', s.sharedFallbackEnabled ? 'ENABLED' : 'disabled', s.sharedFallbackEnabled ? 'warn' : 'ok') +
             badge('Upstream', s.upstreamVersion, 'info') +
             badge('Policy rev', s.revision, 'info') +
             badge('Served rev', s.servedRevision, 'info') +
-            badge('GW policy rev', s.gatewayPolicyRevision, (s.gatewayPolicyRevision === s.revision ? 'ok' : 'warn')) +
             '</div>' +
-            '<div class="jim-mcp-counts">Tools: ' + (c.total || 0) +
-            ' &middot; enabled ' + (c.enabled || 0) +
-            ' &middot; available ' + (c.available || 0) +
-            ' &middot; read ' + (c.read || 0) +
-            ' &middot; write ' + (c.write || 0) +
-            ' &middot; destructive ' + (c.destructive || 0) +
-            ' &middot; N/A ' + (c.notApplicable || 0) + '</div>';
+            // LIVE served MCP catalog (from the Gateway) — the real public contract
+            '<div class="jim-mcp-counts"><b>Served MCP catalog</b> (live from Gateway): ' +
+            (sv.available
+                ? ((sv.toolCount || 0) + ' tools &middot; jira ' + (sv.jiraToolCount || 0) +
+                   ' &middot; corbit ' + (sv.corbitToolCount || 0) +
+                   ' &middot; read ' + (sv.read || 0) + ' &middot; write ' + (sv.write || 0) +
+                   ' &middot; destructive ' + (sv.destructive || 0) +
+                   ' &middot; schema ' + (sv.schemaVersion || 3) +
+                   ' &middot; hash ' + esc((sv.contractHash || '').substring(0, 8)))
+                : ('unavailable (' + esc(sv.reason || 'no heartbeat') + ')')) + '</div>' +
+            // internal policy registry — NOT the served catalog
+            '<div class="jim-mcp-counts" style="opacity:.75">Policy registry (internal, not served): ' +
+            (c.total || 0) + ' entries &middot; available ' + (c.available || 0) +
+            ' &middot; read ' + (c.read || 0) + ' &middot; write ' + (c.write || 0) +
+            ' &middot; destructive ' + (c.destructive || 0) + ' &middot; N/A ' + (c.notApplicable || 0) + '</div>';
         document.getElementById('jim-mcp-enabled').checked = !!s.mcpEnabled;
         document.getElementById('jim-mcp-class-read').checked = !!(s.classes && s.classes.read);
         document.getElementById('jim-mcp-class-write').checked = !!(s.classes && s.classes.write);
@@ -126,9 +135,105 @@
         });
     }
 
+    // ---- MCP Access management (Phase 2b) ----
+    var access = null;
+
+    function renderAccessTables() {
+        var ut = document.querySelector('#jim-acc-users tbody');
+        var up = access.userPolicy || {}, ub = access.userBlock || [];
+        var rows = Object.keys(up).map(function (k) {
+            return '<tr><td>' + esc(k) + '</td><td>' + esc(up[k]) + '</td><td><button class="aui-button aui-button-link jim-acc-user-del" data-k="' + esc(k) + '">remove</button></td></tr>';
+        });
+        ub.forEach(function (k) { if (!(k in up)) rows.push('<tr><td>' + esc(k) + '</td><td>blocked</td><td><button class="aui-button aui-button-link jim-acc-user-del" data-k="' + esc(k) + '">remove</button></td></tr>'); });
+        ut.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="3">No user rules (default preset applies)</td></tr>';
+        var gt = document.querySelector('#jim-acc-groups tbody');
+        var gp = access.groupPolicy || {};
+        var grows = Object.keys(gp).map(function (k) {
+            return '<tr><td>' + esc(k) + '</td><td>' + esc(gp[k]) + '</td><td><button class="aui-button aui-button-link jim-acc-group-del" data-k="' + esc(k) + '">remove</button></td></tr>';
+        });
+        gt.innerHTML = grows.length ? grows.join('') : '<tr><td colspan="3">No group rules</td></tr>';
+        Array.prototype.forEach.call(document.querySelectorAll('.jim-acc-user-del'), function (b) {
+            b.addEventListener('click', function () { var k = b.getAttribute('data-k'); delete access.userPolicy[k]; access.userBlock = (access.userBlock || []).filter(function (x) { return x !== k; }); renderAccessTables(); });
+        });
+        Array.prototype.forEach.call(document.querySelectorAll('.jim-acc-group-del'), function (b) {
+            b.addEventListener('click', function () { delete access.groupPolicy[b.getAttribute('data-k')]; renderAccessTables(); });
+        });
+    }
+
+    function renderAccess() {
+        if (!access) return;
+        document.getElementById('jim-acc-mode').value = access.mode || 'all';
+        document.getElementById('jim-acc-default').value = access.defaultPreset || 'read_only';
+        var pr = access.projectRestrict || { mode: 'jira', allow: [], block: [] };
+        document.getElementById('jim-acc-proj-mode').value = pr.mode || 'jira';
+        document.getElementById('jim-acc-proj-list').value = ((pr.mode === 'block' ? pr.block : pr.allow) || []).join(',');
+        document.getElementById('jim-acc-sync').innerHTML = 'Access revision: <b>' + esc(access.revision) + '</b> &middot; applied to the Gateway automatically within ~20s of Apply.';
+        renderAccessTables();
+    }
+
+    function loadAccess() {
+        request('GET', BASE + '/access-policy', undefined, function (st, data) {
+            if (st === 200 && data) {
+                access = data; access.userPolicy = access.userPolicy || {}; access.groupPolicy = access.groupPolicy || {};
+                access.userBlock = access.userBlock || []; access.groupBlock = access.groupBlock || [];
+                renderAccess();
+            }
+        });
+    }
+
+    function applyAccess() {
+        var mode = document.getElementById('jim-acc-proj-mode').value;
+        var list = document.getElementById('jim-acc-proj-list').value.split(',').map(function (s) { return s.trim().toUpperCase(); }).filter(Boolean);
+        var pr = { mode: mode, allow: mode === 'restrict' ? list : [], block: mode === 'block' ? list : [] };
+        var draft = {
+            mode: document.getElementById('jim-acc-mode').value,
+            defaultPreset: document.getElementById('jim-acc-default').value,
+            userPolicy: access.userPolicy, groupPolicy: access.groupPolicy,
+            userBlock: access.userBlock, groupBlock: access.groupBlock,
+            projectRestrict: pr, expectedRevision: access.revision
+        };
+        var grantsFull = draft.defaultPreset === 'full_controlled' ||
+            Object.keys(access.userPolicy).some(function (k) { return access.userPolicy[k] === 'full_controlled'; }) ||
+            Object.keys(access.groupPolicy).some(function (k) { return access.groupPolicy[k] === 'full_controlled'; });
+        if (grantsFull && !confirm('This grants full_controlled (destructive tools allowed, with confirmation). Apply?')) return;
+        request('POST', BASE + '/access-policy', draft, function (st, data) {
+            var msg = document.getElementById('jim-acc-apply-msg');
+            if (st === 200) { msg.textContent = ' Applied (revision ' + (data && data.revision) + ')'; loadAccess(); }
+            else { msg.textContent = ' Failed: ' + ((data && data.message) || st); }
+        });
+    }
+
+    function simulate() {
+        var u = document.getElementById('jim-acc-sim-user').value.trim();
+        var t = document.getElementById('jim-acc-sim-tool').value.trim();
+        if (!u || !t) return;
+        request('GET', BASE + '/access-simulate?user=' + encodeURIComponent(u) + '&tool=' + encodeURIComponent(t), undefined, function (st, data) {
+            var el = document.getElementById('jim-acc-sim-result');
+            if (st === 200 && data) {
+                el.innerHTML = '<b class="jim-mcp-' + (data.decision === 'allow' ? 'ok' : 'off') + '">' + esc(data.decision) + '</b> &middot; preset ' + esc(data.effectivePreset) +
+                    ' &middot; class ' + esc(data.toolClass) + ' &middot; rule ' + esc(data.matchedRule) +
+                    (data.reason ? ' &middot; reason ' + esc(data.reason) : '') + ' &middot; confirm ' + esc(data.confirmationRequired);
+            } else { el.textContent = 'error ' + st; }
+        });
+    }
+
     function init() {
         loadStatus();
         loadTools();
+        loadAccess();
+        document.getElementById('jim-acc-user-add').addEventListener('click', function () {
+            var k = document.getElementById('jim-acc-user-key').value.trim(), p = document.getElementById('jim-acc-user-preset').value;
+            if (!k) return;
+            if (p === 'blocked') { if (access.userBlock.indexOf(k) < 0) access.userBlock.push(k); delete access.userPolicy[k]; }
+            else { access.userPolicy[k] = p; access.userBlock = access.userBlock.filter(function (x) { return x !== k; }); }
+            document.getElementById('jim-acc-user-key').value = ''; renderAccessTables();
+        });
+        document.getElementById('jim-acc-group-add').addEventListener('click', function () {
+            var k = document.getElementById('jim-acc-group-name').value.trim(), p = document.getElementById('jim-acc-group-preset').value;
+            if (!k) return; access.groupPolicy[k] = p; document.getElementById('jim-acc-group-name').value = ''; renderAccessTables();
+        });
+        document.getElementById('jim-acc-apply').addEventListener('click', applyAccess);
+        document.getElementById('jim-acc-sim-run').addEventListener('click', simulate);
         document.getElementById('jim-mcp-search').addEventListener('input', renderTools);
         document.getElementById('jim-mcp-save-global').addEventListener('click', function () {
             request('PUT', BASE + '/global', {

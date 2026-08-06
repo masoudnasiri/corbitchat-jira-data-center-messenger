@@ -56,4 +56,23 @@ public interface JimMcpService {
 
     /** Current configuration revision (increments on every policy change). */
     int getRevision();
+
+    // ---- MCP Access management (per-user / per-group presets; Phase 2) ----
+
+    /** The current MCP access policy for the admin UI (mode, defaultPreset, user/group rules,
+     *  project restrictions, revision). Never returns secrets. */
+    Map<String, Object> getAccessPolicy();
+
+    /** Validate and apply an access-policy draft (optimistic locking via expectedRevision).
+     *  Returns {ok, revision, ...} or {ok:false, error, message}. Audited. */
+    Map<String, Object> setAccessPolicy(Map<String, Object> draft, String actorUserKey);
+
+    /** Signed access policy served to the Gateway (HMAC over a shared canonical). */
+    Map<String, Object> buildSignedAccessPolicy();
+
+    /** Access-policy revision (separate from tool-policy revision). */
+    int getAccessRevision();
+
+    /** Effective-access simulation for one user/tool without executing it. */
+    Map<String, Object> simulateAccess(String jiraUserKey, String toolName);
 }

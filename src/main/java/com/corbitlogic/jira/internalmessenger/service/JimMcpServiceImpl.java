@@ -271,6 +271,32 @@ public class JimMcpServiceImpl implements JimMcpService {
     }
 
     // ------------------------------------------------------------------ secrets
+    private volatile boolean monitoringAdoptChecked = false;
+    /** One-time bootstrap: if MCP secrets are unset and a JiraHome file
+     *  {@code corbit-mcp-monitoring.secret} (line1=sharedSecret, line2=gatewayToken) exists, adopt it and
+     *  delete the file. Lets the Control Plane be wired to the Gateway without admin UI access; the secret
+     *  is never placed in env/logs/inspect and the transfer file is removed after adoption. */
+    private void adoptMonitoringSecretIfPresent() {
+        if (monitoringAdoptChecked) return;
+        monitoringAdoptChecked = true;
+        try {
+            if (isConfigured()) return;
+            java.io.File home;
+            try { home = com.atlassian.jira.component.ComponentAccessor.getComponent(com.atlassian.jira.config.util.JiraHome.class).getHome(); }
+            catch (Exception e) { home = new java.io.File(System.getProperty("jira.home", "/var/jira")); }
+            java.io.File f = new java.io.File(home, "corbit-mcp-monitoring.secret");
+            if (!f.exists()) return;
+            java.util.List<String> lines = java.nio.file.Files.readAllLines(f.toPath(), java.nio.charset.StandardCharsets.UTF_8);
+            if (lines.size() >= 2 && !lines.get(0).trim().isEmpty() && !lines.get(1).trim().isEmpty()) {
+                configureSecrets(lines.get(0).trim(), lines.get(1).trim());
+                log.info("MCP: adopted Control Plane monitoring secret from JiraHome bootstrap file");
+            }
+            try { java.nio.file.Files.deleteIfExists(f.toPath()); } catch (Exception ignore) { }
+        } catch (Exception e) {
+            log.warn("MCP monitoring-secret adoption skipped: {}", e.toString());
+        }
+    }
+
     @Override
     public void configureSecrets(String sharedSecret, String gatewayToken) {
         if (sharedSecret != null && !sharedSecret.isEmpty()) put("sharedSecret", sharedSecret);
@@ -303,6 +329,7 @@ public class JimMcpServiceImpl implements JimMcpService {
     @Override
     public String verifyGatewayRequest(String token, String method, String path,
                                        String timestamp, String nonce, String signature) {
+        adoptMonitoringSecretIfPresent();
         long now = System.currentTimeMillis();
         if (now - this.authFailWindowStart > 60000L) { this.authFailWindowStart = now; this.authFailures.set(0); }
         if (this.authFailures.get() > MAX_AUTH_FAILS_PER_MIN) return "rate_limited";
@@ -336,6 +363,254 @@ public class JimMcpServiceImpl implements JimMcpService {
         put("hbRevision", hb.get("policyRevision") == null ? "0" : String.valueOf(hb.get("policyRevision")));
         put("hbVersion", hb.get("version") == null ? "" : String.valueOf(hb.get("version")));
         put("hbPolicyFresh", Boolean.toString(truthy(hb.get("policyFresh"))));
+        // live SERVED catalog reported by the Gateway (distinct from the plugin policy registry)
+        putHb(hb, "release", "hbRelease");
+        putHb(hb, "backendVersion", "hbBackendVersion");
+        putHb(hb, "servedRevision", "hbServedRevision");
+        putHb(hb, "toolCount", "hbServedTools");
+        putHb(hb, "jiraToolCount", "hbServedJira");
+        putHb(hb, "corbitToolCount", "hbServedCorbit");
+        putHb(hb, "readCount", "hbServedRead");
+        putHb(hb, "writeCount", "hbServedWrite");
+        putHb(hb, "destructiveCount", "hbServedDestructive");
+        putHb(hb, "contractHash", "hbContractHash");
+        putHb(hb, "contractHashAlgorithm", "hbContractHashAlgo");
+        putHb(hb, "schemaVersion", "hbSchemaVersion");
+        putHb(hb, "toolRegistry", "hbToolRegistry");          // canonical class:confirm projection (Phase 2c)
+        putHb(hb, "registryRevision", "hbRegistryRevision");
+        put("hbOauthConfigured", Boolean.toString(truthy(hb.get("oauthConfigured"))));
+        put("hbCredentialStoreHealthy", Boolean.toString(truthy(hb.get("credentialStoreHealthy"))));
+        put("hbSharedFallbackEnabled", Boolean.toString(truthy(hb.get("sharedFallbackEnabled"))));
+    }
+
+    private void putHb(Map<String, Object> hb, String key, String setting) {
+        if (hb.get(key) != null) put(setting, String.valueOf(hb.get(key)));
+    }
+
+    // ------------------------------------------------------------------ MCP Access management (Phase 2)
+    private static final java.util.List<String> VALID_PRESETS =
+            java.util.Arrays.asList("blocked", "read_only", "standard", "full_controlled");
+
+    private java.util.List<String> csvList(String s) {
+        java.util.List<String> out = new ArrayList<>();
+        if (s != null) for (String p : s.split(",")) if (!p.trim().isEmpty()) out.add(p.trim());
+        return out;
+    }
+    private Map<String, String> kvMap(String s) {
+        Map<String, String> m = new LinkedHashMap<>();
+        if (s != null) for (String pair : s.split(";")) {
+            String p = pair.trim(); if (p.isEmpty()) continue;
+            int i = p.indexOf('='); if (i <= 0) continue;
+            m.put(p.substring(0, i).trim(), p.substring(i + 1).trim());
+        }
+        return m;
+    }
+    private String mapToKv(Map<String, String> m) {
+        java.util.List<String> keys = new ArrayList<>(m.keySet()); java.util.Collections.sort(keys);
+        StringBuilder sb = new StringBuilder();
+        for (String k : keys) { if (sb.length() > 0) sb.append(';'); sb.append(k).append('=').append(m.get(k)); }
+        return sb.toString();
+    }
+    private static String jstr(Object o) { return o == null ? "" : String.valueOf(o); }
+    private static String sortedCsv(Object o) {
+        java.util.List<String> l = new ArrayList<>();
+        if (o instanceof java.util.List) for (Object x : (java.util.List<?>) o) l.add(String.valueOf(x));
+        java.util.Collections.sort(l); return String.join(",", l);
+    }
+    private static String sortedKv(Object o) {
+        java.util.List<String> l = new ArrayList<>();
+        if (o instanceof Map) for (Map.Entry<?, ?> e : ((Map<?, ?>) o).entrySet()) l.add(e.getKey() + ":" + e.getValue());
+        java.util.Collections.sort(l); return String.join(";", l);
+    }
+    private String joinCsv(Object o) {
+        if (o instanceof java.util.List) {
+            StringBuilder sb = new StringBuilder();
+            for (Object x : (java.util.List<?>) o) { if (sb.length() > 0) sb.append(','); sb.append(String.valueOf(x).trim()); }
+            return sb.toString();
+        }
+        return o == null ? "" : String.valueOf(o);
+    }
+    private java.util.Set<String> presetClasses(String p) {
+        java.util.Set<String> s = new java.util.HashSet<>();
+        if ("read_only".equals(p)) s.add("read");
+        else if ("standard".equals(p)) { s.add("read"); s.add("write"); }
+        else if ("full_controlled".equals(p)) { s.add("read"); s.add("write"); s.add("destructive"); }
+        return s;   // blocked -> empty
+    }
+
+    @Override
+    public int getAccessRevision() {
+        try { return Integer.parseInt(get("accessRevision", "1")); } catch (Exception e) { return 1; }
+    }
+
+    @Override
+    public Map<String, Object> getAccessPolicy() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("mode", get("accessMode", "all"));
+        m.put("defaultPreset", get("accessDefaultPreset", "read_only"));
+        m.put("userBlock", csvList(get("accessUserBlock", "")));
+        m.put("groupBlock", csvList(get("accessGroupBlock", "")));
+        Map<String, Object> up = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : kvMap(get("accessUserPolicy", "")).entrySet()) up.put(e.getKey(), e.getValue());
+        Map<String, Object> gp = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : kvMap(get("accessGroupPolicy", "")).entrySet()) gp.put(e.getKey(), e.getValue());
+        m.put("userPolicy", up);
+        m.put("groupPolicy", gp);
+        Map<String, Object> pr = new LinkedHashMap<>();
+        pr.put("mode", get("accessProjectMode", "jira"));
+        pr.put("allow", csvList(get("accessProjectAllow", "")));
+        pr.put("block", csvList(get("accessProjectBlock", "")));
+        m.put("projectRestrict", pr);
+        m.put("revision", getAccessRevision());
+        return m;
+    }
+
+    private Map<String, String> coercePresetMap(Object o, Map<String, Object> res) {
+        if (o == null) return null;
+        if (!(o instanceof Map)) { res.put("ok", false); res.put("error", "invalid_map"); res.put("message", "policy map expected"); return null; }
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : ((Map<?, ?>) o).entrySet()) {
+            String v = String.valueOf(e.getValue());
+            if (!VALID_PRESETS.contains(v)) { res.put("ok", false); res.put("error", "invalid_preset"); res.put("message", "preset '" + v + "' invalid"); return null; }
+            out.put(String.valueOf(e.getKey()), v);
+        }
+        return out;
+    }
+
+    private void appendAccessHistory(int rev, String actor) {
+        java.util.List<String> hist = new ArrayList<>(java.util.Arrays.asList(get("accessHistory", "").split("\\n")));
+        hist.add(rev + ":" + (actor == null ? "?" : actor) + ":" + Instant.now().toString());
+        while (hist.size() > 50) hist.remove(0);
+        StringBuilder sb = new StringBuilder();
+        for (String h : hist) if (!h.trim().isEmpty()) { if (sb.length() > 0) sb.append('\n'); sb.append(h); }
+        put("accessHistory", sb.toString());
+    }
+
+    @Override
+    public Map<String, Object> setAccessPolicy(Map<String, Object> draft, String actorUserKey) {
+        Map<String, Object> res = new LinkedHashMap<>();
+        if (draft == null) { res.put("ok", false); res.put("error", "bad_request"); res.put("message", "empty draft"); return res; }
+        Object exp = draft.get("expectedRevision");
+        if (exp != null) {
+            int e; try { e = Integer.parseInt(String.valueOf(exp)); } catch (Exception ex) { e = -1; }
+            if (e != getAccessRevision()) { res.put("ok", false); res.put("error", "revision_conflict"); res.put("message", "Policy changed; reload and retry"); res.put("currentRevision", getAccessRevision()); return res; }
+        }
+        String def = draft.containsKey("defaultPreset") ? String.valueOf(draft.get("defaultPreset")) : get("accessDefaultPreset", "read_only");
+        if (!VALID_PRESETS.contains(def)) { res.put("ok", false); res.put("error", "invalid_preset"); res.put("message", "defaultPreset invalid"); return res; }
+        Map<String, String> up = coercePresetMap(draft.get("userPolicy"), res); if (res.containsKey("error")) return res;
+        Map<String, String> gp = coercePresetMap(draft.get("groupPolicy"), res); if (res.containsKey("error")) return res;
+        if (draft.containsKey("mode")) put("accessMode", String.valueOf(draft.get("mode")));
+        put("accessDefaultPreset", def);
+        if (draft.containsKey("userBlock")) put("accessUserBlock", joinCsv(draft.get("userBlock")));
+        if (draft.containsKey("groupBlock")) put("accessGroupBlock", joinCsv(draft.get("groupBlock")));
+        if (up != null) put("accessUserPolicy", mapToKv(up));
+        if (gp != null) put("accessGroupPolicy", mapToKv(gp));
+        Object pr = draft.get("projectRestrict");
+        if (pr instanceof Map) {
+            Map<?, ?> p = (Map<?, ?>) pr;
+            if (p.get("mode") != null) put("accessProjectMode", String.valueOf(p.get("mode")));
+            put("accessProjectAllow", joinCsv(p.get("allow")));
+            put("accessProjectBlock", joinCsv(p.get("block")));
+        }
+        int rev = getAccessRevision() + 1;
+        put("accessRevision", Integer.toString(rev));
+        appendAccessHistory(rev, actorUserKey);
+        res.put("ok", true); res.put("revision", rev); res.put("policy", getAccessPolicy());
+        return res;
+    }
+
+    /** MUST match the Gateway access_canonical (Python). */
+    private String canonicalAccess(Map<String, Object> p) {
+        Object pr = p.get("projectRestrict");
+        Map<?, ?> prm = pr instanceof Map ? (Map<?, ?>) pr : new java.util.HashMap<Object, Object>();
+        return "v1"
+                + "|mode=" + jstr(p.get("mode"))
+                + "|default=" + jstr(p.get("defaultPreset"))
+                + "|userBlock=" + sortedCsv(p.get("userBlock"))
+                + "|groupBlock=" + sortedCsv(p.get("groupBlock"))
+                + "|userPolicy=" + sortedKv(p.get("userPolicy"))
+                + "|groupPolicy=" + sortedKv(p.get("groupPolicy"))
+                + "|projectMode=" + jstr(prm.get("mode"))
+                + "|projectAllow=" + sortedCsv(prm.get("allow"))
+                + "|projectBlock=" + sortedCsv(prm.get("block"))
+                + "|rev=" + jstr(p.get("revision"));
+    }
+
+    @Override
+    public Map<String, Object> buildSignedAccessPolicy() {
+        Map<String, Object> p = getAccessPolicy();
+        p.put("schemaVersion", 1);
+        String secret = get("sharedSecret", "");
+        p.put("sig", secret.isEmpty() ? "" : hmacSha256Hex(secret, canonicalAccess(p)));
+        return p;
+    }
+
+    /** Canonical class/confirm from the Gateway registry projection (Phase 2c). Returns [class, confirm, source]
+     *  or null when no fresh canonical source is available (caller must NOT guess). */
+    private String[] canonicalToolMeta(String toolName) {
+        long hbAt = getLong("hbAt", 0L);
+        boolean fresh = hbAt > 0L && (System.currentTimeMillis() - hbAt) < HEARTBEAT_STALE_MS;
+        String raw = get("hbToolRegistry", "");
+        if (fresh && !raw.isEmpty()) {
+            for (String e : raw.split(";")) {
+                int i = e.indexOf(':');
+                if (i <= 0) continue;
+                if (e.substring(0, i).equals(toolName)) {
+                    String[] p = e.split(":");
+                    if (p.length >= 3) return new String[]{p[1], p[2], "gateway_registry"};
+                }
+            }
+        }
+        // fallback: jira_* tools are also in the local AO registry (classification only)
+        for (JimMcpToolPolicy row : allRows()) {
+            if (row.getToolName().equals(toolName)) {
+                String c = row.getClassification();
+                return new String[]{c, "destructive".equals(c) ? "1" : "0", "plugin_registry"};
+            }
+        }
+        return null;   // no canonical source -> degraded (do not guess)
+    }
+
+    @Override
+    public Map<String, Object> simulateAccess(String jiraUserKey, String toolName) {
+        Map<String, Object> ap = getAccessPolicy();
+        @SuppressWarnings("unchecked") Map<String, Object> up = (Map<String, Object>) ap.get("userPolicy");
+        java.util.List<?> ub = (java.util.List<?>) ap.get("userBlock");
+        String preset, source;
+        if (ub != null && ub.contains(jiraUserKey)) { preset = "blocked"; source = "user_block:" + jiraUserKey; }
+        else if (up != null && up.containsKey(jiraUserKey)) { preset = String.valueOf(up.get(jiraUserKey)); source = "user:" + jiraUserKey; }
+        else { preset = String.valueOf(ap.get("defaultPreset")); source = "default"; }
+
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("user", jiraUserKey); r.put("tool", toolName);
+        r.put("effectivePreset", preset); r.put("matchedRule", source);
+        r.put("policyRevision", getAccessRevision());
+        r.put("registryRevision", get("hbRegistryRevision", ""));
+
+        String[] meta = canonicalToolMeta(toolName);
+        if (meta == null) {
+            r.put("toolClass", "classification_unavailable");
+            r.put("decision", "unknown");
+            r.put("reason", "classification_unavailable");
+            r.put("degraded", true);
+            r.put("classificationSource", "none");
+            r.put("note", "No fresh canonical registry projection from the Gateway; classification unavailable (not guessed). Ensure the Gateway heartbeat is healthy.");
+            return r;
+        }
+        String cls = meta[0];
+        boolean confirm = "1".equals(meta[1]);
+        String minPreset = "read".equals(cls) ? "read_only" : ("destructive".equals(cls) ? "full_controlled" : "standard");
+        boolean allow = presetClasses(preset).contains(cls);
+        r.put("toolClass", cls);
+        r.put("minimumPreset", minPreset);
+        r.put("classificationSource", meta[2]);
+        r.put("degraded", false);
+        r.put("decision", allow ? "allow" : "deny");
+        if (!allow) r.put("reason", "blocked".equals(preset) ? "user_blocked" : "overlay_class_denied");
+        r.put("confirmationRequired", allow && confirm);
+        r.put("repeatToConfirm", confirm);
+        r.put("note", "Matches Gateway enforcement (canonical registry). Jira/plugin permissions are additionally enforced at execution time.");
+        return r;
     }
 
     // ------------------------------------------------------------------ policy
@@ -429,6 +704,7 @@ public class JimMcpServiceImpl implements JimMcpService {
     @Override
     public Map<String, Object> getStatus() {
         ensureSeeded();
+        adoptMonitoringSecretIfPresent();
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("mcpEnabled", getBool("enabled", true));
         m.put("configured", isConfigured());
@@ -450,8 +726,34 @@ public class JimMcpServiceImpl implements JimMcpService {
         m.put("backendReachable", fresh ? Boolean.valueOf(getBool("hbBackend", false)) : null);
         m.put("gatewayPolicyRevision", getInt("hbRevision", 0));
         m.put("jiraConnectivity", true);   // the plugin executes inside Jira
-        m.put("servedRevision", getInt("servedRevision", 0));
+        // servedRevision: prefer the Gateway's live heartbeat value; fall back to what we last served
+        m.put("servedRevision", fresh ? getInt("hbServedRevision", getInt("servedRevision", 0)) : getInt("servedRevision", 0));
         m.put("servedAt", get("servedAt", ""));
+        m.put("gatewayRelease", get("hbRelease", ""));
+        m.put("backendVersion", fresh ? get("hbBackendVersion", "") : "");
+        m.put("oauthConfigured", fresh ? getBool("hbOauthConfigured", false) : false);
+        m.put("credentialStoreHealthy", fresh ? getBool("hbCredentialStoreHealthy", false) : false);
+        m.put("sharedFallbackEnabled", getBool("hbSharedFallbackEnabled", false));
+
+        // LIVE served MCP catalog (reported by the Gateway heartbeat) — the authoritative public contract,
+        // DISTINCT from the plugin policy registry below. Null when no fresh heartbeat has been received.
+        Map<String, Object> served = new LinkedHashMap<>();
+        if (fresh && getInt("hbServedTools", 0) > 0) {
+            served.put("available", true);
+            served.put("toolCount", getInt("hbServedTools", 0));
+            served.put("jiraToolCount", getInt("hbServedJira", 0));
+            served.put("corbitToolCount", getInt("hbServedCorbit", 0));
+            served.put("read", getInt("hbServedRead", 0));
+            served.put("write", getInt("hbServedWrite", 0));
+            served.put("destructive", getInt("hbServedDestructive", 0));
+            served.put("contractHash", get("hbContractHash", ""));
+            served.put("contractHashAlgorithm", get("hbContractHashAlgo", ""));
+            served.put("schemaVersion", getInt("hbSchemaVersion", 3));
+        } else {
+            served.put("available", false);
+            served.put("reason", hbAt > 0L ? "heartbeat_stale" : "awaiting_first_heartbeat");
+        }
+        m.put("servedCatalog", served);
 
         int total = 0, enabled = 0, available = 0, read = 0, write = 0, destr = 0, na = 0;
         for (JimMcpToolPolicy r : allRows()) {
@@ -472,6 +774,11 @@ public class JimMcpServiceImpl implements JimMcpService {
         counts.put("destructive", destr);
         counts.put("notApplicable", na);
         m.put("toolCounts", counts);
+        // Clearly labelled: this is the INTERNAL policy registry (tool-policy config records), NOT the
+        // served MCP catalog. The served catalog is m.servedCatalog (live from the Gateway heartbeat).
+        Map<String, Object> policyRegistry = new LinkedHashMap<>(counts);
+        policyRegistry.put("note", "internal tool-policy registry; not the served MCP catalog");
+        m.put("policyRegistry", policyRegistry);
         Map<String, Object> classes = new LinkedHashMap<>();
         classes.put("read", getBool("classRead", true));
         classes.put("write", getBool("classWrite", true));
