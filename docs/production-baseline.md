@@ -21,7 +21,8 @@ feature work from any other tree.
 |---|---|
 | Source repo | `/root/jira-dev/jira-issue-chat-panel-mcp-control-plane` |
 | Branch | `feature/mcp-control-plane` |
-| Freeze commit | `68d3b33bcb62dffcdb2580db0f895d2c7b6d5bba` |
+| Freeze commit (source) | `68d3b33bcb62dffcdb2580db0f895d2c7b6d5bba` |
+| Tag commit | `9e3b102e41b9183ec312f2c9fe1018024cf07404` |
 | Release tag | `plugin-figmachat4e-regressionfix-prod` |
 
 **Never build future plugin work from** `/root/jira-dev/jira-issue-chat-panel`
