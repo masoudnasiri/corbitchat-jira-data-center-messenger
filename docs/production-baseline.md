@@ -1,23 +1,20 @@
-# Production baseline — figmachat7a-correct1 + PWA +96
+# Production baseline — figmachat7f-backend1 + PWA +98
 
-Updated: 2026-08-14. **Production status: Phase 7D PWA accepted and
-deployed.** Plugin was not changed. Jira was not restarted. Gateway
-was not restarted. Phase 7E is **not** started.
+Updated: 2026-08-14. **Production status: Phase 7F plugin + PWA
+deployed.** Gateway was **not** restarted. Workspace Agent and
+report/calendar logic were **not** changed. Hub was **not** deployed.
+See `docs/phase7f-production-rollout.md`.
 
 | Surface | Version |
 |---|---|
-| Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1` |
-| PWA | `1.0.0+96 / figma-phase7d-main-surfaces1-prod` (7G TECH) |
-| Gateway | `gateway-2.7-prod16` / `mcp-atlassian-prod` (**unchanged**) |
+| Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7f-backend1` |
+| PWA | `1.0.0+98 / figma-phase7f-backend1-prod` (7G TECH) |
+| Gateway | `gateway-2.7-prod16` / `mcp-atlassian-prod` (**unchanged**, Up 13 days) |
 
-Plugin `figmachat7a-correct1` is required so the full emoji picker can
-persist (5a still allowlisted presets). After `jira-srv` restart,
-`/rest/jim/1.0/health` moved 503 → 401 in about six minutes. That is
-normal startup, not a failure.
+After `jira-srv` restart, localhost `/rest/jim/1.0/health` moved
+503 → 401 in about six minutes. That is normal startup, not a failure.
 
-PWA rollback target is `+95 / figma-phase7c-ui-pass1-prod`.
-Plugin rollback target remains unused (plugin was not changed in 7C or
-7D). See `docs/phase7d-production-rollout.md`.
+Rollback: plugin `figmachat7a-correct1`, PWA `+96 / figma-phase7d-main-surfaces1-prod`.
 
 ## Auth-smoke limitation (not a Production failure)
 
@@ -34,17 +31,17 @@ credential-based smokes. Owner UI test is the acceptance signal.
 
 | Field | Value |
 |---|---|
-| Version | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1` |
+| Version | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7f-backend1` |
 | Plugin key | `com.corbitlogic.corbitchat.jira.dc` (never change) |
-| Jar sha256 | `ccb048f61ef143eb09f06415595678eb58d13d7a547a0d33f2d6eca0ffe04df4` |
-| Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1.jar` |
-| Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1.jar` (inside `jira-srv`) |
-| Plugin source commit | `1dfd293925562182f6a5dc8bbe78ea9257747d6e` |
-| Production PWA | `1.0.0+96 / figma-phase7d-main-surfaces1-prod` (7G TECH) |
-| PWA sha256 | `01e55b9112a890df2c27982f14c092ae3b4c1db9dbe38c63f0e9916ddb9fb4b6` |
-| Mobile APK | `/root/jira-dev/releases/corbitchat-mobile-7gtech-1.0.0+96-figma-phase7d-main-surfaces1-prod.apk` |
-| APK sha256 | `3cd02f1a65ecfe2a68e126d4b0b960a9f1a28bd063bbe434dff2dae9bfc6b835` |
-| Mobile source commit | `e64ee0389fa11cb0551ae058abd354fc68641c77` |
+| Jar sha256 | `fa69a697e95bdb6e2642a4fbec14cd52ea7ef421b5861afdb2f574aef6f10b46` |
+| Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7f-backend1.jar` |
+| Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7f-backend1.jar` (inside `jira-srv`) |
+| Plugin source commit | `f380f15f369f9afb1c2f136011d078280bf048cd` |
+| Production PWA | `1.0.0+98 / figma-phase7f-backend1-prod` (7G TECH) |
+| PWA sha256 | `2a9567357d77f90dc2ac6828988a34b377fc71cc5909a295dd8a24f29968d847` |
+| Mobile APK | `/root/jira-dev/releases/corbitchat-mobile-7gtech-1.0.0+98-figma-phase7f-backend1-prod.apk` |
+| APK sha256 | `25f64e1e1a85e65a90ca2df3510986159ab58ab6af0452cb0fbbb6ae37287f85` |
+| Mobile source commit | `98fd45065974ccd7eed377b32849e119ff020b9d` |
 | Gateway | `gateway-2.7-prod16` (commit `738009d0b6700fd2e960b4f9a29f87cd37890e3b`). MCP chat search **shipped** and **closed** after owner ChatGPT Scan Tools / Refresh. |
 | Gateway contract hash | `102b6bfad85b083fbfffe20f5dae7695e646bd6d89a2b97f903bcfe64fe2e340` |
 
@@ -52,13 +49,13 @@ credential-based smokes. Owner UI test is the acceptance signal.
 
 | Surface | Roll back to |
 |---|---|
-| Plugin | **Do not roll back** — plugin was not changed in Phase 7D (`figmachat7a-correct1`) |
-| PWA | `1.0.0+95 / figma-phase7c-ui-pass1-prod` |
+| Plugin | `figmachat7a-correct1` |
+| PWA | `1.0.0+96 / figma-phase7d-main-surfaces1-prod` |
 | Gateway | **Do not roll back** — Gateway was not changed |
 
-PWA backup/script (unused unless a later blocking issue):  
-`/root/jira-backups/prod-mobile-95-before-phase7d-20260814-213435.tgz`  
-`/root/jira-backups/ROLLBACK-pwa-phase7d-20260814-213435.sh`
+Scripts on `corbit-prod`:  
+`/root/jira-backups/rollback-figmachat7f-20260814-222910/ROLLBACK-plugin.sh`  
+`/root/jira-backups/rollback-figmachat7f-20260814-222910/ROLLBACK-pwa.sh`
 
 ## Root cause
 
@@ -78,8 +75,8 @@ jump: `openConversationAtMessage(conversationId, messageId)` on web, and
 
 | Environment | PWA brand | Build |
 |---|---|---|
-| Production (`jira.7gtech.net/mobile/`) | **7G TECH** | `+96 / figma-phase7d-main-surfaces1-prod` |
-| DEV (`jira.corbitlogic.com/mobile/`) | **Hub** | `+96 / figma-phase7d-main-surfaces1` |
+| Production (`jira.7gtech.net/mobile/`) | **7G TECH** | `+98 / figma-phase7f-backend1-prod` |
+| DEV (`jira.corbitlogic.com/mobile/`) | **Hub** | `+98 / figma-phase7f-backend1` |
 
 DEV Hub is the DEV brand, not a Production leak. Production index/manifest
 title is `7G TECH`. There is no user-visible `Corbit Hub` string on
