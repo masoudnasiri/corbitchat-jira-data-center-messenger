@@ -10,8 +10,9 @@ only in that it adds backup + smoke-test + rollback steps; the
 underlying install mechanism is the same because production runs
 the same single-container Docker layout as dev.
 
-> **Current production plugin version: `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix`.**
-> **Current production PWA: `1.0.0+88 / figma-chat-shared-open-hotfix` (7G TECH).**
+> **Current production plugin version: `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1`.**
+> **Current production PWA: `1.0.0+94 / figma-phase7b-design-lock1-prod` (7G TECH).**
+> Rollback plugin: `figmachat5a-shared-open-hotfix`. Rollback PWA: `+88`.
 > Official freeze: `docs/production-baseline.md`.
 > Source repo (only): `/root/jira-dev/jira-issue-chat-panel-mcp-control-plane`.
 > **Never build from** `/root/jira-dev/jira-issue-chat-panel`.

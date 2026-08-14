@@ -1,11 +1,14 @@
-# Production baseline — figmachat5a-shared-open-hotfix
+# Production baseline — figmachat7a-correct1 + PWA +94
 
-Updated: 2026-08-14. Phase 5 (shared-gallery open-message hotfix) and
-Phase 6 (hardening / QA only) are **closed by owner acceptance**.
-This is the official working baseline. Do not start Phase 7 features
-from this close-out. Do not deploy Production from leftover Phase 6
-docs or scripts. Gateway MCP chat search was shipped separately
-(approved Gateway-only rollout, 2026-08-14) as `gateway-2.7-prod16`.
+Updated: 2026-08-14. Owner accepted Phase 7B on DEV (`+94`) and
+approved this Production rollout. Plugin `figmachat7a-correct1` is
+required so the full emoji picker can persist (5a still allowlisted
+presets). PWA is 7G TECH `1.0.0+94 / figma-phase7b-design-lock1-prod`.
+Gateway remains `gateway-2.7-prod16` / `mcp-atlassian-prod` (not
+restarted). Phase 7C was **not** started.
+
+Previous Production (`figmachat5a-shared-open-hotfix` / `+88`) is the
+rollback target. See `docs/phase7b-production-rollout.md`.
 
 Owner manual QA (`docs/manual-qa-phase6-chat.md`) is **accepted as
 non-blocking / owner-signed**. Hardening produced docs and DEV-safe
@@ -16,15 +19,15 @@ deploy.
 
 | Field | Value |
 |---|---|
-| Version | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix` |
+| Version | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1` |
 | Plugin key | `com.corbitlogic.corbitchat.jira.dc` (never change) |
-| Jar sha256 | `aebc17088461e9792e5f87cf9b5cb94493dc08a68aa25336d8ce52e53843b373` |
-| Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix.jar` |
-| Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix.jar` (inside `jira-srv`) |
-| Plugin freeze commit | `eaface7875fdc90af903501b6741372033287709` |
-| Production PWA | `1.0.0+88 / figma-chat-shared-open-hotfix` |
-| PWA sha256 | `e2beaf936471ba6cac652243c1740caad2ea5f739698ea64a1b4a172036951db` |
-| Mobile freeze commit | `38d2991b209634bfd5e2c72344998fa2c2c6dcbb` |
+| Jar sha256 | `ccb048f61ef143eb09f06415595678eb58d13d7a547a0d33f2d6eca0ffe04df4` |
+| Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1.jar` |
+| Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1.jar` (inside `jira-srv`) |
+| Plugin source commit | `1dfd293925562182f6a5dc8bbe78ea9257747d6e` |
+| Production PWA | `1.0.0+94 / figma-phase7b-design-lock1-prod` (7G TECH) |
+| PWA sha256 | `de3769cdfc79bbf8daaedef45808e0f59199508355425bb04fd673bc833a2407` |
+| Mobile source commit | `e0ea39f8d52d55b6137e27a00630c1cd47a8d4c8` |
 | Gateway | `gateway-2.7-prod16` (commit `738009d0b6700fd2e960b4f9a29f87cd37890e3b`). MCP chat search **shipped** and **closed** after owner ChatGPT Scan Tools / Refresh. |
 | Gateway contract hash | `102b6bfad85b083fbfffe20f5dae7695e646bd6d89a2b97f903bcfe64fe2e340` |
 
@@ -32,12 +35,11 @@ deploy.
 
 | Surface | Roll back to |
 |---|---|
-| Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5-search-mentions` (sha256 `f6618ae08478f0218ada56afc3bd38d5497c80b7b4270e9277a8fa736632f1b6`) |
-| PWA | `1.0.0+87 / figma-chat-design-reconcile1` (sha256 `b54e3dca3edb88d24a1f8bb4f6601657addafcc504490f188b40d0c3dddda1d3`) |
-| Gateway | `gateway-2.7-prod15` via `/root/jira-backups/gateway-mcp-search-20260814-141223/ROLLBACK-gateway.sh` |
+| Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix` (sha256 `aebc17088461e9792e5f87cf9b5cb94493dc08a68aa25336d8ce52e53843b373`) |
+| PWA | `1.0.0+88 / figma-chat-shared-open-hotfix` (sha256 `e2beaf936471ba6cac652243c1740caad2ea5f739698ea64a1b4a172036951db`) |
+| Gateway | **Do not roll back** — Gateway was not changed in this rollout |
 
-Backups and scripts: `/root/jira-backups/*-20260814-125535*` and
-`/root/jira-backups/rollback-figmachat5a-20260814-125535/` on `corbit-prod`.
+Backups and scripts: `/root/jira-backups/rollback-figmachat7b-20260814-194654/` on `corbit-prod`.
 
 ## Root cause
 
@@ -57,8 +59,8 @@ jump: `openConversationAtMessage(conversationId, messageId)` on web, and
 
 | Environment | PWA brand | Build |
 |---|---|---|
-| Production (`jira.7gtech.net/mobile/`) | **7G TECH** | `+88 / figma-chat-shared-open-hotfix` |
-| DEV (`jira.corbitlogic.com/mobile/`) | **Hub** | `+88 / figma-chat-shared-open-hotfix` |
+| Production (`jira.7gtech.net/mobile/`) | **7G TECH** | `+94 / figma-phase7b-design-lock1-prod` |
+| DEV (`jira.corbitlogic.com/mobile/`) | **Hub** | `+94 / figma-phase7b-design-lock1` |
 
 DEV Hub is the DEV brand, not a Production leak. Production index/manifest
 title is `7G TECH`. There is no user-visible `Corbit Hub` string on
@@ -188,7 +190,18 @@ Scan Tools / Refresh**.
 | Unintended write/destructive tools | None appeared |
 | Safe read-only search test | **Passed** (owner) |
 | Plugin / PWA | Unchanged (`figmachat5a-shared-open-hotfix` / `+88`) |
-| Phase 7 | **Not started** |
+| Phase 7 | **Not started** at gateway close. Opened later as DEV-only Phase 7A. |
+
+## Phase 7A DEV polish (2026-08-14)
+
+DEV-only Figma polish. See `docs/phase7a-figma-polish.md`.
+
+| Field | Value |
+|---|---|
+| Status | Corrective slice on DEV (`figmachat7a-correct1` / `+90`); Production unchanged |
+| DEV plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1` |
+| DEV PWA | `1.0.0+93 / figma-chat-imageviewer-fix` (Hub) |
+| Production plugin / PWA / Gateway | **Unchanged** (`figmachat5a` / `+88` / `gateway-2.7-prod16`) |
 
 ## Pending (non-blocking)
 

@@ -12,21 +12,21 @@ P2 plugin for **Jira Data Center 9.17.x** running in the `jira-srv` Docker conta
 
 Set secrets through environment variables or secure server-side config only.
 Do not put passwords, tokens, PATs, or cookies in docs or scripts.
-- **Production baseline:** `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix`
+- **Production baseline:** `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1`
   (see `docs/production-baseline.md`)
-- **Production PWA:** `1.0.0+88 / figma-chat-shared-open-hotfix` (7G TECH)
-- **Rollback plugin:** `figmachat5-search-mentions`
-- **Rollback PWA:** `+87 / figma-chat-design-reconcile1`
+- **Production PWA:** `1.0.0+94 / figma-phase7b-design-lock1-prod` (7G TECH)
+- **Rollback plugin:** `figmachat5a-shared-open-hotfix`
+- **Rollback PWA:** `+88 / figma-chat-shared-open-hotfix`
 
 ## Production baseline (Phase 5 and Phase 6 closed — 2026-08-14)
 
-Phase 5 (shared-gallery open-message hotfix) and Phase 6 (hardening /
-QA only) are closed by owner acceptance. Do not start Phase 7 until
-the owner opens that phase. Production Gateway is
-`gateway-2.7-prod16` with MCP chat search shipped and closed after
-owner ChatGPT Scan Tools / Refresh (`corbit_chat_search`,
-`corbit_chat_search_messages`). Do not restart Jira or replace
-plugin/PWA for gateway-only work.
+Phase 5–6 are closed. Phase 7B is on Production (`figmachat7a-correct1`
++ 7G TECH PWA `+94`). Phase 7C is not started. Do not deploy
+Phase 7A to Production unless the owner approves a separate rollout.
+Production Gateway is `gateway-2.7-prod16` with MCP chat search shipped
+and closed after owner ChatGPT Scan Tools / Refresh
+(`corbit_chat_search`, `corbit_chat_search_messages`). Do not restart
+Jira or replace plugin/PWA for gateway-only work.
 
 Official Production plugin. Restore these before any new phase:
 
