@@ -11,10 +11,10 @@ underlying install mechanism is the same because production runs
 the same single-container Docker layout as dev.
 
 > **Current production plugin version: `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1`.**
-> **Current production PWA: `1.0.0+94 / figma-phase7b-design-lock1-prod` (7G TECH).**
-> **Status: accepted by owner manual test (2026-08-14). Do not rollback.**
-> Gateway: `gateway-2.7-prod16` unchanged. Rollback scripts unused:
-> `/root/jira-backups/rollback-figmachat7b-20260814-194654/`.
+> **Current production PWA: `1.0.0+95 / figma-phase7c-ui-pass1-prod` (7G TECH).**
+> **Status: Phase 7C PWA-only deploy (2026-08-14). Plugin/Jira/Gateway not restarted.**
+> Gateway: `gateway-2.7-prod16` unchanged. PWA rollback unused:
+> `/root/jira-backups/ROLLBACK-pwa-phase7c-20260814-205123.sh`.
 > Public basic-auth smoke may return `403 AUTHENTICATION_DENIED`
 > (CAPTCHA / failed-login lock). That is not a plugin outage — do not
 > retry the same credentials. Use browser/session or localhost 401/302.
