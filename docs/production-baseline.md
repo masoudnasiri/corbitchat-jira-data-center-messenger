@@ -150,22 +150,27 @@ Phase 6 docs: `docs/phase6-hardening-plan.md`,
 `docs/regression-checklist.md`, `docs/regression-checklist.yaml`,
 `docs/manual-qa-phase6-chat.md`, `docs/phase6-figma-parity-delta.md`.
 
-## Security follow-up (do not rewrite history)
+## Security follow-up (Option A — 2026-08-14)
 
-- Current HEAD docs/scripts are sanitized: no real passwords in
-  `AGENTS.md`, handover docs, or Phase 6 smokes. Scripts require
-  `JIM_PASS` / `MYSQL_PASSWORD` from the environment. Run
-  `scripts/check-no-secrets.sh` before every package (see
-  `docs/deployment-production.md` §2.1).
-- Commit `501bc05` still contains a DEV password default in Phase 6
-  smoke scripts **in history**. `AGENTS.md` on older commits (including
-  GitHub `origin/main` and other origin branches) still contains that
-  DEV password. **Do not rewrite history** unless the owner explicitly
-  approves after the hygiene decision package.
+- **DEV Jira password for `m.nasiri` was rotated** after GitHub/history
+  exposure. The new value is **not** in git, docs, or scripts. Inject
+  it with `JIM_PASS` from the environment or the host vault
+  `/root/jira-dev/secrets/dev-jira-jim.env` (mode 600, not a git repo).
+- Current HEAD is sanitized. `scripts/check-no-secrets.sh` is the
+  permanent gate (`docs/deployment-production.md` §2.1).
+- **History still contains the old exposed DEV password** (`501bc05`
+  smokes; `AGENTS.md` on older commits including GitHub `origin/main`).
+  **No history rewrite** was performed.
+- GitHub push remains **blocked** until the owner chooses: keep private
+  and accept residual history risk after rotation; rewrite history; or
+  create a clean repo.
+- Production credentials were **not** found in git. Production was
+  **not** changed.
+- Local DEV MySQL password from old handover docs is still active on
+  `mysql-jira`. Not rotated (owner approval + downtime/config impact
+  required). Remaining **local-only** risk.
 - Set secrets through environment variables or secure server-side
-  config only. Do not store a PAT in `~/.git-credentials` or in the repo.
-- Rotate the exposed DEV Jira password. See the source-security
-  hygiene report. Production Jira password was **not** found in git.
+  config only. Do not store a PAT in `~/.git-credentials`.
 
 ## Gateway MCP chat search close (2026-08-14)
 

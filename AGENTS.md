@@ -6,7 +6,8 @@ P2 plugin for **Jira Data Center 9.17.x** running in the `jira-srv` Docker conta
 - **Do not use:** `/root/jira-dev/jira-issue-chat-panel` (stale; caused the figmachat4 P0 regression)
 - **Plugin key (never change):** `com.corbitlogic.corbitchat.jira.dc` (marketplace branch; internal branch uses `com.corbitlogic.jira.internalmessenger.jira-internal-messenger`)
 - **Jira URL:** `http://185.83.181.194:8080`
-- **Test user:** `m.nasiri` (password from `JIM_PASS` in the environment only)
+- **Test user:** `m.nasiri` (password from `JIM_PASS` in the environment only;
+  DEV password was rotated 2026-08-14 after history exposure)
 - **Chat page:** `http://185.83.181.194:8080/plugins/servlet/jim/chat`
 
 Set secrets through environment variables or secure server-side config only.
