@@ -12,10 +12,10 @@ This is not Phase 6. Do not start new feature work from any other tree.
 | Jar sha256 | `aebc17088461e9792e5f87cf9b5cb94493dc08a68aa25336d8ce52e53843b373` |
 | Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix.jar` |
 | Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix.jar` (inside `jira-srv`) |
-| Plugin freeze commit | recorded in this freeze commit on `feature/mcp-control-plane` |
+| Plugin freeze commit | `eaface7875fdc90af903501b6741372033287709` |
 | Production PWA | `1.0.0+88 / figma-chat-shared-open-hotfix` |
 | PWA sha256 | `e2beaf936471ba6cac652243c1740caad2ea5f739698ea64a1b4a172036951db` |
-| Mobile freeze commit | recorded in the matching `corbitchat-mobile` commit on `main` |
+| Mobile freeze commit | `38d2991b209634bfd5e2c72344998fa2c2c6dcbb` |
 | Gateway | **unchanged** (`gateway-2.7-prod15`). MCP search remains DEV-only. |
 
 ## Rollback targets
