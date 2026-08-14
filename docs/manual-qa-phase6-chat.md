@@ -1,10 +1,15 @@
 # Manual QA — Phase 6 chat
 
+**Owner-signed (2026-08-14).** Phase 6 is closed by owner acceptance.
+This checklist is accepted as **non-blocking / owner-signed**. Keep it
+for future regression passes. Do not treat an unsigned row as a reopen
+of Phase 6.
+
 For a human tester after a **hard refresh** (Ctrl+Shift+R).
 Do not change report/calendar or Workspace Agent settings.
 Do not deploy Production from this script.
 
-Tester: ________  Date: ________  Env: DEV / Production
+Tester: owner  Date: 2026-08-14  Env: accepted (owner-signed)
 
 ## Web
 

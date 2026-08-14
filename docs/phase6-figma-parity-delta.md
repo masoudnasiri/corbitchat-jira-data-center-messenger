@@ -49,8 +49,11 @@ Suggested future work is Phase 7+ backlog, not this phase.
 
 ## Phase 6 conclusion
 
+Phase 6 is **closed by owner acceptance (2026-08-14)**.
+
 No **P0** or **P1** Figma gap is a current Production regression.
 Shared-open and search jump are **behavior** requirements and are
 covered by the regression checklist, not by new visual work.
 
-Do not implement the P2 table in Phase 6.
+The P2 table below is the recommended **Phase 7 backlog source**.
+Do not implement it until the owner opens Phase 7.

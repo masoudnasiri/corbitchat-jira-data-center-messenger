@@ -1,5 +1,10 @@
 # Phase 6 — Hardening plan
 
+**Status: closed by owner acceptance (2026-08-14).** Owner manual QA
+is accepted as non-blocking / owner-signed. No product-code change, no
+version bump, no Production deploy. Do not start Phase 7 from this
+document. See `docs/production-baseline.md`.
+
 Phase 6 is **not** a feature phase. It is hardening, regression
 automation, Figma parity QA, and release safety.
 
@@ -73,8 +78,8 @@ Before package: `docs/deployment-production.md` §2.1 and
 
 ## Pending items (non-blocking)
 
-1. Owner hard-refresh and confirm final UI click/highlight.
-2. Push plugin/mobile commits and tags when GitHub credentials/network exist.
+1. Owner manual QA: **accepted / owner-signed** (non-blocking for Phase 6 close).
+2. Push plugin/mobile commits and tags when GitHub credentials/network exist. Sanitize `AGENTS.md` and `docs/handover-mobile-app.md` first. Do not store a PAT.
 3. Decide separately whether to ship Gateway MCP search to Production.
 
 ## Risks

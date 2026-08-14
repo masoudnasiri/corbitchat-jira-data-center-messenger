@@ -1,11 +1,15 @@
 # Production baseline — figmachat5a-shared-open-hotfix
 
-Updated: 2026-08-14. Phase 5 and the shared-gallery open-message hotfix
-are **accepted**. This is the official working baseline for any future
-phase. Phase 6 (hardening / QA only) is open: see
-`docs/phase6-hardening-plan.md`. Do not deploy Production from Phase 6
-unless the owner explicitly approves. Do not start Phase 7 features
-from this close-out.
+Updated: 2026-08-14. Phase 5 (shared-gallery open-message hotfix) and
+Phase 6 (hardening / QA only) are **closed by owner acceptance**.
+This is the official working baseline. Do not start Phase 7 features
+from this close-out. Do not deploy Production from leftover Phase 6
+docs or scripts. Gateway MCP search remains DEV-only.
+
+Owner manual QA (`docs/manual-qa-phase6-chat.md`) is **accepted as
+non-blocking / owner-signed**. Hardening produced docs and DEV-safe
+scripts only: no product-code change, no version bump, no Production
+deploy.
 
 ## Current Production plugin
 
@@ -126,11 +130,35 @@ report/calendar admin, Workspace Agent.
 8. Do not ship Gateway MCP search to Production unless the owner
    decides that separately.
 
+## Phase 6 close (2026-08-14)
+
+| Field | Value |
+|---|---|
+| Status | **Closed** by owner acceptance |
+| Product code | Unchanged (plugin freeze `eaface7875fdc90af903501b6741372033287709`) |
+| Versions | Unchanged (`figmachat5a-shared-open-hotfix` / `+88`) |
+| Production | Unchanged — no Phase 6 deploy |
+| Owner manual QA | Accepted as non-blocking / owner-signed |
+| Phase 7 | **Not started.** Backlog source: `docs/phase6-figma-parity-delta.md` |
+| Gateway MCP search | **Not shipped.** Remains DEV-only |
+
+Phase 6 docs: `docs/phase6-hardening-plan.md`,
+`docs/regression-checklist.md`, `docs/regression-checklist.yaml`,
+`docs/manual-qa-phase6-chat.md`, `docs/phase6-figma-parity-delta.md`.
+
+## Security follow-up (do not rewrite history)
+
+- Current source is clean after `750ba86` (`fix(scripts): require JIM_PASS from the environment`). Phase 6 scripts require `JIM_PASS` from the environment. A documented DEV **username** is acceptable; a password/token in source is not.
+- Commit `501bc05` contained a DEV password default in the Phase 6 smoke scripts. That default is removed at HEAD. **Do not rewrite history** unless the owner explicitly approves.
+- `AGENTS.md` and `docs/handover-mobile-app.md` contain **pre-existing** credential documentation. Sanitize those files before any public/shared GitHub push.
+- Do not store a PAT or other credentials in `~/.git-credentials` or in the repo.
+
 ## Pending (non-blocking)
 
-- Owner hard-refresh and confirm the final UI click/highlight.
 - Push plugin/mobile commits (and tags) to GitHub when credentials
-  and network are available. Do not store a PAT in `~/.git-credentials`.
+  and network are available. Sanitize `AGENTS.md` and
+  `docs/handover-mobile-app.md` first. Do not store a PAT in
+  `~/.git-credentials`. Do not rewrite `501bc05` unless approved.
 - Decide separately whether to ship Gateway MCP search to Production.
 
 ## Build
