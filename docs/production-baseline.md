@@ -25,7 +25,8 @@ deploy.
 | Production PWA | `1.0.0+88 / figma-chat-shared-open-hotfix` |
 | PWA sha256 | `e2beaf936471ba6cac652243c1740caad2ea5f739698ea64a1b4a172036951db` |
 | Mobile freeze commit | `38d2991b209634bfd5e2c72344998fa2c2c6dcbb` |
-| Gateway | `gateway-2.7-prod16` (commit `738009d0b6700fd2e960b4f9a29f87cd37890e3b`). MCP chat search **shipped**. |
+| Gateway | `gateway-2.7-prod16` (commit `738009d0b6700fd2e960b4f9a29f87cd37890e3b`). MCP chat search **shipped** and **closed** after owner ChatGPT Scan Tools / Refresh. |
+| Gateway contract hash | `102b6bfad85b083fbfffe20f5dae7695e646bd6d89a2b97f903bcfe64fe2e340` |
 
 ## Rollback targets
 
@@ -156,15 +157,30 @@ Phase 6 docs: `docs/phase6-hardening-plan.md`,
 - `AGENTS.md` and `docs/handover-mobile-app.md` contain **pre-existing** credential documentation. Sanitize those files before any public/shared GitHub push.
 - Do not store a PAT or other credentials in `~/.git-credentials` or in the repo.
 
+## Gateway MCP chat search close (2026-08-14)
+
+Separate approved Gateway-only rollout. Closed after **owner ChatGPT
+Scan Tools / Refresh**.
+
+| Field | Value |
+|---|---|
+| Status | **Closed** by owner tool refresh |
+| Release | `gateway-2.7-prod16` |
+| Commit | `738009d0b6700fd2e960b4f9a29f87cd37890e3b` |
+| Contract hash | `102b6bfad85b083fbfffe20f5dae7695e646bd6d89a2b97f903bcfe64fe2e340` |
+| `corbit_chat_search` | Visible in ChatGPT; **read-only** |
+| `corbit_chat_search_messages` | Visible in ChatGPT; **read-only** |
+| Unintended write/destructive tools | None appeared |
+| Safe read-only search test | **Passed** (owner) |
+| Plugin / PWA | Unchanged (`figmachat5a-shared-open-hotfix` / `+88`) |
+| Phase 7 | **Not started** |
+
 ## Pending (non-blocking)
 
 - Push plugin/mobile commits (and tags) to GitHub when credentials
   and network are available. Sanitize `AGENTS.md` and
   `docs/handover-mobile-app.md` first. Do not store a PAT in
   `~/.git-credentials`. Do not rewrite `501bc05` unless approved.
-- ChatGPT / Workspace **Scan Tools / Refresh** so clients pick up
-  `corbit_chat_search` schema (`conversation_type`) and the corrected
-  `/mcp-domain/chat/search` route. Owner/manual pending.
 - Gateway rollback (gateway only):
   `/root/jira-backups/gateway-mcp-search-20260814-141223/ROLLBACK-gateway.sh`
   on `corbit-prod` (restores `gateway-2.7-prod15`).
