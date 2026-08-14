@@ -84,12 +84,19 @@
             return request('GET', '/conversations/' + conversationId + '/shared' + query);
         },
 
-        searchMessages: function (query, conversationId, limit, cursor) {
+        searchMessages: function (query, conversationId, limit, cursor, type) {
             var q = '?q=' + encodeURIComponent(query || '');
             if (conversationId) { q += '&conversationId=' + encodeURIComponent(conversationId); }
+            if (type) { q += '&type=' + encodeURIComponent(type); }
             if (limit) { q += '&limit=' + encodeURIComponent(limit); }
             if (cursor) { q += '&cursor=' + encodeURIComponent(cursor); }
             return request('GET', '/conversations/search' + q);
+        },
+
+        messagesAround: function (conversationId, messageId, before, after) {
+            var q = '?before=' + encodeURIComponent(before || 25) +
+                '&after=' + encodeURIComponent(after || 25);
+            return request('GET', '/conversations/' + conversationId + '/messages/around/' + messageId + q);
         },
 
         listMessages: function (conversationId, limit, beforeMessageId) {

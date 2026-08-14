@@ -32,11 +32,11 @@ public class JimMcpServiceImpl implements JimMcpService {
     private static final String NS = "com.corbitlogic.jira.internalmessenger.mcp:";
     private static final String UPSTREAM_VERSION = "0.23.0";
     /** 12-char prefix of the live served catalog (jira_* + corbit_*), algorithm corbit-canonical-json-v2. */
-    private static final String CONTRACT_HASH = "0ada7c331fc8";
+    private static final String CONTRACT_HASH = "102b6bfad85b";
     /** Jira-upstream seed only (jira-registry-seed.json); not the served catalog. */
     private static final String JIRA_UPSTREAM_SEED = "ae110094e3d3";
     private static final String EXPECTED_SERVED_HASH =
-            "0ada7c331fc80c3f46a231555cfae14b2e37d00351cc1182f4052b73813302ae";
+            "102b6bfad85b083fbfffe20f5dae7695e646bd6d89a2b97f903bcfe64fe2e340";
     private static final int SCHEMA_VERSION = 1;
     private static final int POLICY_TTL_SECONDS = 300;
 

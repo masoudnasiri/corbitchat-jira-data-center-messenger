@@ -35,7 +35,9 @@ import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
 import com.corbitlogic.jira.internalmessenger.service.JimPresenceService;
 import com.corbitlogic.jira.internalmessenger.service.JimPushService;
+import com.corbitlogic.jira.internalmessenger.service.JimMessageUserStateService;
 import com.corbitlogic.jira.internalmessenger.service.JimReadStateService;
+import com.corbitlogic.jira.internalmessenger.service.JimReviewerService;
 import com.corbitlogic.jira.internalmessenger.util.JimConversationKeys;
 import com.corbitlogic.jira.internalmessenger.util.JimMessageFlags;
 import com.corbitlogic.jira.internalmessenger.util.JimMessageLifecycle;
@@ -66,8 +68,9 @@ implements JimMessageService {
     private final JimPushService pushService;
     private final JimAdminSettingsService adminSettingsService;
     private final JimMobilePushService mobilePushService;
+    private final JimMessageUserStateService userStateService;
 
-    public JimMessageServiceImpl(ActiveObjects activeObjects, JimConversationService conversationService, JimPermissionService permissionService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimPresenceService presenceService, JimPushService pushService, JimAdminSettingsService adminSettingsService, JimMobilePushService mobilePushService) {
+    public JimMessageServiceImpl(ActiveObjects activeObjects, JimConversationService conversationService, JimPermissionService permissionService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimPresenceService presenceService, JimPushService pushService, JimAdminSettingsService adminSettingsService, JimMobilePushService mobilePushService, JimMessageUserStateService userStateService) {
         this.activeObjects = activeObjects;
         this.conversationService = conversationService;
         this.permissionService = permissionService;
@@ -77,6 +80,7 @@ implements JimMessageService {
         this.pushService = pushService;
         this.adminSettingsService = adminSettingsService;
         this.mobilePushService = mobilePushService;
+        this.userStateService = userStateService;
     }
 
     private boolean pushAllowedForEvent(JimEventType eventType) {
@@ -861,6 +865,11 @@ implements JimMessageService {
 
     @Override
     public java.util.Map<String, Object> searchMessages(String query, Integer conversationId, int limit, int offset) {
+        return this.searchMessages(query, conversationId, null, limit, offset);
+    }
+
+    @Override
+    public java.util.Map<String, Object> searchMessages(String query, Integer conversationId, String type, int limit, int offset) {
         String userKey = this.permissionService.requireAuthenticatedUserKey();
         String q = query == null ? "" : query.trim();
         if (q.length() < SEARCH_MIN_QUERY) {
@@ -870,6 +879,7 @@ implements JimMessageService {
         int off = Math.max(0, offset);
         String needle = q.toLowerCase();
         String like = "%" + escapeLike(q) + "%";
+        String typeFilter = type == null ? "" : type.trim().toUpperCase();
 
         // Scope: one membership-checked conversation, or all the user's conversations.
         List<JimConversation> convs = new ArrayList<JimConversation>();
@@ -887,9 +897,18 @@ implements JimMessageService {
             }
             scope = "global";
         }
+        if (!typeFilter.isEmpty()) {
+            List<JimConversation> filtered = new ArrayList<JimConversation>();
+            for (JimConversation c : convs) {
+                if (conversationMatchesType(c, userKey, typeFilter)) {
+                    filtered.add(c);
+                }
+            }
+            convs = filtered;
+        }
 
         JimReviewerService reviewer = component(JimReviewerService.class);
-        JimMessageUserStateService userState = component(JimMessageUserStateService.class);
+        JimMessageUserStateService userState = this.userStateService;
         UserManager userManager = ComponentAccessor.getUserManager();
         // Per-conversation fetch cap: enough to paginate for a single conversation;
         // small for global so no conversation dominates and no unbounded scan occurs.
@@ -950,17 +969,27 @@ implements JimMessageService {
             JimMessage m = (JimMessage) row[0];
             JimConversation c = (JimConversation) row[1];
             String matchedFilename = (String) row[2];
+            String sourceText = matchedFilename != null ? matchedFilename : (m.getBody() != null ? m.getBody() : "");
+            String snip = snippet(sourceText, needle);
+            String matchedField = matchedFilename != null ? "filename"
+                    : (looksLikeIssueKey(q) && sourceText.toUpperCase().contains(q.toUpperCase()) ? "issue" : "body");
+            Map<String, Object> sender = new HashMap<String, Object>();
+            sender.put("userKey", m.getSenderUserKey());
+            sender.put("displayName", senderDisplayName(m, userManager));
             Map<String, Object> item = new HashMap<String, Object>();
             item.put("conversationId", c.getID());
             item.put("conversationType", c.getConversationType());
             item.put("conversationTitle", conversationTitle(c, userKey, userManager));
             item.put("messageId", m.getID());
+            item.put("sender", sender);
             item.put("senderUserKey", m.getSenderUserKey());
             item.put("senderDisplayName", senderDisplayName(m, userManager));
             item.put("createdAt", createdMillis(m));
-            item.put("snippet", matchedFilename != null
-                    ? snippet(matchedFilename, needle) : snippet(m.getBody(), needle));
+            item.put("snippet", snip);
+            item.put("highlightRanges", highlightRanges(snip, needle));
+            item.put("attachmentIndicator", matchedFilename != null);
             item.put("attachmentMatched", matchedFilename != null);
+            item.put("matchedField", matchedField);
             if (matchedFilename != null) {
                 item.put("matchedFilename", matchedFilename);
             }
@@ -977,6 +1006,205 @@ implements JimMessageService {
         Integer nextCursor = (off + results.size() < total) ? Integer.valueOf(off + results.size()) : null;
         out.put("nextCursor", nextCursor);
         return out;
+    }
+
+    @Override
+    public java.util.Map<String, Object> listMessagesAround(int conversationId, int messageId, int before, int after) {
+        String userKey = this.permissionService.requireAuthenticatedUserKey();
+        this.conversationService.getConversationForUser(conversationId, userKey);
+        int beforeN = before < 0 ? 0 : Math.min(before, 50);
+        int afterN = after < 0 ? 0 : Math.min(after, 50);
+        if (beforeN == 0 && afterN == 0) {
+            beforeN = 25;
+            afterN = 25;
+        }
+        JimMessageUserStateService userState = this.userStateService;
+        java.util.Set<Integer> hidden;
+        try {
+            hidden = userState != null ? userState.hiddenMessageIds(userKey, conversationId)
+                    : java.util.Collections.<Integer>emptySet();
+        } catch (Throwable t) {
+            hidden = java.util.Collections.<Integer>emptySet();
+        }
+        JimMessage target = this.activeObjects.get(JimMessage.class, messageId);
+        if (target == null || target.getConversationId() != conversationId
+                || skipMessage(target, hidden, component(JimReviewerService.class))) {
+            throw JimMessengerException.notFound("Message not found");
+        }
+        JimMessage[] older = (JimMessage[]) this.activeObjects.find(JimMessage.class,
+                Query.select().where("CONVERSATION_ID = ? AND ID < ? AND (DELETED IS NULL OR DELETED = 0)",
+                        new Object[]{conversationId, messageId}).order("ID DESC").limit(beforeN + 8));
+        JimMessage[] newer = (JimMessage[]) this.activeObjects.find(JimMessage.class,
+                Query.select().where("CONVERSATION_ID = ? AND ID > ? AND (DELETED IS NULL OR DELETED = 0)",
+                        new Object[]{conversationId, messageId}).order("ID ASC").limit(afterN + 8));
+        JimReviewerService reviewer = component(JimReviewerService.class);
+        List<JimMessage> beforeList = new ArrayList<JimMessage>();
+        for (JimMessage m : older) {
+            if (skipMessage(m, hidden, reviewer)) {
+                continue;
+            }
+            beforeList.add(m);
+            if (beforeList.size() >= beforeN) {
+                break;
+            }
+        }
+        Collections.reverse(beforeList);
+        List<JimMessage> page = new ArrayList<JimMessage>(beforeList);
+        page.add(target);
+        int afterCount = 0;
+        for (JimMessage m : newer) {
+            if (skipMessage(m, hidden, reviewer)) {
+                continue;
+            }
+            page.add(m);
+            if (++afterCount >= afterN) {
+                break;
+            }
+        }
+        boolean hasMoreOlder = this.hasMessagesBefore(conversationId, page.isEmpty() ? messageId : page.get(0).getID());
+        JimMessage[] oneNewer = (JimMessage[]) this.activeObjects.find(JimMessage.class,
+                Query.select().where("CONVERSATION_ID = ? AND ID > ?",
+                        new Object[]{conversationId, page.get(page.size() - 1).getID()}).order("ID ASC").limit(1));
+        Map<String, Object> out = new HashMap<String, Object>();
+        out.put("_messages", page);
+        out.put("targetMessageId", messageId);
+        out.put("targetFound", true);
+        out.put("hasMoreOlder", hasMoreOlder);
+        out.put("hasMoreNewer", oneNewer.length > 0);
+        return out;
+    }
+
+    @Override
+    public java.util.Map<String, Object> mentionBadge(int conversationId, String userKey) {
+        Map<String, Object> empty = emptyMentionBadge();
+        if (userKey == null) {
+            return empty;
+        }
+        JimConversation c;
+        try {
+            c = this.conversationService.getConversationForUser(conversationId, userKey);
+        } catch (Throwable t) {
+            return empty;
+        }
+        if (c == null || JimConversationType.SYSTEM.name().equals(c.getConversationType())) {
+            return empty;
+        }
+        boolean self = userKey.equals(c.getUserAKey()) && userKey.equals(c.getUserBKey());
+        if (self) {
+            return empty;
+        }
+        ApplicationUser viewer = ComponentAccessor.getUserManager().getUserByKey(userKey);
+        if (viewer == null) {
+            return empty;
+        }
+        int lastRead = 0;
+        try {
+            lastRead = this.readStateService.getLastReadMessageId(conversationId, userKey);
+        } catch (Throwable ignore) {
+            lastRead = 0;
+        }
+        JimMessageUserStateService userState = this.userStateService;
+        java.util.Set<Integer> hidden;
+        try {
+            hidden = userState != null ? userState.hiddenMessageIds(userKey, conversationId)
+                    : java.util.Collections.<Integer>emptySet();
+        } catch (Throwable t) {
+            hidden = java.util.Collections.<Integer>emptySet();
+        }
+        JimMessage[] unread = (JimMessage[]) this.activeObjects.find(JimMessage.class,
+                Query.select().where("CONVERSATION_ID = ? AND ID > ? AND (DELETED IS NULL OR DELETED = 0)",
+                        new Object[]{conversationId, lastRead}).order("ID DESC").limit(80));
+        int count = 0;
+        Integer latest = null;
+        for (JimMessage m : unread) {
+            if (skipMessage(m, hidden, component(JimReviewerService.class))) {
+                continue;
+            }
+            if (userKey.equals(m.getSenderUserKey())) {
+                continue;
+            }
+            if (JimSenderType.SYSTEM.name().equals(m.getSenderType())) {
+                continue;
+            }
+            if (!messageMentionsUser(m.getBody(), viewer)) {
+                continue;
+            }
+            count++;
+            if (latest == null || m.getID() > latest.intValue()) {
+                latest = Integer.valueOf(m.getID());
+            }
+        }
+        Map<String, Object> out = new HashMap<String, Object>();
+        out.put("mentionCount", count);
+        out.put("unreadMentionCount", count);
+        out.put("hasMention", count > 0);
+        out.put("latestMentionMessageId", latest);
+        return out;
+    }
+
+    private static Map<String, Object> emptyMentionBadge() {
+        Map<String, Object> out = new HashMap<String, Object>();
+        out.put("mentionCount", 0);
+        out.put("unreadMentionCount", 0);
+        out.put("hasMention", false);
+        out.put("latestMentionMessageId", null);
+        return out;
+    }
+
+    private boolean conversationMatchesType(JimConversation c, String userKey, String typeFilter) {
+        String actual = c.getConversationType() == null ? "" : c.getConversationType().toUpperCase();
+        if ("SELF".equals(typeFilter)) {
+            return JimConversationType.DIRECT.name().equals(actual)
+                    && userKey != null && userKey.equals(c.getUserAKey()) && userKey.equals(c.getUserBKey());
+        }
+        return typeFilter.equals(actual);
+    }
+
+    private static boolean looksLikeIssueKey(String q) {
+        return q != null && q.matches("[A-Za-z][A-Za-z0-9]+-\\d+");
+    }
+
+    private static List<Map<String, Object>> highlightRanges(String snippet, String needleLower) {
+        List<Map<String, Object>> ranges = new ArrayList<Map<String, Object>>();
+        if (snippet == null || needleLower == null || needleLower.isEmpty()) {
+            return ranges;
+        }
+        String lower = snippet.toLowerCase();
+        int idx = lower.indexOf(needleLower);
+        if (idx >= 0) {
+            Map<String, Object> r = new HashMap<String, Object>();
+            r.put("start", idx);
+            r.put("end", idx + needleLower.length());
+            ranges.add(r);
+        }
+        return ranges;
+    }
+
+    private boolean messageMentionsUser(String body, ApplicationUser user) {
+        if (body == null || body.isEmpty() || user == null) {
+            return false;
+        }
+        String display = user.getDisplayName();
+        if (display != null && !display.trim().isEmpty() && body.contains("@" + display.trim())) {
+            return true;
+        }
+        String name = user.getName();
+        if (name != null && body.contains("[~" + name + "]")) {
+            return true;
+        }
+        if (user.getKey() != null && body.toLowerCase().contains("[~userkey:" + user.getKey().toLowerCase() + "]")) {
+            return true;
+        }
+        try {
+            java.lang.reflect.Method m = user.getClass().getMethod("getAccountId");
+            Object accountId = m.invoke(user);
+            if (accountId != null && body.contains("[~accountid:" + accountId + "]")) {
+                return true;
+            }
+        } catch (Throwable ignore) {
+            // Jira DC users may not have accountId
+        }
+        return false;
     }
 
     /** Skip deleted, per-user hidden, and hidden-system-account (pluginuser) messages. */

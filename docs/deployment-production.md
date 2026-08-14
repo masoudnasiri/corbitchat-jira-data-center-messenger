@@ -246,9 +246,25 @@ grep -q "Share': 'اشتراک" "$JS" || { echo FAIL: Persian Share; exit 1; }
 grep -q "ذخیره در پیام‌های ذخیره‌شده" "$JS" || { echo FAIL: Persian Save; exit 1; }
 grep -q "Delete for me': 'حذف برای من'" "$JS" || { echo FAIL: Persian Delete; exit 1; }
 
-# 5. WRM serves jim-messenger.js (not a stale -min stand-in)
+# 5. WRM packaging rule: never keep generated *-min.js/css in source.
+# jira-maven-plugin compress-resources writes min files into the JAR from the
+# current source at package time. If a stale *-min.js also sits in
+# src/main/resources, Jira WRM serves that older file and Phase 5 (or any
+# later) JS/CSS silently disappears.
 grep -q 'name="jim-messenger.js" location="/js/jim-messenger.js"' "$XML" \
   || { echo FAIL: WRM asset path; exit 1; }
+test ! -e "$REPO/src/main/resources/js/jim-messenger-min.js" \
+  || { echo FAIL: stale jim-messenger-min.js would shadow live JS; exit 1; }
+test ! -e "$REPO/src/main/resources/js/jim-api-min.js" \
+  || { echo FAIL: stale jim-api-min.js would shadow live JS; exit 1; }
+test ! -e "$REPO/src/main/resources/css/jim-messenger-min.css" \
+  || { echo FAIL: stale jim-messenger-min.css would shadow live CSS; exit 1; }
+# Any other jim-*-min stand-in in resources is also a WRM shadow risk.
+if find "$REPO/src/main/resources" \( -name 'jim-*-min.js' -o -name 'jim-*-min.css' \) | grep -q .; then
+  echo FAIL: unexpected jim-*-min asset in src/main/resources
+  find "$REPO/src/main/resources" \( -name 'jim-*-min.js' -o -name 'jim-*-min.css' \)
+  exit 1
+fi
 
 # 6. No generated artifacts / secrets in the commit
 git -C "$REPO" status --short | grep -Eiq \
@@ -274,6 +290,8 @@ Manual confirmations (same gate):
 - [ ] `jim-messenger.js` is the WRM-served asset (`atlassian-plugin.xml`)
 - [ ] No generated artifacts, logs, backups, secrets, or tokens are committed
 - [ ] `pom.xml` version is a **new** unique suffix (never reuse `figmachat4c` / `4d` / `4e`)
+- [ ] No `jim-*-min.js` / `jim-*-min.css` in `src/main/resources` (WRM shadow risk)
+- [ ] Chat-row `@` badge is an **unread mention** indicator (`unreadMentionCount` after `lastRead`, bounded). Do not fake counts client-side. Do not count Assistant report events as chat-row mentions.
 
 ---
 

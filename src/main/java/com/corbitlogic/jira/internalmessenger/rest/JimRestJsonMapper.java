@@ -103,6 +103,11 @@ public class JimRestJsonMapper {
         item.put("lastMessageOwn", currentUserKey != null
                 && currentUserKey.equals(conversation.getLastMessageSenderUserKey()));
         item.put("unreadCount", unreadCount);
+        Map<String, Object> mention = this.messageService.mentionBadge(conversation.getID(), currentUserKey);
+        item.put("mentionCount", mention.get("mentionCount"));
+        item.put("unreadMentionCount", mention.get("unreadMentionCount"));
+        item.put("hasMention", mention.get("hasMention"));
+        item.put("latestMentionMessageId", mention.get("latestMentionMessageId"));
         JimConversationType type = this.permissionService.toConversationType(conversation);
         boolean isSystem = type == JimConversationType.SYSTEM;
         boolean isProjectChat = type == JimConversationType.PROJECT;

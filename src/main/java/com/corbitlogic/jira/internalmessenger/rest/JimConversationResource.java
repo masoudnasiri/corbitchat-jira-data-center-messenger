@@ -190,6 +190,7 @@ public class JimConversationResource {
     @Path(value="/search")
     public Response searchMessages(@javax.ws.rs.QueryParam("q") String q,
                                    @javax.ws.rs.QueryParam("conversationId") Integer conversationId,
+                                   @javax.ws.rs.QueryParam("type") String type,
                                    @javax.ws.rs.QueryParam("limit") Integer limit,
                                    @javax.ws.rs.QueryParam("cursor") Integer cursor) {
         String userKey = this.resolveCurrentUserKey();
@@ -198,7 +199,7 @@ public class JimConversationResource {
         }
         try {
             java.util.Map<String, Object> body = this.messageService.searchMessages(
-                    q, conversationId, limit == null ? 25 : limit.intValue(), cursor == null ? 0 : cursor.intValue());
+                    q, conversationId, type, limit == null ? 25 : limit.intValue(), cursor == null ? 0 : cursor.intValue());
             return JimRestResponses.okJson(body);
         }
         catch (JimMessengerException ex) {
@@ -364,6 +365,38 @@ public class JimConversationResource {
         }
         catch (Exception ex) {
             return JimRestResponses.internalError(log, "GET /rest/jim/1.0/conversations/" + conversationId + "/messages", userKey, ex, "internal_error", "An internal error occurred while loading messages.");
+        }
+    }
+
+    @GET
+    @Path(value="/{conversationId}/messages/around/{messageId}")
+    public Response messagesAround(@PathParam(value="conversationId") int conversationId,
+                                   @PathParam(value="messageId") int messageId,
+                                   @QueryParam(value="before") @DefaultValue(value="25") int before,
+                                   @QueryParam(value="after") @DefaultValue(value="25") int after) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimConversation conversation = this.conversationService.getConversationForUser(conversationId, currentUserKey);
+            Map<String, Object> page = this.messageService.listMessagesAround(conversationId, messageId, before, after);
+            @SuppressWarnings("unchecked")
+            List<JimMessage> messages = (List<JimMessage>) page.get("_messages");
+            page.remove("_messages");
+            page.put("messages", this.restJsonMapper.toMessageMaps(messages, viewer, conversation, currentUserKey));
+            page.put("conversationId", conversationId);
+            return JimRestResponses.okJson(page);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/jim/1.0/conversations/" + conversationId + "/messages/around/" + messageId,
+                    userKey, ex, "internal_error", "An internal error occurred while loading messages.");
         }
     }
 

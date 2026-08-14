@@ -62,6 +62,25 @@ public interface JimMessageService {
      */
     public java.util.Map<String, Object> searchMessages(String query, Integer conversationId, int limit, int offset);
 
+    /**
+     * Same as {@link #searchMessages(String, Integer, int, int)} with an optional
+     * conversation-type filter ({@code DIRECT}/{@code GROUP}/{@code PROJECT}/{@code SYSTEM}/{@code SELF}).
+     */
+    public java.util.Map<String, Object> searchMessages(String query, Integer conversationId, String type, int limit, int offset);
+
+    /**
+     * Bounded page around a target message for search jump. Membership and
+     * delete-for-me are enforced. Does not change read state.
+     */
+    public java.util.Map<String, Object> listMessagesAround(int conversationId, int messageId, int before, int after);
+
+    /**
+     * Unread chat-mention projection for a conversation row. SYSTEM / Assistant
+     * report mentions are excluded (those stay on Assistant filter chips).
+     * Does not change read state. Bounded unread-window scan.
+     */
+    public java.util.Map<String, Object> mentionBadge(int conversationId, String userKey);
+
     public boolean hasMessagesBefore(int conversationId, int messageId);
 
     public JimMessage setPinned(int var1, String var2, boolean var3);

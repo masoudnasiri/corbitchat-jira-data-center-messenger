@@ -150,6 +150,11 @@
         'mentioned you in a report on': 'شما را در گزارش منشن کرد روی',
         'Report': 'گزارش', 'Report reply': 'پاسخ گزارش', 'Report mention': 'منشن گزارش',
         'Report received': 'گزارش دریافتی', 'View report': 'مشاهده گزارش',
+        'Searching…': 'در حال جستجو…', 'Search failed': 'جستجو ناموفق بود',
+        'No messages found': 'پیامی یافت نشد', 'Retry': 'تلاش دوباره',
+        'Matched filename': 'نام فایل', 'Matched issue': 'کلید مسئله',
+        'Mention': 'منشن', 'Open latest mention': 'باز کردن آخرین منشن',
+        'Message not available': 'پیام در دسترس نیست',
         'Filter by type': 'فیلتر بر اساس نوع', 'Show all': 'نمایش همه',
         'No messages in this category.': 'پیامی در این دسته نیست.',
         'Admin': 'مدیر', 'Make admin': 'ارتقا به مدیر', 'Remove admin': 'حذف مدیر',
@@ -2146,11 +2151,25 @@
             escapeHtml(String(count)) + '</span>';
     }
 
-    function renderConversationMetaRight(timeText, unreadCount) {
+    function renderMentionBadge(conversation) {
+        var count = Number(conversation && conversation.unreadMentionCount) || 0;
+        if (!count && !(conversation && conversation.hasMention)) {
+            return '';
+        }
+        var mid = conversation.latestMentionMessageId || '';
+        return '<span class="jim-mention-badge" data-action="open-mention"' +
+            ' data-conversation-id="' + conversation.id + '"' +
+            ' data-message-id="' + escapeHtml(String(mid)) + '"' +
+            ' title="' + escapeHtml(t('Open latest mention')) + '"' +
+            ' aria-label="' + escapeHtml(t('Mention')) + '">@</span>';
+    }
+
+    function renderConversationMetaRight(timeText, unreadCount, conversation) {
         var parts = [];
         if (timeText) {
             parts.push('<span class="jim-conversation-time">' + escapeHtml(timeText) + '</span>');
         }
+        parts.push(renderMentionBadge(conversation || {}));
         parts.push(renderUnreadBadge(unreadCount));
         if (!parts.join('').trim()) {
             return '';
@@ -2216,7 +2235,7 @@
             '  <div class="jim-conversation-main">' +
             '    <div class="jim-conversation-item-top">' +
             '      <span class="jim-conversation-title" dir="auto">' + selfMark + groupMark + escapeHtml(title) + '</span>' +
-            renderConversationMetaRight(formatTime(conversation.lastMessageAt), conversation.unreadCount) +
+            renderConversationMetaRight(formatTime(conversation.lastMessageAt), conversation.unreadCount, conversation) +
             '    </div>' +
             '    <div class="jim-conversation-item-bottom">' +
             renderConversationPreview(conversation) +
@@ -2248,7 +2267,7 @@
             '    </div>' +
             '    <div class="jim-conversation-item-bottom">' +
             renderConversationPreview(conversation) +
-            renderConversationMetaRight(formatTime(conversation.lastMessageAt), conversation.unreadCount) +
+            renderConversationMetaRight(formatTime(conversation.lastMessageAt), conversation.unreadCount, conversation) +
             '    </div>' +
             '  </div>' +
             '</button>';
@@ -4505,6 +4524,34 @@
             '</div>';
     }
 
+    function mergeAroundMessages(page) {
+        var incoming = (page && page.messages) || [];
+        if (!incoming.length) {
+            return;
+        }
+        var byId = {};
+        var i;
+        for (i = 0; i < state.messages.length; i++) {
+            byId[state.messages[i].id] = state.messages[i];
+        }
+        for (i = 0; i < incoming.length; i++) {
+            byId[incoming[i].id] = incoming[i];
+        }
+        var merged = [];
+        for (var id in byId) {
+            if (Object.prototype.hasOwnProperty.call(byId, id)) {
+                merged.push(byId[id]);
+            }
+        }
+        merged.sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
+        state.messages = merged;
+        if (page.hasMoreOlder === false) {
+            state.hasMoreOlder = false;
+        }
+        state.renderedMessagesHtml = null;
+        renderMessages();
+    }
+
     function openConversationAtMessage(conversationId, messageId) {
         hideMessageSearchResults();
         if (els.msgSearch) {
@@ -4517,6 +4564,7 @@
             selectConversation(conversationId);
         }
         var attempts = 0;
+        var aroundTried = false;
         (function tryJump() {
             attempts++;
             var target = els.messageList
@@ -4525,7 +4573,18 @@
                 scrollToReplyTarget(messageId);
                 return;
             }
-            if (attempts > 12) {
+            if (attempts > 14) {
+                showError(t('Message not available'));
+                return;
+            }
+            if (!aroundTried && JimApi.messagesAround && attempts > 1) {
+                aroundTried = true;
+                JimApi.messagesAround(conversationId, messageId, 25, 25).then(function (page) {
+                    mergeAroundMessages(page);
+                    window.setTimeout(tryJump, 80);
+                }).catch(function () {
+                    window.setTimeout(tryJump, 200);
+                });
                 return;
             }
             if (attempts > 2 && state.hasMoreOlder !== false && !state.loadingOlder) {
@@ -5087,6 +5146,19 @@
         var items = container.querySelectorAll('[data-conversation-id]');
         for (var i = 0; i < items.length; i++) {
             items[i].addEventListener('click', function (event) {
+                var mention = event.target.closest('[data-action="open-mention"]');
+                if (mention) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    var cid = parseInt(mention.getAttribute('data-conversation-id'), 10);
+                    var mid = parseInt(mention.getAttribute('data-message-id'), 10);
+                    if (mid) {
+                        openConversationAtMessage(cid, mid);
+                    } else {
+                        selectConversation(cid);
+                    }
+                    return;
+                }
                 var id = parseInt(event.currentTarget.getAttribute('data-conversation-id'), 10);
                 selectConversation(id);
             });
@@ -6676,7 +6748,13 @@
             if (seq !== msgSearchSeq) {
                 return;
             }
-            els.msgSearchResults.innerHTML = '<div class="jim-search-status">' + escapeHtml(t('Search failed')) + '</div>';
+            els.msgSearchResults.innerHTML = '<div class="jim-search-status">' + escapeHtml(t('Search failed')) +
+                ' <button type="button" class="jim-search-retry" data-action="search-retry">' +
+                escapeHtml(t('Retry')) + '</button></div>';
+            var retry = els.msgSearchResults.querySelector('[data-action="search-retry"]');
+            if (retry) {
+                retry.addEventListener('click', function () { runMessageSearch(q); });
+            }
         });
     }
 
@@ -6691,9 +6769,15 @@
         var html = '';
         for (var i = 0; i < results.length; i++) {
             var r = results[i];
+            var sender = (r.sender && r.sender.displayName) || r.senderDisplayName || '';
+            var field = r.matchedField === 'filename' ? t('Matched filename')
+                : (r.matchedField === 'issue' ? t('Matched issue') : '');
             html += '<button type="button" class="jim-search-result jim-msg-result" data-conversation-id="' +
                 escapeHtml(String(r.conversationId)) + '" data-message-id="' + escapeHtml(String(r.messageId)) + '">' +
                 '<span class="jim-msg-result-title">' + escapeHtml(r.conversationTitle || '') + '</span>' +
+                '<span class="jim-msg-result-meta">' + escapeHtml(sender) +
+                (r.createdAt ? ' · ' + escapeHtml(formatTime(r.createdAt)) : '') +
+                (field ? ' · ' + escapeHtml(field) : '') + '</span>' +
                 '<span class="jim-msg-result-snippet">' + escapeHtml(r.snippet || '') + '</span></button>';
         }
         els.msgSearchResults.innerHTML = html;
@@ -6717,6 +6801,20 @@
         if (els.msgSearch) {
             els.msgSearch.addEventListener('input', onMessageSearchInput);
             els.msgSearch.addEventListener('search', onMessageSearchInput);
+            els.msgSearch.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    var q = (els.msgSearch.value || '').trim();
+                    if (q.length >= 2) {
+                        runMessageSearch(q);
+                    }
+                } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    if (els.msgSearchPanel && !els.msgSearchPanel.hidden) {
+                        toggleMessageSearch();
+                    }
+                }
+            });
         }
         if (els.messageList) {
             els.messageList.addEventListener('contextmenu', function (event) {

@@ -1043,6 +1043,29 @@ public class JimMcpDomainResource {
     }
 
     @GET
+    @Path("/chat/search")
+    public Response chatSearchGlobal(@QueryParam("q") String q,
+                                     @QueryParam("conversationId") Integer conversationId,
+                                     @QueryParam("type") String type,
+                                     @QueryParam("limit") Integer limit,
+                                     @QueryParam("cursor") Integer cursor) {
+        ApplicationUser viewer = viewer();
+        if (viewer == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "Not authenticated");
+        }
+        try {
+            return JimRestResponses.okJson(this.messageService.searchMessages(
+                    q, conversationId, type, limit == null ? 25 : limit.intValue(),
+                    cursor == null ? 0 : cursor.intValue()));
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log, "GET /rest/jim/1.0/mcp-domain/chat/search",
+                    viewer.getKey(), ex, "internal_error", "An internal error occurred during search.");
+        }
+    }
+
+    @GET
     @Path("/chat/conversations/{id}/messages/search")
     public Response chatSearchMessages(@PathParam("id") int id, @QueryParam("q") String q, @QueryParam("limit") Integer limit) {
         ApplicationUser viewer = viewer();

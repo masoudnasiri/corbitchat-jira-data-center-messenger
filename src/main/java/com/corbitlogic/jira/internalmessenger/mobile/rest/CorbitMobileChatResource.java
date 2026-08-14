@@ -211,6 +211,7 @@ public class CorbitMobileChatResource {
     @Path("/search")
     public Response searchMessages(@javax.ws.rs.QueryParam("q") String q,
                                    @javax.ws.rs.QueryParam("conversationId") Integer conversationId,
+                                   @javax.ws.rs.QueryParam("type") String type,
                                    @javax.ws.rs.QueryParam("limit") Integer limit,
                                    @javax.ws.rs.QueryParam("cursor") Integer cursor) {
         String userKey = resolveCurrentUserKey();
@@ -223,7 +224,7 @@ public class CorbitMobileChatResource {
         }
         try {
             Map<String, Object> body = this.messageService.searchMessages(
-                    q, conversationId, limit == null ? 25 : limit.intValue(), cursor == null ? 0 : cursor.intValue());
+                    q, conversationId, type, limit == null ? 25 : limit.intValue(), cursor == null ? 0 : cursor.intValue());
             return JimRestResponses.okJson(body);
         } catch (JimMessengerException ex) {
             return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
@@ -983,6 +984,41 @@ public class CorbitMobileChatResource {
         } catch (Exception ex) {
             return JimRestResponses.internalError(log,
                     "GET /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/messages",
+                    userKey, ex, "internal_error", "An internal error occurred while loading messages.");
+        }
+    }
+
+    @GET
+    @Path("/conversations/{conversationId}/messages/around/{messageId}")
+    public Response messagesAround(@PathParam("conversationId") int conversationId,
+                                   @PathParam("messageId") int messageId,
+                                   @QueryParam("before") @DefaultValue("25") int before,
+                                   @QueryParam("after") @DefaultValue("25") int after) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimConversation conversation =
+                    this.conversationService.getConversationForUser(conversationId, currentUserKey);
+            Map<String, Object> page = this.messageService.listMessagesAround(conversationId, messageId, before, after);
+            @SuppressWarnings("unchecked")
+            List<JimMessage> messages = (List<JimMessage>) page.get("_messages");
+            page.remove("_messages");
+            page.put("messages", this.restJsonMapper.toMessageMaps(messages, viewer, conversation, currentUserKey));
+            page.put("conversationId", conversationId);
+            return JimRestResponses.okJson(page);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/messages/around/" + messageId,
                     userKey, ex, "internal_error", "An internal error occurred while loading messages.");
         }
     }
