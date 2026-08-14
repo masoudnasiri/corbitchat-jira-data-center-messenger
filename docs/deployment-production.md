@@ -205,6 +205,76 @@ mkdir -p /root/jira-dev/releases
 cp target/corbitchat-jira-dc-<version>.jar /root/jira-dev/releases/
 ```
 
+### 2.1 Pre-package checklist (mandatory — every future chat build)
+
+Do this **before** `mvn ... package`. Fail the release if any item is missing.
+Do not start Phase 5 or any new chat work from another tree.
+
+```bash
+REPO=/root/jira-dev/jira-issue-chat-panel-mcp-control-plane
+STALE=/root/jira-dev/jira-issue-chat-panel
+JS=$REPO/src/main/resources/js/jim-messenger.js
+XML=$REPO/src/main/resources/atlassian-plugin.xml
+VM=$REPO/src/main/resources/templates/messenger-app.vm
+
+# 1. Build only from the official repo
+[ "$(pwd)" = "$REPO" ] || { echo FAIL: not in $REPO; exit 1; }
+[ ! -e "$STALE" ] || echo "WARN: stale tree exists at $STALE — do not build from it"
+
+# 2. Assistant report filters + event types in JS config
+grep -q "key: 'reports'" "$JS" || { echo FAIL: reports filter; exit 1; }
+grep -q "key: 'reportMentions'" "$JS" || { echo FAIL: reportMentions filter; exit 1; }
+grep -q "key: 'reportsReceived'" "$JS" || { echo FAIL: reportsReceived filter; exit 1; }
+for et in REPORT_SUBMITTED REPORT_SUBMITTED_TO_ME REPORT_REPLY REPORT_MENTION; do
+  grep -q "$et" "$JS" || { echo FAIL: missing $et; exit 1; }
+done
+
+# 3. Search jump
+grep -q 'function openConversationAtMessage' "$JS" || { echo FAIL: openConversationAtMessage; exit 1; }
+grep -q 'openConversationAtMessage(cid, mid)' "$JS" || { echo FAIL: search click jump; exit 1; }
+grep -q 'data-conversation-id' "$JS" || { echo FAIL: conversationId on result; exit 1; }
+grep -q 'data-message-id' "$JS" || { echo FAIL: messageId on result; exit 1; }
+
+# 4. Preserved Production UX
+grep -q 'jim-sidebar-actions-compact' "$VM" || { echo FAIL: compact sidebar; exit 1; }
+grep -q 'shared' "$JS" || { echo FAIL: shared galleries hook; exit 1; }
+grep -q 'function openForwardModalForMessages' "$JS" || { echo FAIL: multi-forward; exit 1; }
+grep -q "t('Saved Messages')" "$JS" || { echo FAIL: Saved Messages; exit 1; }
+grep -q "Forward': 'فوروارد'" "$JS" || { echo FAIL: Persian Forward; exit 1; }
+grep -q "Copy': 'کپی'" "$JS" || { echo FAIL: Persian Copy; exit 1; }
+grep -q "Share': 'اشتراک" "$JS" || { echo FAIL: Persian Share; exit 1; }
+grep -q "ذخیره در پیام‌های ذخیره‌شده" "$JS" || { echo FAIL: Persian Save; exit 1; }
+grep -q "Delete for me': 'حذف برای من'" "$JS" || { echo FAIL: Persian Delete; exit 1; }
+
+# 5. WRM serves jim-messenger.js (not a stale -min stand-in)
+grep -q 'name="jim-messenger.js" location="/js/jim-messenger.js"' "$XML" \
+  || { echo FAIL: WRM asset path; exit 1; }
+
+# 6. No generated artifacts / secrets in the commit
+git -C "$REPO" status --short | grep -Eiq \
+  '(\.jar|\.apk|\.sql|backup|dump|\.env|secret|token|credential)' \
+  && { echo FAIL: generated/secret files dirty; exit 1; }
+
+echo PRE-PACKAGE CHECKLIST OK
+```
+
+Manual confirmations (same gate):
+
+- [ ] Working directory is `/root/jira-dev/jira-issue-chat-panel-mcp-control-plane`
+- [ ] Not building from `/root/jira-dev/jira-issue-chat-panel`
+- [ ] Assistant report filters exist (`reports`, `reportMentions`, `reportsReceived`)
+- [ ] `REPORT_SUBMITTED`, `REPORT_SUBMITTED_TO_ME`, `REPORT_REPLY`, `REPORT_MENTION` are in the JS config
+- [ ] `openConversationAtMessage` exists
+- [ ] Search result click uses `conversationId` + `messageId`
+- [ ] Compact sidebar exists
+- [ ] Shared galleries exist
+- [ ] Multi-forward exists
+- [ ] Saved Messages exists
+- [ ] Copy / Share / Forward / Delete / Save labels are Persian
+- [ ] `jim-messenger.js` is the WRM-served asset (`atlassian-plugin.xml`)
+- [ ] No generated artifacts, logs, backups, secrets, or tokens are committed
+- [ ] `pom.xml` version is a **new** unique suffix (never reuse `figmachat4c` / `4d` / `4e`)
+
 ---
 
 ## 3. Choose a deploy path
@@ -381,12 +451,13 @@ builds, data is preserved on rollback. Only restore the DB dump
 ## 8. One-shot deploy checklist
 
 1. [ ] `ssh corbit-prod` works, three containers up.
-2. [ ] `pom.xml` version bumped; `mvn ... -o clean package` green.
-3. [ ] Jar copied to `/root/jira-dev/releases/`.
-4. [ ] Backup taken (DB dump + current jar) — §4.
-5. [ ] Deployed via Path A (UPM) or Path B (file + restart).
-6. [ ] Stale/old plugin jars removed; exactly one present.
-7. [ ] Smoke test all 6 endpoints = 200 — §5.
-8. [ ] Manage apps shows new version, Enabled.
-9. [ ] UI pass: chat, comment reply, Board Gallery.
-10. [ ] Rollback path confirmed available (previous jar preserved).
+2. [ ] Pre-package checklist §2.1 passed (official repo only; report filters; search jump; compact / galleries / multi-forward / Saved Messages; Persian action labels; WRM asset aligned).
+3. [ ] `pom.xml` version bumped; `mvn ... -o clean package` green.
+4. [ ] Jar copied to `/root/jira-dev/releases/`.
+5. [ ] Backup taken (DB dump + current jar) — §4.
+6. [ ] Deployed via Path A (UPM) or Path B (file + restart).
+7. [ ] Stale/old plugin jars removed; exactly one present.
+8. [ ] Smoke test all 6 endpoints = 200 — §5.
+9. [ ] Manage apps shows new version, Enabled.
+10. [ ] UI pass: chat, comment reply, Board Gallery.
+11. [ ] Rollback path confirmed available (previous jar preserved).

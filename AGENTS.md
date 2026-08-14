@@ -20,6 +20,9 @@ Official Production plugin. Restore these before any new phase:
 
 Never reuse versions `figmachat4c`, `figmachat4d`, or `figmachat4e`.
 
+Before every future `mvn ... package`, run the mandatory pre-package
+checklist in `docs/deployment-production.md` §2.1.
+
 ## Build (offline Maven — always use these flags)
 
 ```bash

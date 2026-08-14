@@ -22,7 +22,7 @@ feature work from any other tree.
 | Source repo | `/root/jira-dev/jira-issue-chat-panel-mcp-control-plane` |
 | Branch | `feature/mcp-control-plane` |
 | Freeze commit (source) | `68d3b33bcb62dffcdb2580db0f895d2c7b6d5bba` |
-| Tag commit | `9e3b102e41b9183ec312f2c9fe1018024cf07404` |
+| Tag commit | `d8199a97a417906db691df3275d1079fa4cce57a` (contains freeze `68d3b33`) |
 | Release tag | `plugin-figmachat4e-regressionfix-prod` |
 
 **Never build future plugin work from** `/root/jira-dev/jira-issue-chat-panel`
@@ -65,8 +65,6 @@ mvn -s /root/.m2/settings.xml \
     -o clean package
 ```
 
-Before packaging a future release, confirm in source:
-
-- `ASSISTANT_FILTERS` still contains `reports`, `reportMentions`, `reportsReceived`
-- `openConversationAtMessage` still exists and is the search-result click target
-- `pom.xml` version is a **new** unique suffix (never reuse `figmachat4c` / `4d` / `4e`)
+Before packaging a future release, run the mandatory pre-package
+checklist in `docs/deployment-production.md` §2.1. Do not package
+if any item fails.
