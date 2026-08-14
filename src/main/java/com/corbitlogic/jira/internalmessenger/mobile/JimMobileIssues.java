@@ -6,6 +6,7 @@ import com.atlassian.jira.config.properties.ApplicationProperties;
 import com.atlassian.jira.issue.Issue;
 import com.atlassian.jira.jql.builder.JqlQueryBuilder;
 import com.atlassian.jira.user.ApplicationUser;
+import com.corbitlogic.jira.internalmessenger.report.JimReportConfig;
 import com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig;
 import com.corbitlogic.jira.internalmessenger.util.JimIssueUrlBuilder;
 import com.corbitlogic.jira.internalmessenger.util.JimSanitizer;
@@ -260,6 +261,31 @@ public final class JimMobileIssues {
         // state. Lets the redesigned rejected card render real data without an
         // extra fetch; absent for all items on instances without the fields.
         map.put("scheduleApproval", JimScheduleApprovalConfig.projection(issue, viewer));
+        putFollowUpLevel(map, issue);
         return map;
+    }
+
+    /**
+     * Additive follow-up level from the admin-configured report field
+     * (default {@code customfield_10802}). Null when the field is missing,
+     * empty, or the option is not one of the known codes. Never invents a value.
+     */
+    public static void putFollowUpLevel(Map<String, Object> map, Issue issue) {
+        String code = null;
+        String label = null;
+        try {
+            code = JimReportConfig.levelCodeOf(issue);
+            if (code != null && !code.isEmpty()) {
+                label = JimReportConfig.levelLabelFa(code);
+                if (label != null && label.isEmpty()) {
+                    label = null;
+                }
+            }
+        } catch (Throwable ignore) {
+            code = null;
+            label = null;
+        }
+        map.put("followUpLevel", label);
+        map.put("followUpLevelCode", code);
     }
 }

@@ -55,6 +55,7 @@ public class CorbitMobileDashboardResource {
 
     private static final Logger log = LoggerFactory.getLogger(CorbitMobileDashboardResource.class);
     private static final int PREVIEW_SIZE = 5;
+    private static final int ACTIVITY_SIZE = 8;
 
     private final JiraAuthenticationContext authenticationContext;
     private final SearchService searchService;
@@ -118,6 +119,10 @@ public class CorbitMobileDashboardResource {
             // could). Bounded — four permission-aware searchCount() queries.
             body.put("openWorkCounts", openWorkCounts(viewer));
             body.put("todayPreview", preview(viewer, "today"));
+            // Recently updated issues the viewer is assignee or reporter on.
+            // Bounded (8 rows, 14 days). Current-state cards only — no invented
+            // changelog verbs. Empty list when unavailable.
+            body.put("recentActivity", recentActivity(viewer));
             // Schedule approvals pending for the current user (proposed
             // completion date awaiting their approval). Only present when the
             // workflow fields are configured on this instance.
@@ -365,6 +370,37 @@ public class CorbitMobileDashboardResource {
                     filter, ex.getMessage());
             return 0;
         }
+    }
+
+    /**
+     * Permission-aware recent issues for the dashboard activity block.
+     * Does not invent status-change sentences — the client renders the
+     * current issue state. Degrades to an empty list.
+     */
+    private List<Map<String, Object>> recentActivity(ApplicationUser viewer) {
+        List<Map<String, Object>> items = new ArrayList<>();
+        try {
+            String jql = "(assignee = currentUser() OR reporter = currentUser()) "
+                    + "AND updated >= -14d ORDER BY updated DESC";
+            SearchService.ParseResult parsed = this.searchService.parseQuery(viewer, jql);
+            if (parsed == null || !parsed.isValid()) {
+                return items;
+            }
+            PagerFilter<Issue> pager = new PagerFilter<>(ACTIVITY_SIZE);
+            SearchResults<Issue> results =
+                    this.searchService.search(viewer, parsed.getQuery(), pager);
+            if (results == null || results.getResults() == null) {
+                return items;
+            }
+            for (Issue issue : results.getResults()) {
+                items.add(JimMobileIssues.toIssueMap(
+                        issue, viewer, this.avatarService, this.applicationProperties));
+            }
+        } catch (Exception ex) {
+            log.warn("endpoint=GET /rest/corbit-mobile/1.0/dashboard stage=recentActivity outcome=degraded message={}",
+                    ex.getMessage());
+        }
+        return items;
     }
 
     private List<Map<String, Object>> preview(ApplicationUser viewer, String filter) {

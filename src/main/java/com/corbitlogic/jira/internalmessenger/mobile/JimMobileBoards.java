@@ -129,6 +129,7 @@ public final class JimMobileBoards {
                 // One board failing must never drop the whole gallery.
             }
         }
+        JimMobileBoardFavorites.applyToCards(viewer, out);
         return out;
     }
 
@@ -162,7 +163,21 @@ public final class JimMobileBoards {
 
         // "My tasks" count — best effort, scoped to the board's own JQL.
         card.put("assignedCount", assignedCount(boardJql, viewer, searchService));
+        // All-tasks total on the same saved-filter JQL. Null when the board
+        // has no usable JQL or searchCount fails — the client keeps "—".
+        card.put("totalIssueCount", totalCount(boardJql, viewer, searchService));
+        // Default; list/meta stamp the real per-user flag after the card is built.
+        card.put("favorite", Boolean.FALSE);
         return card;
+    }
+
+    /**
+     * True when Jira Software is present and {@code RapidViewService} says the
+     * viewer can see this board. Used by favorite toggle so a hidden id is
+     * indistinguishable from a missing one (404).
+     */
+    public static boolean viewerCanSee(long boardId, ApplicationUser viewer) {
+        return loadView(boardId, viewer) != null;
     }
 
     private static String typeOf(RapidView view) {
@@ -251,6 +266,29 @@ public final class JimMobileBoards {
         }
     }
 
+    /**
+     * Permission-aware total for the board filter. Never falls back to an
+     * unscoped JQL (that would count the whole instance). Empty / invalid JQL
+     * or any search error → {@code null}.
+     */
+    private static Integer totalCount(String boardJql,
+                                      ApplicationUser viewer,
+                                      SearchService searchService) {
+        try {
+            String base = boardJql == null ? "" : ORDER_BY.matcher(boardJql).replaceFirst("").trim();
+            if (base.isEmpty()) {
+                return null;
+            }
+            SearchService.ParseResult parsed = searchService.parseQuery(viewer, base);
+            if (parsed == null || !parsed.isValid()) {
+                return null;
+            }
+            return (int) searchService.searchCount(viewer, parsed.getQuery());
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     // ---------------------------------------------------------------------
     // Board detail (Sprint 11) — meta + issues grouped by status.
     // ---------------------------------------------------------------------
@@ -292,6 +330,7 @@ public final class JimMobileBoards {
         }
         card.put("hasSprints", !scopes.isEmpty());
         card.put("sprintScopes", scopes);
+        card.put("favorite", Boolean.valueOf(JimMobileBoardFavorites.contains(viewer, view.getId())));
         return card;
     }
 

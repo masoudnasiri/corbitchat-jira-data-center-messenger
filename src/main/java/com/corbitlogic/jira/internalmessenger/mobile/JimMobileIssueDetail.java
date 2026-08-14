@@ -211,6 +211,7 @@ public final class JimMobileIssueDetail {
         }
 
         map.put("url", JimIssueUrlBuilder.buildBrowseUrl(applicationProperties, issue));
+        JimMobileIssues.putFollowUpLevel(map, issue);
         return map;
     }
 

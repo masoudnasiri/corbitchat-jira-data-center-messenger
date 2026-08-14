@@ -6,6 +6,7 @@ import com.atlassian.jira.config.properties.ApplicationProperties;
 import com.atlassian.jira.security.JiraAuthenticationContext;
 import com.atlassian.jira.user.ApplicationUser;
 import com.atlassian.plugins.rest.common.security.AnonymousAllowed;
+import com.corbitlogic.jira.internalmessenger.mobile.JimMobileBoardFavorites;
 import com.corbitlogic.jira.internalmessenger.mobile.JimMobileBoards;
 import com.corbitlogic.jira.internalmessenger.mobile.JimMobileFeatures;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
@@ -14,8 +15,10 @@ import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import javax.inject.Inject;
+import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
+import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
@@ -162,6 +165,62 @@ public class CorbitMobileBoardResource {
         } catch (Throwable t) {
             log.warn("Board {} issues unavailable for {}: {}", id, viewer.getKey(), t.toString());
             return notFound();
+        }
+    }
+
+    /**
+     * Mark a visible board as a favorite for the caller —
+     * {@code PUT /boards/{id}/favorite}. Hidden / unknown ids return 404.
+     */
+    @PUT
+    @Path("/{id}/favorite")
+    public Response addFavorite(@PathParam("id") long id) {
+        return setFavorite(id, true);
+    }
+
+    /**
+     * Remove a board from the caller's favorites —
+     * {@code DELETE /boards/{id}/favorite}. Hidden / unknown ids return 404.
+     */
+    @DELETE
+    @Path("/{id}/favorite")
+    public Response removeFavorite(@PathParam("id") long id) {
+        return setFavorite(id, false);
+    }
+
+    private Response setFavorite(long id, boolean favorite) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.BOARDS)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.BOARDS);
+        }
+        try {
+            if (!JimMobileBoards.isAvailable()) {
+                return boardsUnavailable();
+            }
+            if (!JimMobileBoards.viewerCanSee(id, viewer)) {
+                return notFound();
+            }
+            if (favorite && JimMobileBoardFavorites.atLimit(viewer, id)) {
+                return JimRestResponses.errorJson(400, "favorites_limit",
+                        "You can favorite at most "
+                                + JimMobileBoardFavorites.MAX_FAVORITES + " boards.");
+            }
+            if (!JimMobileBoardFavorites.setFavorite(viewer, id, favorite)) {
+                return JimRestResponses.errorJson(500, "favorites_error",
+                        "Could not update favorite boards.");
+            }
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("ok", true);
+            body.put("id", id);
+            body.put("favorite", favorite);
+            return JimRestResponses.okJson(body);
+        } catch (Throwable t) {
+            log.warn("Board {} favorite update failed: {}", id, t.toString());
+            return JimRestResponses.errorJson(500, "favorites_error",
+                    "Could not update favorite boards.");
         }
     }
 
