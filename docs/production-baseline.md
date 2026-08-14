@@ -4,7 +4,8 @@ Updated: 2026-08-14. Phase 5 (shared-gallery open-message hotfix) and
 Phase 6 (hardening / QA only) are **closed by owner acceptance**.
 This is the official working baseline. Do not start Phase 7 features
 from this close-out. Do not deploy Production from leftover Phase 6
-docs or scripts. Gateway MCP search remains DEV-only.
+docs or scripts. Gateway MCP chat search was shipped separately
+(approved Gateway-only rollout, 2026-08-14) as `gateway-2.7-prod16`.
 
 Owner manual QA (`docs/manual-qa-phase6-chat.md`) is **accepted as
 non-blocking / owner-signed**. Hardening produced docs and DEV-safe
@@ -24,7 +25,7 @@ deploy.
 | Production PWA | `1.0.0+88 / figma-chat-shared-open-hotfix` |
 | PWA sha256 | `e2beaf936471ba6cac652243c1740caad2ea5f739698ea64a1b4a172036951db` |
 | Mobile freeze commit | `38d2991b209634bfd5e2c72344998fa2c2c6dcbb` |
-| Gateway | **unchanged** (`gateway-2.7-prod15`). MCP search remains DEV-only. |
+| Gateway | `gateway-2.7-prod16` (commit `738009d0b6700fd2e960b4f9a29f87cd37890e3b`). MCP chat search **shipped**. |
 
 ## Rollback targets
 
@@ -32,6 +33,7 @@ deploy.
 |---|---|
 | Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5-search-mentions` (sha256 `f6618ae08478f0218ada56afc3bd38d5497c80b7b4270e9277a8fa736632f1b6`) |
 | PWA | `1.0.0+87 / figma-chat-design-reconcile1` (sha256 `b54e3dca3edb88d24a1f8bb4f6601657addafcc504490f188b40d0c3dddda1d3`) |
+| Gateway | `gateway-2.7-prod15` via `/root/jira-backups/gateway-mcp-search-20260814-141223/ROLLBACK-gateway.sh` |
 
 Backups and scripts: `/root/jira-backups/*-20260814-125535*` and
 `/root/jira-backups/rollback-figmachat5a-20260814-125535/` on `corbit-prod`.
@@ -127,8 +129,9 @@ report/calendar admin, Workspace Agent.
 5. Keep search jump via `openConversationAtMessage`.
 6. Keep shared-gallery Open message on `openConversationAtMessage`.
 7. Keep Production PWA branding as **7G TECH**.
-8. Do not ship Gateway MCP search to Production unless the owner
-   decides that separately.
+8. Gateway MCP chat search is live on Production (`corbit_chat_search`,
+   `corbit_chat_search_messages`). Do not revert it unless rolling
+   back the gateway to `gateway-2.7-prod15`.
 
 ## Phase 6 close (2026-08-14)
 
@@ -140,7 +143,7 @@ report/calendar admin, Workspace Agent.
 | Production | Unchanged — no Phase 6 deploy |
 | Owner manual QA | Accepted as non-blocking / owner-signed |
 | Phase 7 | **Not started.** Backlog source: `docs/phase6-figma-parity-delta.md` |
-| Gateway MCP search | **Not shipped.** Remains DEV-only |
+| Gateway MCP search | Not shipped **during Phase 6**. Shipped later the same day as a separate approved Gateway-only rollout (`gateway-2.7-prod16`). |
 
 Phase 6 docs: `docs/phase6-hardening-plan.md`,
 `docs/regression-checklist.md`, `docs/regression-checklist.yaml`,
@@ -159,7 +162,12 @@ Phase 6 docs: `docs/phase6-hardening-plan.md`,
   and network are available. Sanitize `AGENTS.md` and
   `docs/handover-mobile-app.md` first. Do not store a PAT in
   `~/.git-credentials`. Do not rewrite `501bc05` unless approved.
-- Decide separately whether to ship Gateway MCP search to Production.
+- ChatGPT / Workspace **Scan Tools / Refresh** so clients pick up
+  `corbit_chat_search` schema (`conversation_type`) and the corrected
+  `/mcp-domain/chat/search` route. Owner/manual pending.
+- Gateway rollback (gateway only):
+  `/root/jira-backups/gateway-mcp-search-20260814-141223/ROLLBACK-gateway.sh`
+  on `corbit-prod` (restores `gateway-2.7-prod15`).
 
 ## Build
 

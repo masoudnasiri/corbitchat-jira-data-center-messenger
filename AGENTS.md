@@ -18,7 +18,10 @@ P2 plugin for **Jira Data Center 9.17.x** running in the `jira-srv` Docker conta
 
 Phase 5 (shared-gallery open-message hotfix) and Phase 6 (hardening /
 QA only) are closed by owner acceptance. Do not start Phase 7 until
-the owner opens that phase. Do not ship Gateway MCP search.
+the owner opens that phase. Production Gateway is
+`gateway-2.7-prod16` with MCP chat search shipped
+(`corbit_chat_search`, `corbit_chat_search_messages`). Do not
+restart Jira or replace plugin/PWA for gateway-only work.
 
 Official Production plugin. Restore these before any new phase:
 
