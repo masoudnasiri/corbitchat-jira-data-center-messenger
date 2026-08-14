@@ -5660,9 +5660,18 @@
             { key: 'links', label: t('Links') }
         ];
         els.sharedTabs.innerHTML = tabs.map(function (tab) {
+            var count = (tab.key === sharedState.type &&
+                !sharedState.hasMore &&
+                sharedState.items &&
+                sharedState.items.length)
+                ? '<span class="jim-shared-tab-count">' +
+                    escapeHtml(locDigits(String(sharedState.items.length))) +
+                    '</span>'
+                : '';
             return '<button type="button" class="jim-shared-tab' +
                 (tab.key === sharedState.type ? ' is-active' : '') +
-                '" data-shared-type="' + tab.key + '">' + escapeHtml(tab.label) + '</button>';
+                '" data-shared-type="' + tab.key + '">' +
+                escapeHtml(tab.label) + count + '</button>';
         }).join('');
     }
 
@@ -5685,15 +5694,18 @@
                 }
                 sharedState.cursor = response && response.nextCursor ? response.nextCursor : null;
                 sharedState.hasMore = !!(response && response.hasMore);
+                renderSharedTabs();
                 renderSharedBody();
             })
             .catch(function (error) {
                 sharedState.loading = false;
                 logError('sharedContent', error);
                 els.sharedBody.innerHTML =
-                    '<div class="jim-empty-state">' +
+                    '<div class="jim-empty-state jim-empty-illustrated jim-error-state">' +
+                    '<div class="jim-empty-glyph" aria-hidden="true"></div>' +
+                    '<p>' +
                     escapeHtml(error && error.message ? error.message : t('Unable to load shared content.')) +
-                    '</div>' +
+                    '</p></div>' +
                     '<button type="button" class="jim-shared-retry" data-shared-retry="1">' +
                     escapeHtml(t('Retry')) + '</button>';
             });
@@ -5707,7 +5719,13 @@
             var empty = sharedState.type === 'media'
                 ? t('No shared media yet.')
                 : (sharedState.type === 'links' ? t('No shared links yet.') : t('No shared files yet.'));
-            els.sharedBody.innerHTML = '<div class="jim-empty-state">' + escapeHtml(empty) + '</div>';
+            var emptyKind = sharedState.type === 'media'
+                ? 'media'
+                : (sharedState.type === 'links' ? 'links' : 'files');
+            els.sharedBody.innerHTML =
+                '<div class="jim-empty-state jim-empty-illustrated">' +
+                '<div class="jim-empty-glyph jim-empty-glyph-' + emptyKind + '" aria-hidden="true"></div>' +
+                '<p>' + escapeHtml(empty) + '</p></div>';
             return;
         }
         var html = '';
@@ -5733,17 +5751,22 @@
                 var item = sharedState.items[j];
                 var title = item.title || item.filename || item.url || '';
                 var meta = [];
-                    if (item.size) {
+                if (item.createdAt) {
+                    meta.push(formatSharedStamp(item.createdAt));
+                }
+                if (item.size) {
                     meta.push(formatSharedFileSize(item.size));
                 }
-                if (item.createdAt) {
-                    meta.push(formatTime(item.createdAt));
-                }
+                var glyph = sharedState.type === 'links'
+                    ? '<div class="jim-shared-link-icon" aria-hidden="true">URL</div>'
+                    : '<div class="jim-shared-file-icon is-' + sharedFileKind(title, item.mimeType) +
+                        '" aria-hidden="true">' + escapeHtml(sharedFileLabel(title, item.mimeType)) + '</div>';
                 html += '<div class="jim-shared-row">' +
+                    glyph +
                     '<div class="jim-shared-row-main">' +
                     '<div class="jim-shared-row-title" dir="auto">' + escapeHtml(title) + '</div>' +
                     (item.url ? '<div class="jim-shared-row-url" dir="ltr">' + escapeHtml(item.url) + '</div>' : '') +
-                    '<div class="jim-shared-row-meta">' + escapeHtml(meta.join(' · ')) + '</div>' +
+                    (meta.length ? '<div class="jim-shared-row-meta">' + escapeHtml(meta.join('  ·  ')) + '</div>' : '') +
                     '</div>' +
                     '<div class="jim-shared-row-actions">';
                 if (item.downloadUrl) {
@@ -5768,15 +5791,62 @@
         els.sharedBody.innerHTML = html;
     }
 
+    function formatSharedStamp(timestamp) {
+        if (!timestamp) {
+            return '';
+        }
+        var date = new Date(timestamp);
+        if (isNaN(date.getTime())) {
+            return '';
+        }
+        return calClock(date) + ' | ' + calDate(date);
+    }
+
+    function sharedFileKind(name, mime) {
+        var n = String(name || '').toLowerCase();
+        var m = String(mime || '').toLowerCase();
+        if (/\.(docx?|rtf)$/.test(n) || m.indexOf('word') !== -1) {
+            return 'doc';
+        }
+        if (/\.pdf$/.test(n) || m.indexOf('pdf') !== -1) {
+            return 'pdf';
+        }
+        if (/\.(xlsx?|csv)$/.test(n) || m.indexOf('sheet') !== -1 || m.indexOf('excel') !== -1) {
+            return 'sheet';
+        }
+        if (/\.pptx?$/.test(n) || m.indexOf('presentation') !== -1) {
+            return 'slide';
+        }
+        return 'file';
+    }
+
+    function sharedFileLabel(name, mime) {
+        var kind = sharedFileKind(name, mime);
+        if (kind === 'doc') {
+            return 'DOC';
+        }
+        if (kind === 'pdf') {
+            return 'PDF';
+        }
+        if (kind === 'sheet') {
+            return 'XLS';
+        }
+        if (kind === 'slide') {
+            return 'PPT';
+        }
+        return 'FILE';
+    }
+
     function formatSharedFileSize(bytes) {
         var n = Number(bytes) || 0;
+        var fa = !!(els.app && els.app.classList.contains('jim-lang-fa'));
         if (n < 1024) {
-            return n + ' B';
+            return locDigits(String(n)) + (fa ? ' بایت' : ' B');
         }
         if (n < 1024 * 1024) {
-            return (n / 1024).toFixed(1) + ' KB';
+            return locDigits((n / 1024).toFixed(0)) + (fa ? ' کیلوبایت' : ' KB');
         }
-        return (n / (1024 * 1024)).toFixed(1) + ' MB';
+        return locDigits((n / (1024 * 1024)).toFixed(1)) + (fa ? ' مگابایت' : ' MB');
     }
 
     function findSelfConversation() {
@@ -6676,7 +6746,9 @@
         }
         var html = '';
         for (var i = 0; i < items.length; i++) {
-            html += '<button type="button" class="jim-message-menu-item" role="menuitem" data-action="' +
+            var danger = items[i].action === 'hide-for-me' || items[i].action === 'delete';
+            html += '<button type="button" class="jim-message-menu-item' +
+                (danger ? ' is-danger' : '') + '" role="menuitem" data-action="' +
                 items[i].action + '" data-message-id="' + message.id + '">' +
                 escapeHtml(items[i].label) + '</button>';
         }
