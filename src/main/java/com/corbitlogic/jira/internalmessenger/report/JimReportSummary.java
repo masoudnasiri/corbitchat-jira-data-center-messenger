@@ -32,6 +32,26 @@ public final class JimReportSummary {
      */
     public String applicabilityReason;
 
+    // --- Report ENFORCEMENT policy (scoring scope only; never blocks submit/display) ---
+    /** Whether the enforcement (report-scope) policy is enabled by the admin. */
+    public boolean enforcementEnabled;
+    /** Configured enforcement start date (Gregorian ISO YYYY-MM-DD) or "" = none. */
+    public String enforcementStartDate = "";
+    /** Enforcement date-basis mode (created_on_or_after | due_on_or_after | fixed_counter_start | ...). */
+    public String enforcementDateBasis;
+    /** True when the basis is fixed_counter_start (created/due are NOT scope filters). */
+    public boolean fixedCounterStartMode;
+    /** True when this issue participates in compliance scoring (required/missed). */
+    public boolean inEnforcementScope = true;
+    /** Stable reason the issue is out of scoring scope (mirrors applicabilityReason). */
+    public String outOfScopeReason;
+    /** Lower bound (epoch ms, report tz start-of-day) for scored required/missed buckets. 0 = none, Long.MAX_VALUE = fully out of scope. */
+    public long scoringPeriodStartMs;
+    /** True when a report is required for SCORING now (false when out of scope or paused). */
+    public boolean reportRequiredForScoring;
+    /** Reports that predate the scoring start / are out of enforcement scope (raw history only, unscored). */
+    public int outOfScopeReportCount;
+
     // Follow-up level + schedule (echoed for the UI)
     public String levelCode;        // normal|high|special|managerial|null
     public String levelText;        // raw option value on the issue
@@ -48,6 +68,8 @@ public final class JimReportSummary {
     public int outOfWindowCount;
     public int duplicateCount;
     public int missedCount;
+    /** Reports submitted on a non-working day or during a paused interval (raw only, out-of-schedule). */
+    public int outOfScheduleCount;
     public int requiredSoFar;
     public int validSoFar;
     public Long nextExpectedMs;
@@ -139,6 +161,43 @@ public final class JimReportSummary {
     public int todayMissedCount;
     public boolean reportedToday;
 
+    // --- Working-day counter + report-receiver pause (Report Replies & Working-Days) ---
+    /** True when the working-days feature is on (counter counts only working days). */
+    public boolean workingDaysEnabled;
+    /** Resolved working-day source, e.g. jira_time_tracking(daysPerWeek=5) | admin_working_days | fallback_default(...). */
+    public String workingDaysSource;
+    /** Whether "today" (in the report tz) is a working day; drives the "امروز روز کاری نیست" state. */
+    public boolean todayWorkingDay = true;
+    // --- Working calendar (board vs plugin) exposure (Board Working-Days feature) ---
+    /** Selected calendar source mode (admin setting): jira_board_first | plugin_calendar_only | plugin_calendar_plus_board_holidays | time_tracking_fallback. */
+    public String workingCalendarSource;
+    /** Effective source actually used (e.g. jira_board(6) | plugin_working_days | ...(fallback:reason)). */
+    public String workingCalendarResolvedSource;
+    /** Resolved board (rapidView) id used for the calendar, or 0 when none. */
+    public long workingCalendarBoardId;
+    /** Resolved board name, when a board calendar was used. */
+    public String workingCalendarBoardName;
+    /** Reason the board could not be used (when falling back), or null. */
+    public String workingCalendarFallbackReason;
+    /** Working weekdays as Calendar.DAY_OF_WEEK ints (1=Sun..7=Sat). */
+    public java.util.List<Integer> workingWeekdays;
+    /** Count of non-working dates (plugin holidays ∪ board non-working dates) in effect. */
+    public int nonWorkingDatesCount;
+    /** Reason today is non-working ("holiday" | "non_working_weekday"), or null. */
+    public String todayNonWorkingReason;
+    /** Next working day (YYYY-MM-DD) when today is non-working, else null. */
+    public String nextWorkingDay;
+    /** Whether the report-receiver pause rule is enabled. */
+    public boolean receiverPauseEnabled;
+    /** True when a report receiver (schedule-approval approver) is configured on the issue. */
+    public boolean reportReceiverConfigured;
+    public String reportReceiverKey;
+    public String reportReceiverName;
+    /** True when counting is paused right now because the current assignee is the report receiver. */
+    public boolean pausedNow;
+    /** Pause reason code (ASSIGNED_TO_REPORT_RECEIVER) or null when not paused. */
+    public String pauseReason;
+
     // --- Phase 4: responsible + exception/quality ---
     public String responsibleUserKey;
     public String responsibleUserName;
@@ -169,8 +228,14 @@ public final class JimReportSummary {
         public long commentId;
         public long createdMs;
         public String authorKey;
-        /** 0=valid, 1=duplicate(same interval), 2=out-of-window (see JimReportCalculator). */
+        /** 0=valid, 1=duplicate(same interval), 2=out-of-window, 3=out-of-schedule (see JimReportCalculator). */
         public int status;
+        /** Number of replies linked to this report comment (never counted as reports). */
+        public int repliesCount;
+        /** Cheap preview of the latest reply (plain text, truncated) or null. */
+        public String latestReplyPreview;
+        /** Timestamp of the latest reply, or null. */
+        public Long latestReplyMs;
     }
 
     /** One computed reporting window (Phase 3 ledger detail). */

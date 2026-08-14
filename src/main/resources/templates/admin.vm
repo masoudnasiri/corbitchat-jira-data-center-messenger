@@ -22,6 +22,7 @@
         <button type="button" class="jim-admin-tab" data-tab="approvalfields" role="tab" aria-selected="false">Approval Fields</button>
         <button type="button" class="jim-admin-tab" data-tab="attachments" role="tab" aria-selected="false">Attachments</button>
         <button type="button" class="jim-admin-tab" data-tab="branding" role="tab" aria-selected="false">Branding</button>
+        <button type="button" class="jim-admin-tab" data-tab="workspaceagent" role="tab" aria-selected="false">Workspace Agent</button>
         <button type="button" class="jim-admin-tab" data-tab="diagnostics" role="tab" aria-selected="false">Diagnostics</button>
         <button type="button" class="jim-admin-tab" data-tab="license" role="tab" aria-selected="false">License</button>
         <button type="button" class="jim-admin-tab" data-tab="help" role="tab" aria-selected="false">Help</button>
@@ -330,12 +331,12 @@
             </p>
         </div>
 
-        <h3 style="margin-top:20px;" dir="rtl" lang="fa">محدوده اعمال گزارش‌دهی / Report Applicability Policy</h3>
+        <h3 style="margin-top:20px;" dir="rtl" lang="fa">دامنهٔ اعمال شمارندهٔ گزارش‌ها / Report Enforcement Scope</h3>
         <p class="jim-admin-hint" dir="rtl" lang="fa">
-            تعیین می‌کند گزارش‌دهی از چه تاریخی و برای کدام تسک‌ها اعمال شود. در حالت پیش‌فرض (غیرفعال)،
-            رفتار موتور گزارش تغییری نمی‌کند. فعال‌سازی این سیاست فقط دامنه را محدود می‌کند و مقادیر ذخیره‌شده،
-            JQL یا فیلدهای Jira را تغییر نمی‌دهد. تسک‌های خارج از محدوده «out of scope» شمرده می‌شوند و گزارش
-            عقب‌افتاده برایشان انباشته نمی‌شود.
+            این سیاست فقط دامنهٔ محاسبهٔ شمارنده‌ها، گزارش‌های ازدست‌رفته و وضعیت تأخیر را محدود می‌کند.
+            ثبت گزارش و نمایش گزارش‌های قبلی برای تسک‌های خارج از دامنه همچنان مجاز است. گزارش‌های خارج از دامنه
+            در امتیازدهی و محاسبهٔ گزارش‌های ازدست‌رفته لحاظ نمی‌شوند. در حالت پیش‌فرض (غیرفعال) رفتار موتور گزارش
+            تغییری نمی‌کند و این سیاست مقادیر ذخیره‌شده، JQL یا فیلدهای Jira را تغییر نمی‌دهد.
         </p>
         <div class="jim-admin-field">
             <label class="jim-admin-check" dir="rtl" lang="fa">
@@ -344,18 +345,20 @@
             </label>
         </div>
         <div class="jim-admin-field">
-            <label for="jim-set-reportEffectiveFromDate" dir="rtl" lang="fa">تاریخ شروع اعمال (میلادی، YYYY-MM-DD)</label>
+            <label for="jim-set-reportEffectiveFromDate" dir="rtl" lang="fa">تاریخ شروع اعمال شمارندهٔ گزارش‌ها (میلادی، YYYY-MM-DD)</label>
             <input type="date" id="jim-set-reportEffectiveFromDate" class="text" style="max-width:200px;"/>
-            <p class="jim-admin-hint" dir="rtl" lang="fa">در منطقهٔ زمانی گزارش تفسیر می‌شود. خالی = بدون فیلتر تاریخ (فقط قاعدهٔ «Done نشده»).</p>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">در منطقهٔ زمانی گزارش تفسیر می‌شود. خالی = بدون محدودیت تاریخ برای شمارنده‌ها. شمارش گزارش‌های لازم/ازدست‌رفته فقط از این تاریخ آغاز می‌شود؛ گزارش‌های قبل از این تاریخ به‌عنوان تاریخچه نمایش داده می‌شوند اما در شمارنده لحاظ نمی‌شوند.</p>
         </div>
         <div class="jim-admin-field">
             <label for="jim-set-reportApplicabilityDateMode" dir="rtl" lang="fa">مبنای تاریخ</label>
-            <select id="jim-set-reportApplicabilityDateMode" class="select" style="max-width:320px;">
+            <select id="jim-set-reportApplicabilityDateMode" class="select" style="max-width:420px;">
                 <option value="created_on_or_after">تاریخ ایجاد تسک</option>
                 <option value="due_on_or_after">تاریخ سررسید</option>
                 <option value="created_and_due_on_or_after">تاریخ ایجاد و سررسید</option>
                 <option value="created_or_due_on_or_after">تاریخ ایجاد یا سررسید</option>
+                <option value="fixed_counter_start">تاریخ ثابت شروع شمارش برای همه تسک‌ها</option>
             </select>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">در حالت «تاریخ ثابت شروع شمارش»، تاریخ ایجاد یا سررسید برای تعیین دامنهٔ اعمال سیاست استفاده نمی‌شود. شمارندهٔ گزارش‌های الزامی و گزارش‌های ازدست‌رفته برای همهٔ تسک‌های مشمول، فقط از تاریخ مشخص‌شده به بعد محاسبه می‌شود. ثبت و نمایش گزارش‌ها همچنان برای همهٔ تسک‌های مجاز فعال است.</p>
         </div>
         <div class="jim-admin-field">
             <label class="jim-admin-check" dir="rtl" lang="fa">
@@ -375,6 +378,51 @@
                 نمایش تعداد تسک‌های مشمول / خارج از محدوده (فقط خواندنی)
             </button>
             <div id="jim-report-applicability-impact" class="jim-admin-hint" style="margin-top:8px;white-space:pre-wrap;"></div>
+        </div>
+
+        <h3 style="margin-top:20px;" dir="rtl" lang="fa">تقویم کاری گزارش‌ها</h3>
+        <p class="jim-admin-hint" dir="rtl" lang="fa">این تقویم فقط برای محاسبه شمارنده گزارش‌های الزامی، گزارش‌های ازدست‌رفته و وضعیت تأخیر استفاده می‌شود. ثبت گزارش و نمایش گزارش‌ها محدود نمی‌شود.</p>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportWorkingCalendarSource" dir="rtl" lang="fa">منبع تقویم کاری</label>
+            <select id="jim-set-reportWorkingCalendarSource" class="select" style="max-width:520px;">
+                <option value="jira_board_first">خواندن از تنظیمات Working Days برد Jira</option>
+                <option value="plugin_calendar_plus_board_holidays">برد Jira + تعطیلات افزونه</option>
+                <option value="plugin_calendar_only">تقویم کاری افزونه</option>
+                <option value="time_tracking_fallback">فقط fallback ساده (Time Tracking)</option>
+            </select>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">پیشنهادشده: «خواندن از برد Jira». اگر برد قابل تشخیص نباشد، به‌صورت امن به تقویم افزونه و سپس fallback ساده بازمی‌گردد.</p>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportDefaultBoardId" dir="rtl" lang="fa">شناسه برد پیش‌فرض (Board / rapidView id)</label>
+            <input type="number" id="jim-set-reportDefaultBoardId" class="text" style="max-width:200px;" min="1" placeholder="مثلاً 6"/>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">وقتی پروژه به برد مشخصی نگاشت نشده باشد، از این برد برای خواندن روزهای کاری/تعطیل استفاده می‌شود. خالی = بدون برد پیش‌فرض.</p>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportProjectBoardMapping" dir="rtl" lang="fa">نگاشت پروژه به برد</label>
+            <input type="text" id="jim-set-reportProjectBoardMapping" class="text" style="max-width:520px;" placeholder="COR=6,MIT=2"/>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">فرمت: <code>PROJKEY=boardId</code> با کاما جدا شود. برای پروژه‌هایی که چند برد دارند مفید است.</p>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportWorkingDaysCsv" dir="rtl" lang="fa">روزهای کاری افزونه (شماره روز هفته 1=یکشنبه .. 7=شنبه)</label>
+            <input type="text" id="jim-set-reportWorkingDaysCsv" class="text" style="max-width:320px;" placeholder="مثلاً 1,2,3,4,5"/>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">شنبه=7، یکشنبه=1، دوشنبه=2، سه‌شنبه=3، چهارشنبه=4، پنجشنبه=5، جمعه=6. خالی = از Time Tracking اشتقاق می‌شود.</p>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportHolidaysCsv" dir="rtl" lang="fa">تعطیلات / روزهای غیرکاری افزونه</label>
+            <input type="text" id="jim-set-reportHolidaysCsv" class="text" style="max-width:520px;" placeholder="2026-03-20,2026-03-21"/>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">تاریخ‌های زیر به‌عنوان روز غیرکاری در محاسبه شمارنده گزارش لحاظ می‌شوند. فرمت ذخیره‌سازی میلادی و به‌صورت YYYY-MM-DD است.</p>
+        </div>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check" dir="rtl" lang="fa">
+                <input type="checkbox" id="jim-set-reportWorkingDaysEnabled"/>
+                فعال بودن شمارش فقط بر اساس روزهای کاری
+            </label>
+        </div>
+        <div class="jim-admin-field">
+            <button id="jim-report-calendar-diag" type="button" class="aui-button" dir="rtl" lang="fa">
+                نمایش تشخیص تقویم کاری (فقط خواندنی)
+            </button>
+            <div id="jim-report-calendar-diag-out" class="jim-admin-hint" style="margin-top:8px;white-space:pre-wrap;"></div>
         </div>
 
         <h3 style="margin-top:20px;">Report Generated Field Mapping / نگاشت اطلاعات تولیدی گزارش به فیلدهای Jira</h3>
@@ -514,6 +562,62 @@
                 <button id="jim-save-branding" type="button" class="aui-button aui-button-primary">Save branding</button>
                 <button id="jim-reset-branding" type="button" class="aui-button">Reset to defaults</button>
             </div>
+        </div>
+    </section>
+
+    <!-- ===== ChatGPT Workspace Agent ===== -->
+    <section class="jim-admin-panel" data-panel="workspaceagent">
+        <h3>ChatGPT Workspace Agent</h3>
+        <p class="jim-admin-hint" dir="rtl" lang="fa">
+            یکپارچه‌سازی دوطرفهٔ چت با «GPT Assistant» (کاربر <code>mcp.bootstrap</code>). با ارسال پیام کاربر به این
+            حساب، پلاگین به‌صورت نامتقارن یک تریگر امن به کانال Workspace Agent می‌فرستد؛ عامل، پیام و دادهٔ Jira را از
+            طریق MCP می‌خواند و پاسخ را دوباره از طریق MCP در همان گفتگو می‌نویسد. توکن فقط نوشتنی است و هرگز بازگردانده نمی‌شود.
+            یکپارچه‌سازی تا زمانی که به‌صراحت فعال نشود، خاموش می‌ماند.
+        </p>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check">
+                <input type="checkbox" id="jim-set-workspaceAgentEnabled"/>
+                Enable Workspace Agent integration / فعال‌سازی
+            </label>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-workspaceAgentTenantId">Tenant id (thread key: corbit:{tenant}:{conversationId})</label>
+            <input type="text" id="jim-set-workspaceAgentTenantId" class="text" style="max-width:240px;" placeholder="default"/>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-workspaceAgentChannelId">Agent channel id (agtch_…)</label>
+            <input type="text" id="jim-set-workspaceAgentChannelId" class="text" style="max-width:360px;" placeholder="agtch_..."/>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-workspaceAgentTriggerUrl">Trigger URL (Workspace Agent API channel)</label>
+            <input type="text" id="jim-set-workspaceAgentTriggerUrl" class="text" style="max-width:520px;" placeholder="https://..."/>
+        </div>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check">
+                <input type="checkbox" id="jim-set-workspaceAgentGroupMention"/>
+                Also trigger on GPT Assistant mentions in group/project chats / تریگر با منشن در گروه‌ها
+            </label>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-workspaceAgentProjectAllowlist">Project allowlist (comma-separated keys, blank = all)</label>
+            <input type="text" id="jim-set-workspaceAgentProjectAllowlist" class="text" style="max-width:360px;"/>
+        </div>
+        <div class="jim-admin-field">
+            <button id="jim-workspace-agent-save" type="button" class="aui-button aui-button-primary">Save Workspace Agent settings</button>
+        </div>
+        <h3 style="margin-top:20px;">Access token (write-only)</h3>
+        <p class="jim-admin-hint">The token is stored write-only, never returned by REST, never shown in HTML/JS, never logged. Set once; use Revoke to delete.</p>
+        <div class="jim-admin-field">
+            <label for="jim-workspace-agent-token">Workspace Agent access token</label>
+            <input type="password" id="jim-workspace-agent-token" class="text" style="max-width:420px;" autocomplete="new-password" placeholder="••••••••"/>
+            <button id="jim-workspace-agent-token-save" type="button" class="aui-button">Set token</button>
+            <button id="jim-workspace-agent-token-revoke" type="button" class="aui-button">Revoke token</button>
+        </div>
+        <h3 style="margin-top:20px;">Diagnostics &amp; test</h3>
+        <div class="jim-admin-field">
+            <button id="jim-workspace-agent-test" type="button" class="aui-button">Send test trigger</button>
+            <button id="jim-workspace-agent-scan" type="button" class="aui-button">Run fallback scan</button>
+            <div id="jim-workspace-agent-status" class="jim-admin-hint" style="margin-top:8px;white-space:pre-wrap;"></div>
         </div>
     </section>
 

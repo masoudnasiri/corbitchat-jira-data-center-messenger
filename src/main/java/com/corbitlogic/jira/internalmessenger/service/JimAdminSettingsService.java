@@ -103,6 +103,42 @@ public interface JimAdminSettingsService {
      */
     public boolean isReportReopenReactivation();
 
+    // --- Working-day counter + report-receiver pause (Report Replies & Working-Days) ---
+
+    /**
+     * Master toggle: the report counter counts only Jira working days. When false
+     * the engine counts every calendar day (pre-working-days behaviour). Default true.
+     */
+    public boolean isReportWorkingDaysEnabled();
+
+    /**
+     * Explicit working weekdays as a CSV of {@link java.util.Calendar#DAY_OF_WEEK}
+     * ints (1=Sun..7=Sat), or "" to derive from Jira time-tracking days-per-week.
+     */
+    public String getReportWorkingDaysCsv();
+
+    /** Optional non-working holidays as a CSV of {@code YYYY-MM-DD}, or "". */
+    public String getReportHolidaysCsv();
+
+    /**
+     * Working-calendar source mode for report scoring: {@code jira_board_first},
+     * {@code plugin_calendar_only}, {@code plugin_calendar_plus_board_holidays} or
+     * {@code time_tracking_fallback} (default, legacy behaviour).
+     */
+    public String getReportWorkingCalendarSource();
+
+    /** Default Jira Software board (rapidView) id to read Working Days from, or 0 when unset. */
+    public long getReportDefaultBoardId();
+
+    /** Project-to-board mapping CSV ({@code PROJKEY=boardId,...}), or "". */
+    public String getReportProjectBoardMapping();
+
+    /**
+     * Master toggle: pause report counting while the issue is assigned to the
+     * report receiver (schedule-approval approver). Default true.
+     */
+    public boolean isReportReceiverPauseEnabled();
+
     // --- Report Applicability Policy (Sprint 12 reportscope) -----------------
     // Additive, backward-compatible scope gate. When disabled (default) the
     // report engine behaves exactly as before. When enabled it restricts which

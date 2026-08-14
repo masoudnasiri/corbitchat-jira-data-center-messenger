@@ -335,6 +335,7 @@ implements LifecycleAware {
                 return null;
             }
             String levelFieldName = reportLevelFieldName();
+            String approverFieldName = reportReceiverFieldName();
             StringBuilder hits = new StringBuilder();
             for (GenericValue item : items) {
                 String field = item.getString("field");
@@ -343,7 +344,12 @@ implements LifecycleAware {
                 }
                 boolean relevant = "status".equalsIgnoreCase(field)
                         || "duedate".equalsIgnoreCase(field)
-                        || (levelFieldName != null && levelFieldName.equalsIgnoreCase(field));
+                        // Assignee change → pause/resume when the report receiver is
+                        // (un)assigned; approver change → the report receiver itself
+                        // changed. Both affect the working-day/pause counter.
+                        || "assignee".equalsIgnoreCase(field)
+                        || (levelFieldName != null && levelFieldName.equalsIgnoreCase(field))
+                        || (approverFieldName != null && approverFieldName.equalsIgnoreCase(field));
                 if (relevant) {
                     if (hits.length() > 0) {
                         hits.append(",");
@@ -362,6 +368,15 @@ implements LifecycleAware {
         try {
             com.atlassian.jira.issue.fields.CustomField cf = JimReportConfig.resolveLevelField();
             return cf != null ? cf.getName() : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** Display name of the report-receiver (approver) field, so a change triggers a report recalc. */
+    private static String reportReceiverFieldName() {
+        try {
+            return com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.approverFieldName();
         } catch (Throwable t) {
             return null;
         }

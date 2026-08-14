@@ -2,16 +2,28 @@
 
 P2 plugin for **Jira Data Center 9.17.x** running in the `jira-srv` Docker container.
 
-- **Workspace:** `/root/jira-dev/jira-issue-chat-panel`
+- **Workspace (ONLY):** `/root/jira-dev/jira-issue-chat-panel-mcp-control-plane`
+- **Do not use:** `/root/jira-dev/jira-issue-chat-panel` (stale; caused the figmachat4 P0 regression)
 - **Plugin key (never change):** `com.corbitlogic.corbitchat.jira.dc` (marketplace branch; internal branch uses `com.corbitlogic.jira.internalmessenger.jira-internal-messenger`)
 - **Jira URL:** `http://185.83.181.194:8080`
 - **Test user:** `m.nasiri` / `Man@782761`
 - **Chat page:** `http://185.83.181.194:8080/plugins/servlet/jim/chat`
+- **Production baseline:** `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat4e-regressionfix`
+  (see `docs/production-baseline.md`)
+
+## Production baseline (frozen 2026-08-14)
+
+Official Production plugin. Restore these before any new phase:
+
+- Assistant report filters (`گزارش‌ها`, `منشن گزارش`, `گزارش‌های دریافتی`)
+- `openConversationAtMessage` chat search jump-to-message
+
+Never reuse versions `figmachat4c`, `figmachat4d`, or `figmachat4e`.
 
 ## Build (offline Maven — always use these flags)
 
 ```bash
-cd /root/jira-dev/jira-issue-chat-panel
+cd /root/jira-dev/jira-issue-chat-panel-mcp-control-plane
 mvn -s /root/.m2/settings.xml -Dmaven.repo.local=/root/maven-repos/atlassian-jira-offline -o clean package
 ```
 
@@ -73,10 +85,16 @@ because the WRM CDN hash changes.
 
 - Direct chat send/receive (Enter sends, Shift+Enter newline)
 - Jira Assistant (SYSTEM conversation, read-only composer bar)
+- Assistant report filters + report event cards (`REPORT_SUBMITTED`,
+  `REPORT_SUBMITTED_TO_ME`, `REPORT_REPLY`, `REPORT_MENTION`)
+- Chat search result click jumps via `openConversationAtMessage`
 - Assignment notification cards (eventType ASSIGNMENT)
 - Mention notification cards (eventType MENTION)
+- Compact sidebar, shared galleries, multi-forward, Saved Messages
+- Copy / Share / Forward / Delete / Save
 - Sidebar unread counts and selected state
 - Attachments upload/download/preview (if present in build)
+- MCP admin, report/calendar admin, Workspace Agent status
 
 ## Key files
 

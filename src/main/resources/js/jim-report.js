@@ -52,6 +52,10 @@
         complianceUnavailable: { en: 'Schedule compliance is not available for this issue', fa: '\u0648\u0636\u0639\u06cc\u062a \u0627\u0646\u0637\u0628\u0627\u0642 \u0632\u0645\u0627\u0646\u200c\u0628\u0646\u062f\u06cc \u0628\u0631\u0627\u06cc \u0627\u06cc\u0646 \u0622\u06cc\u062a\u0645 \u062f\u0631 \u062f\u0633\u062a\u0631\u0633 \u0646\u06cc\u0633\u062a' },
         submitDisabledNoConfig: { en: 'Report submission is disabled because follow-up level or report settings are not configured.', fa: '\u062b\u0628\u062a \u06af\u0632\u0627\u0631\u0634 \u0641\u0639\u0627\u0644 \u0646\u06cc\u0633\u062a\u060c \u0686\u0648\u0646 \u0633\u0637\u062d \u067e\u06cc\u06af\u06cc\u0631\u06cc \u06cc\u0627 \u062a\u0646\u0638\u06cc\u0645\u0627\u062a \u06af\u0632\u0627\u0631\u0634\u200c\u062f\u0647\u06cc \u06a9\u0627\u0645\u0644 \u0646\u06cc\u0633\u062a.' },
         attach: { en: 'Attach file', fa: '\u067e\u06cc\u0648\u0633\u062a \u0641\u0627\u06cc\u0644' },
+        mention: { en: 'Mention', fa: '\u0645\u0646\u0634\u0646' },
+        mentionSearch: { en: 'Search people\u2026', fa: '\u062c\u0633\u062a\u062c\u0648\u06cc \u0627\u0641\u0631\u0627\u062f\u2026' },
+        mentionNoResults: { en: 'No matching people', fa: '\u0641\u0631\u062f\u06cc \u06cc\u0627\u0641\u062a \u0646\u0634\u062f' },
+        repliesLabel: { en: function (n) { return n + ' repl' + (n === 1 ? 'y' : 'ies'); }, fa: function (n) { return faNum(n) + ' \u067e\u0627\u0633\u062e'; } },
         addReaction: { en: 'Add reaction', fa: '\u0627\u0641\u0632\u0648\u062f\u0646 \u0648\u0627\u06a9\u0646\u0634' },
         minRequiredUntilEnd: { en: 'Minimum required reports until end', fa: '\u062d\u062f\u0627\u0642\u0644 \u06af\u0632\u0627\u0631\u0634 \u0645\u0648\u0631\u062f\u0646\u06cc\u0627\u0632 \u062a\u0627 \u067e\u0627\u06cc\u0627\u0646' },
         newestFirst: { en: 'Newest first', fa: '\u062c\u062f\u06cc\u062f\u062a\u0631\u06cc\u0646 \u0627\u0648\u0644' },
@@ -160,6 +164,94 @@
         xhr.send(body ? JSON.stringify(body) : null);
     }
 
+    // User search for @mentions (canonical plugin endpoint; returns username + displayName).
+    function reqUsers(query, cb) {
+        var url = (window.contextPath || '') + '/rest/jim/1.0/users/search?query=' + encodeURIComponent(query);
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.setRequestHeader('X-Atlassian-Token', 'no-check');
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState !== 4) { return; }
+            var data = null;
+            try { data = JSON.parse(xhr.responseText); } catch (e) { data = null; }
+            var users = (data && (data.users || data.results)) || (Array.isArray(data) ? data : []);
+            cb(xhr.status, users || []);
+        };
+        xhr.send(null);
+    }
+
+    // Insert text at the textarea caret (keeps focus + caret after the inserted token).
+    function insertAtCaret(ta, text) {
+        var start = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+        var end = ta.selectionEnd != null ? ta.selectionEnd : ta.value.length;
+        ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
+        var pos = start + text.length;
+        ta.focus();
+        try { ta.setSelectionRange(pos, pos); } catch (e) { /* older browsers */ }
+    }
+
+    /*
+     * Wire a Mention control onto a composer: a "@ Mention" button that toggles an
+     * inline people-search box; picking a user inserts a Jira-compatible
+     * [~username] token at the caret (so the plugin fires the normal mention /
+     * Assistant notification path). Debounced, min 2 chars, click-to-insert.
+     */
+    function wireMention(container, textarea) {
+        var btn = container.querySelector('.jim-report-mention-btn');
+        var box = container.querySelector('.jim-report-mention-box');
+        var input = container.querySelector('.jim-report-mention-input');
+        var list = container.querySelector('.jim-report-mention-list');
+        if (!btn || !box || !input || !list || !textarea) { return; }
+        var timer = null;
+        function close() { box.hidden = true; list.innerHTML = ''; input.value = ''; }
+        btn.addEventListener('click', function () {
+            box.hidden = !box.hidden;
+            if (!box.hidden) { input.focus(); }
+        });
+        input.addEventListener('input', function () {
+            var q = (input.value || '').trim();
+            if (timer) { clearTimeout(timer); }
+            if (q.length < 2) { list.innerHTML = ''; return; }
+            timer = setTimeout(function () {
+                reqUsers(q, function (status, users) {
+                    list.innerHTML = '';
+                    if (!users.length) {
+                        var empty = document.createElement('div');
+                        empty.className = 'jim-report-mention-empty';
+                        empty.textContent = t('mentionNoResults');
+                        list.appendChild(empty);
+                        return;
+                    }
+                    users.slice(0, 8).forEach(function (u) {
+                        var uname = u.username || u.name;
+                        if (!uname) { return; }
+                        var row = document.createElement('button');
+                        row.type = 'button';
+                        row.className = 'jim-report-mention-opt';
+                        row.textContent = (u.displayName || uname) + ' (' + uname + ')';
+                        row.addEventListener('click', function () {
+                            insertAtCaret(textarea, '[~' + uname + '] ');
+                            close();
+                        });
+                        list.appendChild(row);
+                    });
+                });
+            }, 220);
+        });
+        return close;
+    }
+
+    // Mention control markup shared by the submit + reply composers.
+    function mentionMarkup() {
+        return '<span class="jim-report-mention">'
+            + '<button type="button" class="aui-button jim-report-mention-btn">@ ' + esc(t('mention')) + '</button>'
+            + '<span class="jim-report-mention-box" hidden>'
+            + '<input type="text" class="jim-report-mention-input" placeholder="' + esc(t('mentionSearch')) + '"/>'
+            + '<span class="jim-report-mention-list"></span>'
+            + '</span></span>';
+    }
+
     // Multipart POST for attachments (browser sets the Content-Type + boundary).
     function reqForm(path, formData, cb) {
         var xhr = new XMLHttpRequest();
@@ -186,6 +278,14 @@
             TZ_OFFSET_MIN = data.tzOffsetMinutes;
         }
         var html = '';
+        // Report ENFORCEMENT scope: out-of-scope issues still show history + allow
+        // submission, but are not scored. Banner shown above everything else.
+        if (data.enforcementEnabled && data.inEnforcementScope === false) {
+            var oosMsg = LANG === 'fa'
+                ? '\u0627\u06cc\u0646 \u062a\u0633\u06a9 \u062e\u0627\u0631\u062c \u0627\u0632 \u062f\u0627\u0645\u0646\u0647 \u0627\u0631\u0632\u06cc\u0627\u0628\u06cc \u06af\u0632\u0627\u0631\u0634 \u0627\u0633\u062a\u061b \u06af\u0632\u0627\u0631\u0634\u200c\u0647\u0627 \u0646\u0645\u0627\u06cc\u0634 \u062f\u0627\u062f\u0647 \u0645\u06cc\u200c\u0634\u0648\u0646\u062f \u0627\u0645\u0627 \u062f\u0631 \u0634\u0645\u0627\u0631\u0646\u062f\u0647\u0654 \u062a\u0623\u062e\u06cc\u0631 \u0644\u062d\u0627\u0638 \u0646\u0645\u06cc\u200c\u0634\u0648\u0646\u062f.'
+                : 'This task is outside the report evaluation scope; reports are shown but not counted for delay/scoring.';
+            html += '<div class="jim-report-notice jim-report-outofscope">' + esc(oosMsg) + '</div>';
+        }
         if (!data.configured) {
             // Graceful state: no follow-up level / fields. Show a clear warning,
             // still list existing report comments, and (if the admin allows it)
@@ -234,6 +334,7 @@
                 + '<div class="jim-report-composer-actions">'
                 + '<label class="aui-button jim-report-attach-btn">' + esc(t('attach'))
                 + '<input type="file" class="jim-report-file" style="display:none"/></label>'
+                + mentionMarkup()
                 + '<span class="jim-report-file-name"></span>'
                 + '<button type="button" class="aui-button jim-report-cancel">' + esc(t('cancel')) + '</button>'
                 + '<button type="button" class="aui-button aui-button-primary jim-report-send">' + esc(t('send')) + '</button>'
@@ -289,6 +390,10 @@
     function statusBadge(status) {
         if (status === 0) { return '<span class="jim-report-badge jim-report-badge-valid">' + esc(t('stValid')) + '</span>'; }
         if (status === 1) { return '<span class="jim-report-badge jim-report-badge-dup">' + esc(t('stDup')) + '</span>'; }
+        if (status === 4) {
+            var oos = LANG === 'fa' ? '\u062e\u0627\u0631\u062c \u0627\u0632 \u062f\u0627\u0645\u0646\u0647' : 'Out of scope';
+            return '<span class="jim-report-badge jim-report-badge-out">' + esc(oos) + '</span>';
+        }
         return '<span class="jim-report-badge jim-report-badge-out">' + esc(t('stOut')) + '</span>';
     }
 
@@ -305,6 +410,10 @@
         h += '</div>';
         h += '<div class="jim-report-body">' + bodyHtml + '</div>';
         h += renderReactionBar(item);
+        // Replies (real Jira comments that quote this report; never counted). Filled
+        // after render from /report/{key}/replies/{id} when repliesCount > 0.
+        h += '<div class="jim-report-replies" data-report-id="' + esc(item.id) + '" data-replies-count="'
+            + esc(item.repliesCount || 0) + '"></div>';
         if (canComment) {
             h += '<div class="jim-report-item-actions"><button type="button" class="jim-report-reply-btn">' + esc(t('reply')) + '</button></div>';
             h += '<div class="jim-report-reply-composer" hidden>'
@@ -312,6 +421,7 @@
                 + '<div class="jim-report-composer-actions">'
                 + '<label class="aui-button jim-report-attach-btn">' + esc(t('attach'))
                 + '<input type="file" class="jim-report-reply-file" style="display:none"/></label>'
+                + mentionMarkup()
                 + '<span class="jim-report-reply-file-name"></span>'
                 + '<button type="button" class="aui-button jim-report-reply-cancel">' + esc(t('cancel')) + '</button>'
                 + '<button type="button" class="aui-button aui-button-primary jim-report-reply-send">' + esc(t('send')) + '</button>'
@@ -319,6 +429,64 @@
         }
         h += '</div>';
         return h;
+    }
+
+    // Raw created millis for a reply DTO (commentMap may send createdMs or ISO created).
+    function replyTs(r) {
+        if (r == null) { return 0; }
+        if (typeof r.createdMs === 'number') { return r.createdMs; }
+        if (r.created != null) {
+            var n = Number(r.created);
+            if (!isNaN(n)) { return n; }
+            var p = Date.parse(r.created);
+            return isNaN(p) ? 0 : p;
+        }
+        return 0;
+    }
+
+    function renderOneReply(r) {
+        var author = (r.author && r.author.displayName) || '';
+        var avatar = (r.author && r.author.avatarUrl) || '';
+        var bodyHtml = r.renderedBody || ('<p>' + esc(r.body || '') + '</p>');
+        var h = '<div class="jim-report-reply">';
+        h += '<div class="jim-report-item-head">';
+        if (avatar) { h += '<img class="jim-report-avatar" src="' + esc(avatar) + '" alt=""/>'; }
+        h += '<span class="jim-report-author">' + esc(author) + '</span>';
+        h += '<span class="jim-report-time">' + fmtDateTime(replyTs(r)) + '</span>';
+        h += '</div>';
+        h += '<div class="jim-report-body">' + bodyHtml + '</div>';
+        var atts = r.attachments || [];
+        if (atts.length) {
+            h += '<div class="jim-report-reply-atts">';
+            for (var i = 0; i < atts.length; i++) {
+                var a = atts[i];
+                var url = a.downloadUrl || a.url || '';
+                var name = a.fileName || a.name || 'file';
+                h += url
+                    ? '<a class="jim-report-att" href="' + esc((window.contextPath || '') + url) + '" target="_blank" rel="noopener">\uD83D\uDCCE ' + esc(name) + '</a>'
+                    : '<span class="jim-report-att">\uD83D\uDCCE ' + esc(name) + '</span>';
+            }
+            h += '</div>';
+        }
+        h += '</div>';
+        return h;
+    }
+
+    function renderRepliesInto(container, replies) {
+        if (!container) { return; }
+        if (!replies || !replies.length) { container.innerHTML = ''; return; }
+        var h = '<div class="jim-report-replies-head">' + esc(t('repliesLabel')(replies.length)) + '</div>';
+        h += '<div class="jim-report-replies-list">';
+        for (var i = 0; i < replies.length; i++) { h += renderOneReply(replies[i]); }
+        h += '</div>';
+        container.innerHTML = h;
+    }
+
+    // Lazily load + render the replies for one report item (only when it has some).
+    function loadReplies(issueKey, cid, container) {
+        req('GET', '/' + encodeURIComponent(issueKey) + '/replies/' + encodeURIComponent(cid), null, function (status, resp) {
+            if (status === 200 && resp && resp.replies) { renderRepliesInto(container, resp.replies); }
+        });
     }
 
     function renderReactionBar(item) {
@@ -372,6 +540,7 @@
                 if (!composer.hidden) { composer.querySelector('textarea').focus(); }
             });
             composer.querySelector('.jim-report-cancel').addEventListener('click', function () { composer.hidden = true; });
+            wireMention(composer, composer.querySelector('textarea'));
             var fileInput = composer.querySelector('.jim-report-file');
             var fileName = composer.querySelector('.jim-report-file-name');
             if (fileInput && fileName) {
@@ -420,6 +589,11 @@
                 var cid = itemEl.getAttribute('data-comment-id');
                 // Reactions (available to any viewer; server re-checks browse).
                 bindReactions(root, data, issueKey, itemEl, cid);
+                // Render this report's replies (real Jira comments) when it has any.
+                var repliesBox = itemEl.querySelector('.jim-report-replies');
+                if (repliesBox && Number(repliesBox.getAttribute('data-replies-count')) > 0) {
+                    loadReplies(issueKey, cid, repliesBox);
+                }
                 var replyBtn = itemEl.querySelector('.jim-report-reply-btn');
                 var rc = itemEl.querySelector('.jim-report-reply-composer');
                 if (!replyBtn || !rc) { return; }
@@ -428,6 +602,7 @@
                     if (!rc.hidden) { rc.querySelector('textarea').focus(); }
                 });
                 rc.querySelector('.jim-report-reply-cancel').addEventListener('click', function () { rc.hidden = true; });
+                wireMention(rc, rc.querySelector('textarea'));
                 var rFile = rc.querySelector('.jim-report-reply-file');
                 var rFileName = rc.querySelector('.jim-report-reply-file-name');
                 if (rFile && rFileName) {

@@ -3,32 +3,35 @@
 #jim-messenger-app.jim-chat-shell,
 #jim-messenger-app.jim-messenger,
 .jim-chat-shell#jim-messenger-app {
+    /* Hub Figma tokens (fyCTz4B2izGsUFSsFXV13K, frames in /figma) */
     --jim-bg: #ffffff;
-    --jim-surface: #f7f8fa;
-    --jim-panel-bg: #f4f5f7;
+    --jim-surface: #f7f7f7;
+    --jim-panel-bg: #fbfbfb;
     --jim-sidebar-bg: #ffffff;
-    --jim-border: #dfe1e6;
-    --jim-border-subtle: #ebecf0;
-    --jim-text: #172b4d;
-    --jim-text-secondary: #5e6c84;
-    --jim-muted: #6b778c;
-    --jim-brand: #0052cc;
-    --jim-brand-hover: #0747a6;
-    --jim-brand-subtle: #e9f2ff;
-    --jim-bubble-own: #0c66e4;
-    --jim-bubble-own-border: #0c66e4;
-    --jim-bubble-own-text: #ffffff;
-    --jim-bubble-own-muted: rgba(255, 255, 255, 0.78);
+    --jim-border: #eeeeee;
+    --jim-border-subtle: #eeeeee;
+    --jim-text: #141414;
+    --jim-text-secondary: #4c4c4c;
+    --jim-muted: #797979;
+    --jim-brand: #01ba9e;
+    --jim-brand-hover: #004a3f;
+    --jim-brand-subtle: #e6f8f5;
+    --jim-bubble-own: #eeeeee;
+    --jim-bubble-own-border: #eeeeee;
+    --jim-bubble-own-text: #141414;
+    --jim-bubble-own-muted: #797979;
     --jim-bubble-other: #ffffff;
-    --jim-bubble-other-border: #dfe1e6;
-    --jim-selected: #e9f2ff;
-    --jim-hover: #ebecf0;
-    --jim-error: #bf2600;
-    --jim-error-bg: #ffebe6;
-    --jim-error-border: #ff8f73;
-    --jim-success: #006644;
-    --jim-warning: #974f0c;
-    --jim-info: #0052cc;
+    --jim-bubble-other-border: #eeeeee;
+    --jim-selected: #e6f8f5;
+    --jim-hover: #f7f7f7;
+    --jim-error: #cf1322;
+    --jim-error-bg: #fff1f0;
+    --jim-error-border: #ffa39e;
+    --jim-success: #16a163;
+    --jim-warning: #d46b08;
+    --jim-info: #1677ff;
+    --jim-focus: #01ba9e;
+    --jim-focus-ring: rgba(1, 186, 158, 0.22);
 
     box-sizing: border-box;
     display: flex;
@@ -42,11 +45,11 @@
     margin: 0 auto;
     background: var(--jim-bg);
     border: 1px solid var(--jim-border);
-    border-radius: 10px;
+    border-radius: 12px;
     overflow: hidden;
     position: relative;
-    box-shadow: 0 1px 3px rgba(9, 30, 66, 0.06);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+    box-shadow: 0 1px 3px rgba(20, 20, 20, 0.06);
+    font-family: Vazirmatn, "IRANSansXFaNum", -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, sans-serif;
     color: var(--jim-text);
 }
 
@@ -72,7 +75,7 @@
 
 #jim-messenger-app .jim-sidebar-header {
     flex-shrink: 0;
-    padding: 12px 14px 10px;
+    padding: 8px 12px 6px;
     border-bottom: 1px solid var(--jim-border-subtle);
     background: var(--jim-bg);
 }
@@ -152,8 +155,8 @@
     border-radius: 4px;
 }
 #jim-messenger-app .jim-settings-btn:hover {
-    background: #f4f5f7;
-    color: #172b4d;
+    background: var(--jim-hover);
+    color: var(--jim-text);
 }
 #jim-messenger-app .jim-settings-label {
     display: block;
@@ -408,7 +411,7 @@
 }
 #jim-messenger-app .jim-system-card-ack-btn:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
 }
 
 /* Lazy-load older messages button. Sits at the top of the message list
@@ -592,7 +595,7 @@
 }
 /* Outgoing (blue/teal) bubbles: white link is readable and clearly a link. */
 #jim-messenger-app .jim-message-row-own .jim-message-text .jim-link {
-    color: #ffffff;
+    color: var(--jim-brand-hover);
 }
 
 /* Sprint 12: tappable phone numbers (tel:) inside message bubbles. */
@@ -607,7 +610,7 @@
     text-decoration-style: solid;
 }
 #jim-messenger-app .jim-message-row-own .jim-message-text .jim-phone-link {
-    color: #ffffff;
+    color: var(--jim-brand-hover);
 }
 
 /* Sprint 12: Corbit Easter egg — a premium luminous shimmer on trigger words.
@@ -677,12 +680,16 @@
     z-index: 6;
     display: flex;
     align-items: center;
-    gap: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
     padding: 8px 12px;
     margin-bottom: 8px;
     background: #0d6e6e;
     color: #ffffff;
     border-radius: 8px;
+}
+#jim-messenger-app.jim-lang-fa .jim-selection-toolbar {
+    direction: rtl;
 }
 #jim-messenger-app .jim-selection-count {
     flex: 1 1 auto;
@@ -806,34 +813,76 @@
     line-height: 1.35;
 }
 
+#jim-messenger-app .jim-sidebar-search-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    padding: 6px 10px 4px;
+    background: var(--jim-bg);
+}
+
+#jim-messenger-app .jim-sidebar-search-row .jim-sidebar-search,
+#jim-messenger-app .jim-sidebar-search-row .jim-search {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border-bottom: 0;
+}
+
+#jim-messenger-app .jim-sidebar-icon-btn {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 999px;
+    background: var(--jim-surface);
+    color: var(--jim-muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+
+#jim-messenger-app .jim-sidebar-icon-btn[aria-expanded="true"],
+#jim-messenger-app .jim-sidebar-icon-btn:hover {
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand-hover);
+    border-color: var(--jim-brand);
+}
+
 #jim-messenger-app .jim-sidebar-search,
 #jim-messenger-app .jim-search {
     position: relative;
     flex-shrink: 0;
-    padding: 10px 12px;
+    padding: 6px 10px;
     background: var(--jim-bg);
     border-bottom: 1px solid var(--jim-border-subtle);
+}
+
+#jim-messenger-app .jim-sidebar-search.jim-msg-search {
+    padding-top: 0;
 }
 
 #jim-messenger-app .jim-sidebar-search .jim-search-input,
 #jim-messenger-app .jim-search-input {
     width: 100%;
-    padding: 9px 12px;
+    padding: 6px 10px;
     border: 1px solid var(--jim-border-subtle);
-    border-radius: 8px;
-    background: var(--jim-surface);
+    border-radius: 999px;
+    background: var(--jim-bg);
     color: var(--jim-text);
     font-size: 13px;
-    line-height: 20px;
+    line-height: 18px;
     transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 #jim-messenger-app .jim-sidebar-search .jim-search-input:focus,
 #jim-messenger-app .jim-search-input:focus {
     outline: none;
-    border-color: #4c9aff;
+    border-color: var(--jim-focus);
     background: var(--jim-bg);
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.18);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
 }
 
 #jim-messenger-app .jim-sidebar-search .jim-search-input::placeholder,
@@ -865,8 +914,9 @@
 #jim-messenger-app .jim-conversation-list {
     flex: 1;
     overflow-y: auto;
-    padding: 4px 8px 10px;
+    padding: 0;
     min-height: 0;
+    background: var(--jim-bg);
 }
 
 #jim-messenger-app .jim-sidebar-section-label {
@@ -894,12 +944,13 @@
     align-items: center;
     gap: 10px;
     width: 100%;
-    min-height: 60px;
-    margin-bottom: 2px;
-    padding: 8px 10px 8px 8px;
+    min-height: 56px;
+    margin-bottom: 0;
+    padding: 8px 12px;
     border: 0;
-    border-radius: 10px;
-    border-inline-start: 3px solid transparent;
+    border-radius: 0;
+    border-bottom: 1px solid var(--jim-border);
+    border-inline-start: 0;
     background: transparent;
     text-align: start;
     cursor: pointer;
@@ -919,16 +970,16 @@
 #jim-messenger-app .jim-search-result-item:focus {
     background: var(--jim-hover);
     outline: none;
-    box-shadow: inset 0 0 0 1px rgba(76, 154, 255, 0.35);
+    box-shadow: inset 0 0 0 1px var(--jim-focus-ring);
 }
 
 #jim-messenger-app .jim-conversation-item-selected {
     background: var(--jim-selected) !important;
-    border-inline-start-color: var(--jim-brand);
+    border-inline-start: 0;
 }
 
 #jim-messenger-app .jim-assistant-item {
-    background: rgba(222, 235, 255, 0.35);
+    background: rgba(1, 186, 158, 0.08);
 }
 
 #jim-messenger-app .jim-assistant-item:hover,
@@ -944,15 +995,15 @@
 #jim-messenger-app .jim-assistant-icon {
     width: 40px;
     height: 40px;
-    border-radius: 10px;
-    background: linear-gradient(145deg, #0747a6, #2684ff);
+    border-radius: 50%;
+    background: linear-gradient(145deg, #004a3f, #01ba9e);
     color: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 18px;
     flex-shrink: 0;
-    box-shadow: 0 2px 6px rgba(0, 82, 204, 0.22);
+    box-shadow: 0 2px 6px rgba(1, 186, 158, 0.22);
 }
 
 #jim-messenger-app .jim-conversation-main {
@@ -1017,8 +1068,8 @@
 
 /* Subtle light-blue background when the last message was sent by me. */
 #jim-messenger-app .jim-conversation-preview-own {
-    background: #e9f2ff;
-    color: #0747a6;
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand-hover);
 }
 
 /* Subtle light-gray background when the last message was someone else's. */
@@ -1053,9 +1104,9 @@
     display: inline-flex;
     align-items: center;
     padding: 2px 7px;
-    border-radius: 4px;
-    background: #deebff;
-    color: #0747a6;
+    border-radius: 8px;
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand-hover);
     font-size: 9px;
     font-weight: 800;
     text-transform: uppercase;
@@ -1068,7 +1119,7 @@
     height: 18px;
     padding: 0 5px;
     border-radius: 9px;
-    background: #de350b;
+    background: var(--jim-brand);
     color: #ffffff;
     font-size: 10px;
     font-weight: 700;
@@ -1163,9 +1214,9 @@
 #jim-messenger-app .jim-chat-header-assistant-avatar {
     width: 44px;
     height: 44px;
-    border-radius: 12px;
-    background: linear-gradient(145deg, #0747a6, #2684ff);
-    box-shadow: 0 2px 6px rgba(0, 82, 204, 0.22);
+    border-radius: 50%;
+    background: linear-gradient(145deg, #004a3f, #01ba9e);
+    box-shadow: 0 2px 6px rgba(1, 186, 158, 0.22);
 }
 
 #jim-messenger-app .jim-chat-header-assistant-icon {
@@ -1207,9 +1258,9 @@
     display: inline-flex;
     align-items: center;
     padding: 2px 7px;
-    border-radius: 4px;
-    background: #deebff;
-    color: #0747a6;
+    border-radius: 8px;
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand-hover);
     font-size: 9px;
     font-weight: 800;
     text-transform: uppercase;
@@ -1281,7 +1332,7 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: #0747a6;
+    color: var(--jim-brand-hover);
 }
 
 #jim-messenger-app .jim-pinned-banner-unpin {
@@ -1292,7 +1343,7 @@
     border: 0;
     border-radius: 6px;
     background: transparent;
-    color: #0747a6;
+    color: var(--jim-brand-hover);
     font-size: 16px;
     line-height: 1;
     cursor: pointer;
@@ -1319,17 +1370,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 14px;
+    gap: 0;
     margin: 10px 0 16px;
     text-align: center;
 }
 
 #jim-messenger-app .jim-date-divider::before,
 #jim-messenger-app .jim-date-divider::after {
-    content: "";
-    flex: 1 1 auto;
-    height: 1px;
-    background: var(--jim-border);
+    content: none;
 }
 
 #jim-messenger-app .jim-date-divider-text {
@@ -1338,6 +1386,10 @@
     color: var(--jim-muted);
     font-size: 12px;
     font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: var(--jim-bg);
+    border: 1px solid var(--jim-border);
 }
 
 #jim-messenger-app .jim-message-row {
@@ -1423,10 +1475,10 @@
     max-width: 100%;
     width: fit-content;
     padding: 10px 14px;
-    border-radius: 14px;
+    border-radius: 18px;
     background: var(--jim-bubble-other);
     border: 1px solid var(--jim-bubble-other-border);
-    box-shadow: 0 1px 2px rgba(9, 30, 66, 0.05);
+    box-shadow: 0 1px 2px rgba(20, 20, 20, 0.04);
 }
 
 #jim-messenger-app .jim-message-row-own .jim-message-bubble {
@@ -1452,8 +1504,8 @@
 }
 
 #jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-reply-preview {
-    background: rgba(255, 255, 255, 0.18);
-    border-inline-start-color: rgba(255, 255, 255, 0.75);
+    background: rgba(20, 20, 20, 0.06);
+    border-inline-start-color: var(--jim-brand);
 }
 
 #jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-reply-preview-author {
@@ -1544,13 +1596,13 @@
 }
 
 #jim-messenger-app .jim-message-row-own .jim-message-bubble-time {
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--jim-bubble-own-muted);
     opacity: 1;
 }
 
 #jim-messenger-app .jim-message-row-own .jim-message-meta {
     justify-content: flex-end;
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--jim-bubble-own-muted);
 }
 
 /* System notification cards */
@@ -1794,8 +1846,8 @@
 
 #jim-messenger-app.jim-chat-shell #jim-composer.jim-composer textarea#jim-message-input.jim-composer-input:focus {
     outline: none;
-    border-color: #4c9aff;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.18);
+    border-color: var(--jim-focus);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
 }
 
 #jim-messenger-app.jim-chat-shell #jim-composer.jim-composer button#jim-send-button.jim-send-button {
@@ -1806,7 +1858,7 @@
     padding: 0;
     border: 0;
     border-radius: 10px;
-    background: #0c66e4;
+    background: var(--jim-brand);
     color: #ffffff;
     font: inherit;
     font-size: 14px;
@@ -1824,12 +1876,12 @@
 }
 
 #jim-messenger-app.jim-chat-shell #jim-composer.jim-composer button#jim-send-button.jim-send-button:hover:not(:disabled) {
-    background: #0055cc;
+    background: var(--jim-brand-hover);
 }
 
 #jim-messenger-app.jim-chat-shell #jim-composer.jim-composer button#jim-send-button.jim-send-button:focus {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
 }
 
 #jim-messenger-app.jim-chat-shell #jim-composer.jim-composer button#jim-send-button.jim-send-button:disabled {
@@ -1840,7 +1892,7 @@
 }
 
 #jim-messenger-app .jim-avatar {
-    border-radius: 10px;
+    border-radius: 50%;
     object-fit: cover;
     flex-shrink: 0;
 }
@@ -1859,7 +1911,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: #6554c0;
+    border-radius: 50%;
+    background: var(--jim-brand);
     color: #ffffff;
     font-size: 13px;
     font-weight: 700;
@@ -1918,7 +1971,7 @@
 
 #jim-messenger-app .jim-retry-button:focus {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
 }
 
 #jim-messenger-app .jim-error-banner {
@@ -2019,7 +2072,7 @@
 
 #jim-messenger-app .jim-composer-icon-button:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
 }
 
 #jim-messenger-app .jim-composer-icon-button:disabled {
@@ -2086,7 +2139,7 @@
 }
 
 #jim-messenger-app .jim-mention-all:hover {
-    background: #deebff;
+    background: #c8f3ec;
 }
 
 #jim-messenger-app .jim-mention-all-icon {
@@ -2228,7 +2281,7 @@
 #jim-messenger-app .jim-mention {
     color: var(--jim-brand);
     font-weight: 600;
-    background: rgba(12, 102, 228, 0.1);
+    background: var(--jim-brand-subtle);
     border-radius: 4px;
     padding: 0 3px;
 }
@@ -2238,15 +2291,14 @@
     background: rgba(255, 171, 0, 0.25);
 }
 
-/* Mentions inside own bubbles sit on the brand-blue background, so invert the chip */
 #jim-messenger-app .jim-message-row-own .jim-mention {
-    color: #ffffff;
+    color: var(--jim-brand-hover);
     font-weight: 700;
-    background: rgba(255, 255, 255, 0.26);
+    background: rgba(1, 186, 158, 0.16);
 }
 
 #jim-messenger-app .jim-message-row-own .jim-mention-self {
-    color: #172b4d;
+    color: #7f5f01;
     background: #ffd66e;
 }
 
@@ -2418,8 +2470,8 @@
 }
 
 #jim-messenger-app .jim-issue-status-indeterminate {
-    background: #deebff;
-    color: #0747a6;
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand-hover);
 }
 
 #jim-messenger-app .jim-issue-status-done {
@@ -2514,15 +2566,16 @@
     flex-shrink: 0;
     display: flex;
     gap: 4px;
-    padding: 0 12px 8px;
+    padding: 2px 10px 6px;
+    background: var(--jim-bg);
 }
 
 #jim-messenger-app .jim-sidebar-tab {
     flex: 1;
-    padding: 6px 8px;
+    padding: 5px 6px;
     border: 0;
-    border-radius: 6px;
-    background: transparent;
+    border-radius: 999px;
+    background: var(--jim-surface);
     color: var(--jim-muted);
     font: inherit;
     font-size: 12px;
@@ -2538,8 +2591,8 @@
 }
 
 #jim-messenger-app .jim-sidebar-tab.is-active {
-    background: var(--jim-brand-subtle);
-    color: var(--jim-brand);
+    background: var(--jim-brand);
+    color: #ffffff;
 }
 
 #jim-messenger-app .jim-conversation-group-mark {
@@ -2550,47 +2603,142 @@
 #jim-messenger-app .jim-sidebar-actions {
     flex-shrink: 0;
     display: flex;
+    flex-wrap: nowrap;
     gap: 6px;
-    padding: 8px 12px;
+    padding: 6px 10px;
     border-top: 1px solid var(--jim-border-subtle);
     background: var(--jim-bg);
 }
 
+#jim-messenger-app .jim-sidebar-action-btn,
 #jim-messenger-app .jim-new-conversation {
     flex: 1;
     min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    padding: 8px 10px;
-    border: 1px dashed var(--jim-border);
+    padding: 6px 8px;
+    border: 0;
     border-radius: 8px;
-    background: transparent;
-    color: var(--jim-brand);
+    background: var(--jim-brand);
+    color: #ffffff;
     font: inherit;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     cursor: pointer;
     text-align: center;
     transition: background 0.12s ease, border-color 0.12s ease;
 }
 
+#jim-messenger-app .jim-sidebar-action-icon {
+    font-size: 13px;
+    line-height: 1;
+}
+
+#jim-messenger-app .jim-sidebar-action-btn:hover,
 #jim-messenger-app .jim-new-conversation:hover {
+    background: var(--jim-brand-hover);
+    border-color: var(--jim-brand-hover);
+}
+
+#jim-messenger-app .jim-sidebar-action-btn.jim-new-group,
+#jim-messenger-app .jim-new-conversation.jim-new-group,
+#jim-messenger-app .jim-sidebar-action-btn.jim-saved-messages,
+#jim-messenger-app .jim-new-conversation.jim-saved-messages {
+    flex: 1;
     background: var(--jim-brand-subtle);
-    border-color: var(--jim-brand);
+    color: var(--jim-brand-hover);
+}
+
+#jim-messenger-app .jim-sidebar-action-btn.jim-new-group:hover,
+#jim-messenger-app .jim-new-conversation.jim-new-group:hover,
+#jim-messenger-app .jim-sidebar-action-btn.jim-saved-messages:hover,
+#jim-messenger-app .jim-new-conversation.jim-saved-messages:hover {
+    background: #c8f3ec;
+}
+
+#jim-messenger-app .jim-conversation-self-mark {
+    margin-inline-end: 4px;
 }
 
 #jim-messenger-app .jim-new-conversation:focus {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
+}
+
+#jim-messenger-app .jim-message-menu {
+    position: fixed;
+    z-index: 80;
+    min-width: 196px;
+    max-width: 260px;
+    padding: 6px;
+    border: 1px solid var(--jim-border);
+    border-radius: 10px;
+    background: var(--jim-bg);
+    box-shadow: 0 10px 28px rgba(9, 30, 66, 0.18);
+}
+
+#jim-messenger-app .jim-message-menu-item {
+    display: block;
+    width: 100%;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--jim-text);
+    font: inherit;
+    font-size: 13px;
+    text-align: start;
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-message-menu-item:hover,
+#jim-messenger-app .jim-message-menu-item:focus {
+    background: var(--jim-hover);
+}
+
+#jim-messenger-app .jim-message-menu-item[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+#jim-messenger-app .jim-selection-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+#jim-messenger-app.jim-lang-fa .jim-selection-toolbar {
+    direction: rtl;
+}
+
+#jim-messenger-app .jim-selection-toolbar button {
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand-hover);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-selection-toolbar button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 #jim-messenger-app .jim-sidebar-footer {
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
+    gap: 8px;
+    padding: 6px 12px;
     border-top: 1px solid var(--jim-border-subtle);
     background: var(--jim-bg);
 }
@@ -2668,7 +2816,7 @@
 }
 #jim-messenger-app .jim-push-status-link:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
 }
 #jim-messenger-app .jim-push-status-link.jim-push-status-on {
     color: #006644;
@@ -2839,7 +2987,7 @@
 }
 
 #jim-messenger-app .jim-group-chip-remove:hover {
-    background: rgba(12, 102, 228, 0.18);
+    background: rgba(1, 186, 158, 0.18);
 }
 
 #jim-messenger-app .jim-modal-actions {
@@ -2866,13 +3014,14 @@
 }
 
 #jim-messenger-app .jim-modal-button-primary {
-    border-color: #0c66e4;
-    background: #0c66e4;
+    border-color: var(--jim-brand);
+    background: var(--jim-brand);
     color: #ffffff;
 }
 
 #jim-messenger-app .jim-modal-button-primary:hover:not(:disabled) {
-    background: #0055cc;
+    background: var(--jim-brand-hover);
+    border-color: var(--jim-brand-hover);
 }
 
 #jim-messenger-app .jim-modal-button-primary:disabled {
@@ -3504,7 +3653,7 @@
 
 @keyframes jim-message-highlight {
     0% {
-        background: rgba(76, 154, 255, 0.22);
+        background: var(--jim-focus-ring);
     }
     100% {
         background: transparent;
@@ -3552,12 +3701,12 @@
 
 #jim-messenger-app .jim-reaction-chip-mine {
     background: var(--jim-brand-subtle);
-    border-color: #85b8ff;
+    border-color: #01ba9e;
     color: var(--jim-brand);
 }
 
 #jim-messenger-app .jim-reaction-chip-mine:hover {
-    background: #deebff;
+    background: #c8f3ec;
 }
 
 #jim-messenger-app .jim-reaction-count {
@@ -3872,8 +4021,8 @@
 #jim-messenger-app.jim-chat-page .jim-conversation-row.is-selected,
 #jim-messenger-app.jim-chat-page .jim-conversation-item-selected {
     background: var(--jim-selected);
-    border-inline-start-color: var(--jim-brand);
-    box-shadow: inset 0 0 0 1px rgba(0, 82, 204, 0.08);
+    border-inline-start: 0;
+    box-shadow: none;
 }
 
 #jim-messenger-app.jim-chat-page .jim-conversation-preview {
@@ -4021,8 +4170,8 @@
 }
 
 #jim-messenger-app.jim-chat-page .jim-composer-surface:focus-within {
-    border-color: #4c9aff;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.18);
+    border-color: var(--jim-focus);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
 }
 
 #jim-messenger-app.jim-chat-page #jim-composer.jim-composer .jim-composer-surface .jim-composer-row {
@@ -4278,8 +4427,8 @@
 /* ===== Assistant unread (NEW) cards ===== */
 
 #jim-messenger-app .jim-system-card.jim-system-card-new {
-    border-color: #0c66e4;
-    box-shadow: 0 0 0 1px rgba(12, 102, 228, 0.35), 0 1px 3px rgba(9, 30, 66, 0.12);
+    border-color: var(--jim-brand);
+    box-shadow: 0 0 0 1px rgba(1, 186, 158, 0.35), 0 1px 3px rgba(20, 20, 20, 0.08);
 }
 
 #jim-messenger-app .jim-system-card-new-badge {
@@ -4291,7 +4440,7 @@
     font-weight: 700;
     letter-spacing: 0.4px;
     color: #ffffff;
-    background: #0c66e4;
+    background: var(--jim-brand);
     border-radius: 8px;
 }
 
@@ -4390,4 +4539,113 @@
 
 #jim-messenger-app .jim-license-banner-text {
     flex: 1 1 auto;
+}
+
+#jim-messenger-app .jim-shared-modal {
+    width: min(560px, 96vw);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#jim-messenger-app .jim-shared-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+#jim-messenger-app .jim-shared-tabs {
+    display: flex;
+    gap: 6px;
+    margin: 8px 0 12px;
+}
+
+#jim-messenger-app .jim-shared-tab {
+    flex: 1;
+    border: 0;
+    border-radius: 999px;
+    padding: 8px 10px;
+    background: var(--jim-surface-subtle, #f2f3f5);
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-shared-tab.is-active {
+    background: var(--jim-brand);
+    color: #fff;
+}
+
+#jim-messenger-app .jim-shared-body {
+    overflow: auto;
+    min-height: 160px;
+}
+
+#jim-messenger-app .jim-shared-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#jim-messenger-app .jim-shared-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 12px;
+    background: var(--jim-bg);
+}
+
+#jim-messenger-app .jim-shared-row-title {
+    font-weight: 600;
+}
+
+#jim-messenger-app .jim-shared-row-url,
+#jim-messenger-app .jim-shared-row-meta {
+    font-size: 12px;
+    color: var(--jim-text-secondary, #4c4c4c);
+}
+
+#jim-messenger-app .jim-shared-row-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-end;
+}
+
+#jim-messenger-app .jim-shared-action,
+#jim-messenger-app .jim-shared-more,
+#jim-messenger-app .jim-shared-retry {
+    border: 0;
+    background: transparent;
+    color: var(--jim-brand);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+#jim-messenger-app .jim-shared-media-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+
+#jim-messenger-app .jim-shared-media-cell {
+    aspect-ratio: 1;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--jim-surface-subtle, #f2f3f5);
+}
+
+#jim-messenger-app .jim-shared-media-cell img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }

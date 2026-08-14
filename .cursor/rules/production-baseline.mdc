@@ -1,0 +1,27 @@
+---
+description: Official Production plugin baseline and the only allowed source tree
+alwaysApply: true
+---
+
+# Production baseline — do not drift
+
+Official Production plugin:
+
+`1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat4e-regressionfix`
+
+Source of truth (only):
+
+`/root/jira-dev/jira-issue-chat-panel-mcp-control-plane`
+
+Never build, package, or deploy plugin work from:
+
+`/root/jira-dev/jira-issue-chat-panel`
+
+or any `reportreplies-workdays1` / `feature/reply-composer-attachments` lineage.
+
+P0 behaviors that must remain in every future web build:
+
+- Assistant report filters (`reports`, `reportMentions`, `reportsReceived`)
+- `openConversationAtMessage` for chat search jump-to-message
+
+Details: `docs/production-baseline.md`

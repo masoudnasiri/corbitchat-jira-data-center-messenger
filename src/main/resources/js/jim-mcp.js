@@ -55,8 +55,17 @@
                    ' &middot; read ' + (sv.read || 0) + ' &middot; write ' + (sv.write || 0) +
                    ' &middot; destructive ' + (sv.destructive || 0) +
                    ' &middot; schema ' + (sv.schemaVersion || 3) +
-                   ' &middot; hash ' + esc((sv.contractHash || '').substring(0, 8)))
+                   ' &middot; served hash ' + esc(sv.contractHash || ''))
                 : ('unavailable (' + esc(sv.reason || 'no heartbeat') + ')')) + '</div>' +
+            '<div class="jim-mcp-counts">Expected served hash ' + esc(s.expectedServedContractHash || s.contractHash) +
+            (sv.available && sv.contractHash
+                ? (String(sv.contractHash) === String(s.expectedServedContractHash || '')
+                    ? ' <b>(matches plugin)</b>'
+                    : (String(sv.contractHash).indexOf(String(s.contractHash || '')) === 0
+                        ? ' <b>(prefix matches)</b>'
+                        : ' <b style="color:#de350b">(DIFFERS from plugin expectation)</b>'))
+                : '') +
+            ' &middot; Jira upstream seed ' + esc(s.jiraUpstreamSeed || '') + '</div>' +
             // internal policy registry — NOT the served catalog
             '<div class="jim-mcp-counts" style="opacity:.75">Policy registry (internal, not served): ' +
             (c.total || 0) + ' entries &middot; available ' + (c.available || 0) +
@@ -70,7 +79,7 @@
         document.getElementById('jim-mcp-gwurl').value = s.gatewayUrl || '';
 
         var diag = document.getElementById('jim-mcp-diag');
-        diag.innerHTML = 'Contract ' + esc(s.contractHash) +
+        diag.innerHTML = 'Expected served prefix ' + esc(s.contractHash) +
             ' &middot; gateway ' + esc(s.gatewayVersion || '—') +
             ' &middot; heartbeat ' + (s.gatewayHeartbeatAgeSec != null ? esc(s.gatewayHeartbeatAgeSec) + 's ago' : 'none') +
             ' &middot; last policy pull rev ' + esc(s.servedRevision) + ' at ' + esc(s.servedAt || '—') +

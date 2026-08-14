@@ -595,6 +595,59 @@ public class JimAdminResource {
             body.put("ledger", this.reportLedgerService.diagnostics());
             body.put("mappingHealth", this.reportMappingHealth());
             body.put("backfill", this.reportBackfillManager.status());
+            // Working-day source + report-receiver pause diagnostics (Report Replies & Working-Days).
+            body.put("workingDays",
+                    com.corbitlogic.jira.internalmessenger.report.ReportWorkingCalendarService.diagnostics());
+            LinkedHashMap<String, Object> receiver = new LinkedHashMap<String, Object>();
+            receiver.put("pauseEnabled",
+                    com.corbitlogic.jira.internalmessenger.report.ReportResponsibilityService.isPauseEnabled());
+            receiver.put("source", "schedule_approval_approver");
+            receiver.put("approverFieldConfigured",
+                    com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.resolveApproverField() != null);
+            body.put("reportReceiver", receiver);
+            body.put("countModeInFingerprint", true);
+            // Report ENFORCEMENT policy diagnostics: scope bounds SCORING only — it never
+            // affects report submission or history display.
+            LinkedHashMap<String, Object> enforcement = new LinkedHashMap<String, Object>();
+            // Use the SAME timezone the report scoring engine uses (admin override →
+            // Jira default), not the JVM/container default, so the interpreted start
+            // instant matches real scoring.
+            java.util.TimeZone rtz = JimReportConfig.reportTimeZone();
+            if (rtz == null) {
+                try {
+                    com.atlassian.jira.timezone.TimeZoneManager tzm =
+                            ComponentAccessor.getComponent(com.atlassian.jira.timezone.TimeZoneManager.class);
+                    if (tzm != null && tzm.getDefaultTimezone() != null) {
+                        rtz = tzm.getDefaultTimezone();
+                    }
+                } catch (Throwable ignore) {
+                }
+            }
+            if (rtz == null) {
+                rtz = java.util.TimeZone.getDefault();
+            }
+            String basis = JimReportConfig.applicabilityDateMode();
+            boolean fixedStart = "fixed_counter_start".equals(basis);
+            enforcement.put("enabled", JimReportConfig.applicabilityEnabled());
+            enforcement.put("startDate", JimReportConfig.effectiveFromDate());
+            Long efm = JimReportConfig.effectiveFromMs(rtz);
+            enforcement.put("startInstantMs", efm);
+            enforcement.put("reportTimezone", rtz.getID());
+            enforcement.put("startInstantTimezone", rtz.getID());
+            enforcement.put("dateBasis", basis);
+            enforcement.put("fixedCounterStartMode", fixedStart);
+            enforcement.put("nonDoneOnly", JimReportConfig.applicabilityNonDoneOnly());
+            enforcement.put("missingDuePolicy", JimReportConfig.applicabilityMissingDuePolicy());
+            enforcement.put("affectsSubmission", false);
+            enforcement.put("affectsHistoryDisplay", false);
+            enforcement.put("affectsCounters", true);
+            enforcement.put("inFingerprint", true);
+            enforcement.put("note", fixedStart
+                    ? "created/due are not used as scope filters; the fixed start date is a "
+                        + "scoring lower bound only. Submission and report history are always available."
+                    : "Enforcement bounds required/missed/overdue scoring only; "
+                        + "submission and report history are always available.");
+            body.put("enforcement", enforcement);
             return JimRestResponses.okJson(body);
         }
         catch (JimMessengerException ex) {

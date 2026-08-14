@@ -295,7 +295,12 @@ public class JimRestJsonMapper {
                 || JimEventType.ISSUE_ATTACHMENT.name().equals(et)
                 || JimEventType.SCHEDULE_APPROVAL.name().equals(et)
                 || JimEventType.SCHEDULE_APPROVAL_APPROVED.name().equals(et)
-                || JimEventType.SCHEDULE_APPROVAL_REJECTED.name().equals(et);
+                || JimEventType.SCHEDULE_APPROVAL_REJECTED.name().equals(et)
+                // Report Assistant events (permission-gated enrichment like the above).
+                || JimEventType.REPORT_SUBMITTED.name().equals(et)
+                || JimEventType.REPORT_SUBMITTED_TO_ME.name().equals(et)
+                || JimEventType.REPORT_REPLY.name().equals(et)
+                || JimEventType.REPORT_MENTION.name().equals(et);
     }
 
     private static boolean isScheduleCard(JimMessage message) {

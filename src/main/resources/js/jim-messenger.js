@@ -48,7 +48,26 @@
     // Persian (fa) UI dictionary keyed by the English source string. Missing
     // keys fall back to English, so partial coverage degrades gracefully.
     var FA_STRINGS = {
-        'Send': 'ارسال', 'Reply': 'پاسخ', 'Forward': 'ارسال مجدد', 'Copy': 'کپی',
+        'Send': 'ارسال', 'Reply': 'پاسخ', 'Forward': 'فوروارد', 'Copy': 'کپی',
+        'Share': 'اشتراک‌گذاری',
+        'Save to Saved Messages': 'ذخیره در پیام‌های ذخیره‌شده',
+        'Saved Messages': 'پیام‌های ذخیره‌شده',
+        'Shared': 'اشتراک‌ها',
+        'Files': 'فایل‌ها',
+        'Media': 'مدیا',
+        'Links': 'لینک‌ها',
+        'No shared files yet.': 'هنوز فایل مشترکی نیست.',
+        'No shared media yet.': 'هنوز مدیای مشترکی نیست.',
+        'No shared links yet.': 'هنوز لینک مشترکی نیست.',
+        'Unable to load shared content.': 'بارگذاری محتوای مشترک ممکن نشد.',
+        'Open message': 'باز کردن پیام',
+        'Copy link': 'کپی لینک',
+        'Unable to copy message.': 'کپی پیام ممکن نشد.',
+        'Unable to share': 'اشتراک‌گذاری ممکن نشد.',
+        'Unable to open Saved Messages.': 'باز کردن پیام‌های ذخیره‌شده ممکن نشد.',
+        'Message copied. Share is not available in this browser.':
+            'پیام کپی شد. اشتراک‌گذاری در این مرورگر در دسترس نیست.',
+        'Notes, links and forwards — only you': 'یادداشت‌ها، لینک‌ها و ارسال‌ها — فقط شما',
         'Delete for me': 'حذف برای من', 'Select': 'انتخاب', 'Cancel': 'لغو',
         'Save': 'ذخیره', 'Search': 'جستجو', 'Settings': 'تنظیمات',
         'Open issue': 'مشاهده تسک', 'Open comment': 'مشاهده دیدگاه',
@@ -60,6 +79,7 @@
         'Seen': 'دیده شد', 'Sent': 'ارسال شد', 'Draft': 'پیش‌نویس',
         'Mark as seen': 'علامت‌گذاری به‌عنوان دیده‌شده', 'Acknowledged': 'تأیید شد',
         'Loading...': 'در حال بارگذاری...', 'Loading conversations...': 'در حال بارگذاری گفتگوها...',
+        'Retry': 'تلاش دوباره',
         'Loading messages...': 'در حال بارگذاری پیام‌ها...',
         'Loading older messages\u2026': 'در حال بارگذاری پیام‌های قدیمی‌تر...',
         'Sending\u2026': 'در حال ارسال...',
@@ -76,7 +96,28 @@
         'Assistant': 'دستیار', 'Jira Assistant': 'دستیار Jira',
         'All': 'همه', 'Personal': 'شخصی', 'Groups': 'گروه‌ها',
         'New chat': 'گفتگوی جدید', 'New group': 'گروه جدید', 'Create group': 'ایجاد گروه',
-        'Message info': 'اطلاعات پیام', 'Forward message': 'ارسال مجدد پیام',
+        'Message info': 'اطلاعات پیام', 'Forward message': 'فوروارد پیام',
+        'Messages forwarded.': 'پیام‌ها فوروارد شدند.',
+        'Message forwarded.': 'پیام فوروارد شد.',
+        'Unable to forward message.': 'فوروارد پیام ممکن نشد.',
+        'Unable to forward messages.': 'فوروارد پیام‌ها ممکن نشد.',
+        'Could not forward attachment(s).': 'فوروارد پیوست ممکن نشد.',
+        'No conversations match.': 'گفتگویی پیدا نشد.',
+        'Direct': 'مستقیم',
+        'These messages will be forwarded in order.': 'چند پیام انتخاب شده‌اند. پیام‌ها به‌ترتیب فوروارد می‌شوند.',
+        'Some selected messages cannot be forwarded and will be skipped.': 'بعضی از پیام‌های انتخاب‌شده قابل فوروارد نیستند و رد می‌شوند.',
+        'For Forward, select only one message.': 'برای فوروارد، فقط یک پیام را انتخاب کنید.',
+        'Only messages with text can be copied': 'فقط پیام‌های متنی را می‌توان کپی کرد',
+        'Save is not available for this selection': 'ذخیره برای این انتخاب در دسترس نیست',
+        'Share is not available for this selection': 'اشتراک‌گذاری برای این انتخاب در دسترس نیست',
+        'Unable to delete the selected messages for you.': 'حذف پیام‌های انتخاب‌شده برای شما ممکن نشد.',
+        'Unable to save message.': 'ذخیره پیام ممکن نشد.',
+        'Unable to save messages.': 'ذخیره پیام‌ها ممکن نشد.',
+        'Message saved.': 'پیام در پیام‌های ذخیره‌شده ذخیره شد.',
+        'Messages saved.': 'پیام‌ها در پیام‌های ذخیره‌شده ذخیره شدند.',
+        'This message is already in Saved Messages.': 'این پیام از قبل در پیام‌های ذخیره‌شده است.',
+        'You do not have permission to perform this action.': 'اجازه انجام این کار را ندارید.',
+        'Forwarding…': 'در حال فوروارد…',
         'Language and dates': 'زبان و تاریخ', 'Chat language': 'زبان گفتگو',
         'Chat date format': 'قالب تاریخ گفتگو', 'Use admin default': 'پیش‌فرض مدیر',
         'Persian': 'فارسی', 'English': 'انگلیسی', 'Jalali / Shamsi': 'جلالی / شمسی',
@@ -104,6 +145,11 @@
         'Pending': 'در انتظار', 'Approved': 'تأیید شد', 'Rejected': 'رد شد',
         'Approvals': 'تأییدها', 'Mentions': 'منشن‌ها', 'Assignments': 'ارجاع‌ها',
         'Comments': 'دیدگاه‌ها', 'Attachments': 'پیوست‌ها',
+        'Reports': 'گزارش‌ها', 'Report mentions': 'منشن گزارش', 'Received reports': 'گزارش‌های دریافتی',
+        'submitted a report on': 'گزارش ثبت کرد روی', 'replied to a report on': 'به گزارش پاسخ داد روی',
+        'mentioned you in a report on': 'شما را در گزارش منشن کرد روی',
+        'Report': 'گزارش', 'Report reply': 'پاسخ گزارش', 'Report mention': 'منشن گزارش',
+        'Report received': 'گزارش دریافتی', 'View report': 'مشاهده گزارش',
         'Filter by type': 'فیلتر بر اساس نوع', 'Show all': 'نمایش همه',
         'No messages in this category.': 'پیامی در این دسته نیست.',
         'Admin': 'مدیر', 'Make admin': 'ارتقا به مدیر', 'Remove admin': 'حذف مدیر',
@@ -213,6 +259,42 @@
                 var actor = message.actorDisplayName || 'Someone';
                 var issue = message.issueKey || 'an issue';
                 return actor + ' mentioned you in ' + issue;
+            }
+        },
+        REPORT_SUBMITTED_TO_ME: {
+            label: 'REPORT',
+            tone: 'assignment',
+            title: function (message) {
+                var actor = message.actorDisplayName || 'Someone';
+                var issue = message.issueKey || 'an issue';
+                return actor + ' ' + t('submitted a report on') + ' ' + issue;
+            }
+        },
+        REPORT_SUBMITTED: {
+            label: 'REPORT',
+            tone: 'assignment',
+            title: function (message) {
+                var actor = message.actorDisplayName || 'Someone';
+                var issue = message.issueKey || 'an issue';
+                return actor + ' ' + t('submitted a report on') + ' ' + issue;
+            }
+        },
+        REPORT_REPLY: {
+            label: 'REPORT',
+            tone: 'info',
+            title: function (message) {
+                var actor = message.actorDisplayName || 'Someone';
+                var issue = message.issueKey || 'an issue';
+                return actor + ' ' + t('replied to a report on') + ' ' + issue;
+            }
+        },
+        REPORT_MENTION: {
+            label: 'REPORT',
+            tone: 'mention',
+            title: function (message) {
+                var actor = message.actorDisplayName || 'Someone';
+                var issue = message.issueKey || 'an issue';
+                return actor + ' ' + t('mentioned you in a report on') + ' ' + issue;
             }
         },
         ASSIGNMENT: {
@@ -364,15 +446,17 @@
 
     // Jira Assistant event-type filters. Categories map to the SAME stable
     // backend event types the mobile/PWA Assistant uses (JimEventType /
-    // JimMessage.getEventType, already present on each message as eventType) —
-    // never fragile title/body text. Only categories that can match real
-    // Assistant feed events are offered: Reports (written to Jira custom fields)
-    // and Overdue/Reminders (push-only) are intentionally NOT filters because
-    // they never produce Assistant cards.
+    // JimMessage.getEventType, already present on each message as eventType).
+    // Report filters were present through figmachat3 and must stay — the
+    // backend still emits REPORT_SUBMITTED / REPORT_SUBMITTED_TO_ME /
+    // REPORT_REPLY / REPORT_MENTION Assistant cards.
     var ASSISTANT_FILTERS = [
         { key: 'all', label: 'All', types: null },
         { key: 'approvals', label: 'Approvals', types: ['SCHEDULE_APPROVAL', 'SCHEDULE_APPROVAL_APPROVED', 'SCHEDULE_APPROVAL_REJECTED'] },
-        { key: 'mentions', label: 'Mentions', types: ['MENTION'] },
+        { key: 'mentions', label: 'Mentions', types: ['MENTION', 'REPORT_MENTION'] },
+        { key: 'reports', label: 'Reports', types: ['REPORT_SUBMITTED', 'REPORT_SUBMITTED_TO_ME', 'REPORT_REPLY', 'REPORT_MENTION'] },
+        { key: 'reportMentions', label: 'Report mentions', types: ['REPORT_MENTION'] },
+        { key: 'reportsReceived', label: 'Received reports', types: ['REPORT_SUBMITTED_TO_ME', 'REPORT_SUBMITTED'] },
         { key: 'assignments', label: 'Assignments', types: ['ASSIGNMENT'] },
         { key: 'comments', label: 'Comments', types: ['COMMENT'] },
         { key: 'status', label: 'Status', types: ['STATUS_CHANGE'] },
@@ -524,6 +608,12 @@
         els.voiceCancel = document.getElementById('jim-voice-cancel');
         els.voiceSend = document.getElementById('jim-voice-send');
         els.newConversationButton = document.getElementById('jim-new-conversation');
+        els.savedMessagesButton = document.getElementById('jim-saved-messages');
+        els.msgSearch = document.getElementById('jim-msg-search');
+        els.msgSearchResults = document.getElementById('jim-msg-search-results');
+        els.msgSearchToggle = document.getElementById('jim-msg-search-toggle');
+        els.msgSearchPanel = document.getElementById('jim-msg-search-panel');
+        els.messageMenu = document.getElementById('jim-message-menu');
         els.pinnedBanner = document.getElementById('jim-pinned-banner');
         els.errorBanner = document.getElementById('jim-error-banner');
         els.sidebarTabs = document.querySelectorAll('#jim-messenger-app .jim-sidebar-tab');
@@ -538,6 +628,10 @@
         els.imageLightboxName = document.getElementById('jim-image-lightbox-name');
         els.imageLightboxDownload = document.getElementById('jim-image-lightbox-download');
         els.imageLightboxClose = document.getElementById('jim-image-lightbox-close');
+        els.sharedModal = document.getElementById('jim-shared-modal');
+        els.sharedTabs = document.getElementById('jim-shared-tabs');
+        els.sharedBody = document.getElementById('jim-shared-body');
+        els.sharedClose = document.getElementById('jim-shared-close');
         els.forwardModal = document.getElementById('jim-forward-modal');
         els.forwardPreview = document.getElementById('jim-forward-preview');
         els.forwardSearch = document.getElementById('jim-forward-search');
@@ -1900,6 +1994,20 @@
         return !!(conversation && (conversation.isGroup || conversation.type === 'GROUP'));
     }
 
+    function isSelfConversation(conversation) {
+        return !!(conversation && conversation.self === true);
+    }
+
+    function conversationTitle(conversation) {
+        if (!conversation) {
+            return '';
+        }
+        if (isSelfConversation(conversation)) {
+            return t('Saved Messages');
+        }
+        return conversation.displayName || '';
+    }
+
     function normalizeEventType(message) {
         if (!message || message.eventType == null || message.eventType === '') {
             return null;
@@ -1924,6 +2032,11 @@
 
     function sortConversations(conversations) {
         return conversations.slice().sort(function (a, b) {
+            var aSelf = isSelfConversation(a) ? 1 : 0;
+            var bSelf = isSelfConversation(b) ? 1 : 0;
+            if (aSelf !== bSelf) {
+                return bSelf - aSelf;
+            }
             return (b.lastMessageAt || 0) - (a.lastMessageAt || 0);
         });
     }
@@ -2047,6 +2160,7 @@
 
     function conversationItemAttrs(conversation, selected) {
         var attrs = ' type="button" class="jim-conversation-item jim-conversation-row' +
+            (isSelfConversation(conversation) ? ' jim-conversation-self' : '') +
             (selected ? ' jim-conversation-item-selected is-selected' : '') + '" ' +
             ' data-conversation-id="' + conversation.id + '"';
         if (selected) {
@@ -2087,17 +2201,21 @@
         var groupMark = isGroupConversation(conversation)
             ? '<span class="jim-conversation-group-mark" aria-hidden="true">&#128101;</span>'
             : '';
+        var selfMark = isSelfConversation(conversation)
+            ? '<span class="jim-conversation-self-mark" aria-hidden="true">&#128278;</span>'
+            : '';
+        var title = conversationTitle(conversation);
 
         return '' +
             '<button' + conversationItemAttrs(conversation, selected) + '>' +
             renderAvatarWithPresence(
                 conversation.avatarUrl,
-                conversation.displayName,
+                title,
                 'jim-avatar-sm',
                 !!conversation.otherUserActive) +
             '  <div class="jim-conversation-main">' +
             '    <div class="jim-conversation-item-top">' +
-            '      <span class="jim-conversation-title" dir="auto">' + groupMark + escapeHtml(conversation.displayName) + '</span>' +
+            '      <span class="jim-conversation-title" dir="auto">' + selfMark + groupMark + escapeHtml(title) + '</span>' +
             renderConversationMetaRight(formatTime(conversation.lastMessageAt), conversation.unreadCount) +
             '    </div>' +
             '    <div class="jim-conversation-item-bottom">' +
@@ -2219,7 +2337,7 @@
         return '<div class="jim-chat-header-avatar">' +
             renderAvatarWithPresence(
                 conversation.avatarUrl,
-                conversation.displayName,
+                conversationTitle(conversation),
                 'jim-avatar-md',
                 !!conversation.otherUserActive) +
             '</div>';
@@ -2233,10 +2351,13 @@
 
         var isSystem = isSystemConversation(conversation);
         var isGroup = isGroupConversation(conversation);
-        var isActive = !isSystem && !isGroup && !!conversation.otherUserActive;
+        var isSelf = isSelfConversation(conversation);
+        var isActive = !isSystem && !isGroup && !isSelf && !!conversation.otherUserActive;
         var subtitle;
         if (isSystem) {
             subtitle = 'Jira notifications and updates';
+        } else if (isSelf) {
+            subtitle = t('Notes, links and forwards — only you');
         } else if (isGroup) {
             var memberCount = Number(conversation.memberCount) || 0;
             subtitle = memberCount === 1 ? '1 member' : memberCount + ' members';
@@ -2252,14 +2373,19 @@
         var badge = isSystem
             ? '<span class="jim-chat-header-badge">BOT</span>'
             : '';
-        var actionsHtml = isGroup
-            ? '<div class="jim-chat-header-actions">' +
-              '<button id="jim-members-button" type="button" class="jim-header-button jim-settings-gear' +
+        var sharedButton = !isSystem
+            ? '<button id="jim-shared-button" type="button" class="jim-header-button" title="' + t('Shared') + '" aria-label="' + t('Shared') + '">' +
+              escapeHtml(t('Shared')) + '</button>'
+            : '';
+        var settingsButton = isGroup
+            ? '<button id="jim-members-button" type="button" class="jim-header-button jim-settings-gear' +
               (state.membersPanelOpen ? ' is-active' : '') + '" title="' + t('Group settings') + '" aria-label="' + t('Group settings') + '">' +
               '<span class="jim-settings-gear-icon" aria-hidden="true">&#9881;</span>' +
               '<span class="jim-settings-gear-label">' + t('Settings') + '</span>' +
-              '</button>' +
-              '</div>'
+              '</button>'
+            : '';
+        var actionsHtml = (sharedButton || settingsButton)
+            ? '<div class="jim-chat-header-actions">' + sharedButton + settingsButton + '</div>'
             : '';
 
         els.chatHeader.innerHTML = '' +
@@ -2267,7 +2393,7 @@
             renderHeaderAvatar(conversation) +
             '<div class="jim-chat-header-main">' +
             '  <div class="jim-chat-header-title-row">' +
-            '    <h2 class="jim-chat-header-title">' + escapeHtml(conversation.displayName) + '</h2>' +
+            '    <h2 class="jim-chat-header-title">' + escapeHtml(conversationTitle(conversation)) + '</h2>' +
             badge +
             '  </div>' +
             '  <p class="jim-chat-header-subtitle' + (isActive ? ' jim-chat-header-subtitle-active' : '') + '">' +
@@ -2278,6 +2404,12 @@
         var membersButton = document.getElementById('jim-members-button');
         if (membersButton) {
             membersButton.addEventListener('click', toggleMembersPanel);
+        }
+        var sharedButtonEl = document.getElementById('jim-shared-button');
+        if (sharedButtonEl) {
+            sharedButtonEl.addEventListener('click', function () {
+                openSharedGallery('files');
+            });
         }
         var backButton = document.getElementById('jim-back-button');
         if (backButton) {
@@ -3050,6 +3182,10 @@
         var actions = [];
         actions.push('<button type="button" class="jim-message-action jim-react-action" data-action="react" data-message-id="' + message.id + '">' + escapeHtml(t('React')) + '</button>');
         actions.push('<button type="button" class="jim-message-action jim-reply-action" data-action="reply" data-message-id="' + message.id + '">' + escapeHtml(t('Reply')) + '</button>');
+        actions.push('<button type="button" class="jim-message-action jim-copy-action" data-action="copy" data-message-id="' + message.id + '">' + escapeHtml(t('Copy')) + '</button>');
+        if (message.body) {
+            actions.push('<button type="button" class="jim-message-action jim-share-action" data-action="share" data-message-id="' + message.id + '">' + escapeHtml(t('Share')) + '</button>');
+        }
         // Forwarding is text-only for safety (attachments would need a server-side
         // copy endpoint that doesn't exist yet, and forwarding a download URL
         // would 401 in the recipient's account).
@@ -3063,6 +3199,15 @@
         // Sprint 12: Delete-for-me (any message, own or others') + enter
         // multi-select mode. These never hard-delete; they hide per-user only.
         actions.push('<button type="button" class="jim-message-action jim-hide-action" data-action="hide-for-me" data-message-id="' + message.id + '">' + escapeHtml(t('Delete for me')) + '</button>');
+        if (!isSelfConversation(state.selectedConversation)) {
+            actions.push('<button type="button" class="jim-message-action jim-save-action" data-action="save-saved" data-message-id="' + message.id + '">' + escapeHtml(t('Save to Saved Messages')) + '</button>');
+        }
+        if (firstMessageUrl(message)) {
+            actions.push('<button type="button" class="jim-message-action jim-copy-link-action" data-action="copy-link" data-message-id="' + message.id + '">' + escapeHtml(t('Copy link')) + '</button>');
+        }
+        if (message.attachments && message.attachments.length && message.attachments[0].downloadUrl) {
+            actions.push('<a class="jim-message-action jim-download-action" href="' + escapeHtml(resolveAttachmentUrl(message.attachments[0].downloadUrl)) + '" target="_blank" rel="noopener">' + escapeHtml(t('Download')) + '</a>');
+        }
         actions.push('<button type="button" class="jim-message-action jim-select-action" data-action="select-msg" data-message-id="' + message.id + '">' + escapeHtml(t('Select')) + '</button>');
 
         if (isOwnMessage(message)) {
@@ -3121,6 +3266,61 @@
         }
     }
 
+    function copyMessageBody(message) {
+        var text = message && message.body ? String(message.body) : '';
+        if (!text) {
+            return;
+        }
+        function onCopied() { /* clipboard success is silent — no fake toast */ }
+        function onFailed() {
+            showError(t('Unable to copy message.'));
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(onCopied).catch(onFailed);
+            return;
+        }
+        try {
+            var area = document.createElement('textarea');
+            area.value = text;
+            area.setAttribute('readonly', '');
+            area.style.position = 'fixed';
+            area.style.left = '-9999px';
+            document.body.appendChild(area);
+            area.select();
+            var ok = document.execCommand('copy');
+            document.body.removeChild(area);
+            if (!ok) {
+                onFailed();
+            }
+        } catch (e) {
+            onFailed();
+        }
+    }
+
+    // OS / browser share of the visible message body. Not a second Forward:
+    // conversation-to-conversation send stays on the existing Forward action.
+    function shareMessageBody(message) {
+        var text = message && message.body ? String(message.body) : '';
+        if (!text) {
+            showError(t('Unable to share'));
+            return;
+        }
+        if (navigator.share) {
+            navigator.share({ text: text }).catch(function () { /* user cancelled */ });
+            return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () {
+                showError(t('Message copied. Share is not available in this browser.'));
+            }).catch(function () {
+                showError(t('Unable to share'));
+            });
+            return;
+        }
+        copyMessageBody(message);
+        showError(t('Message copied. Share is not available in this browser.'));
+    }
+
     // ===== Message forwarding =====
     //
     // Text-only by design. Attachments are deliberately not forwardable for
@@ -3176,24 +3376,60 @@
         });
     }
 
+    function chronologicalMessages(messages) {
+        return (messages || []).slice().sort(function (a, b) {
+            var ta = Number(a && a.createdAt || 0);
+            var tb = Number(b && b.createdAt || 0);
+            if (ta !== tb) {
+                return ta - tb;
+            }
+            return Number(a && a.id || 0) - Number(b && b.id || 0);
+        });
+    }
+
+    function selectionCountLabel(count) {
+        if (Locale.lang === 'fa') {
+            return locDigits(String(count)) + ' پیام انتخاب شده';
+        }
+        return count === 1 ? '1 selected' : (count + ' selected');
+    }
+
     function openForwardModal(messageId) {
+        openForwardModalForMessages(messageId ? [findMessageById(messageId)] : []);
+    }
+
+    function openForwardModalForMessages(messages) {
         if (!els.forwardModal) {
             return;
         }
-        var message = findMessageById(messageId);
-        if (!message || !isForwardableMessage(message)) {
+        var all = (messages || []).filter(Boolean);
+        var forwardable = chronologicalMessages(all.filter(isForwardableMessage));
+        if (!forwardable.length) {
             return;
         }
-        state.forwardingMessageId = messageId;
+        state.forwardingMessageIds = forwardable.map(function (m) { return m.id; });
+        state.forwardingMessageId = forwardable[0].id;
+        state.forwardedIds = [];
+        state.forwardingInProgress = false;
         if (els.forwardPreview) {
-            els.forwardPreview.textContent = String(message.body || '').slice(0, 240);
+            if (forwardable.length === 1) {
+                els.forwardPreview.textContent = String(forwardable[0].body || '').slice(0, 240);
+            } else {
+                els.forwardPreview.textContent = t('These messages will be forwarded in order.') +
+                    ' (' + locDigits(String(forwardable.length)) + ')';
+            }
         }
         if (els.forwardSearch) {
             els.forwardSearch.value = '';
         }
         if (els.forwardError) {
-            setHidden(els.forwardError, true);
-            els.forwardError.textContent = '';
+            if (all.length > forwardable.length) {
+                els.forwardError.textContent = t('Some selected messages cannot be forwarded and will be skipped.');
+                setHidden(els.forwardError, false);
+            } else {
+                setHidden(els.forwardError, true);
+                els.forwardError.textContent = '';
+            }
         }
         renderForwardTargets('');
         setHidden(els.forwardModal, false);
@@ -3204,6 +3440,8 @@
 
     function closeForwardModal() {
         state.forwardingMessageId = null;
+        state.forwardingMessageIds = [];
+        state.forwardingInProgress = false;
         if (els.forwardModal) {
             setHidden(els.forwardModal, true);
         }
@@ -3237,16 +3475,16 @@
             });
         }
         if (!targets.length) {
-            els.forwardTargets.innerHTML = '<div class="jim-empty-state">No conversations match.</div>';
+            els.forwardTargets.innerHTML = '<div class="jim-empty-state">' + escapeHtml(t('No conversations match.')) + '</div>';
             return;
         }
         var rows = [];
         for (var i = 0; i < targets.length; i++) {
             var c = targets[i];
-            var kindLabel = c.isProjectChat ? 'Project chat' : (isGroupConversation(c) ? 'Group' : 'Direct');
+            var kindLabel = c.isProjectChat ? t('Project chat') : (isSelfConversation(c) ? t('Saved Messages') : (isGroupConversation(c) ? t('Group') : t('Direct')));
             rows.push(
                 '<button type="button" class="jim-forward-target" data-forward-target="' + c.id + '">' +
-                '<span class="jim-forward-target-name" dir="auto">' + escapeHtml(c.displayName || 'Conversation') + '</span>' +
+                '<span class="jim-forward-target-name" dir="auto">' + escapeHtml(conversationTitle(c) || 'Conversation') + '</span>' +
                 '<span class="jim-forward-target-kind">' + escapeHtml(kindLabel) + '</span>' +
                 '</button>'
             );
@@ -3254,76 +3492,115 @@
         els.forwardTargets.innerHTML = rows.join('');
     }
 
-    function submitForward(targetConversationId) {
-        var messageId = state.forwardingMessageId;
-        if (!messageId || !targetConversationId) {
-            return;
-        }
-        var message = findMessageById(messageId);
-        if (!message || !isForwardableMessage(message)) {
-            closeForwardModal();
-            return;
-        }
-        if (els.forwardError) {
-            setHidden(els.forwardError, true);
-            els.forwardError.textContent = '';
+    function forwardOneMessage(message, targetConversationId) {
+        if (!message || !isForwardableMessage(message) || !targetConversationId) {
+            return Promise.reject(new Error(t('Unable to forward message.')));
         }
         var bodyToSend = buildForwardedBody(message);
         var attachments = message.attachments || [];
         var hadBody = message.body && String(message.body).trim().length > 0;
-
-        var forwardPromise;
         if (!attachments.length) {
-            forwardPromise = JimApi.sendMessage(targetConversationId, bodyToSend, null);
-        } else {
-            // Download each original attachment and re-upload as a fresh
-            // attachment to the target conversation. Caption rides with the
-            // first upload only (matches multi-file send behaviour). If the
-            // original had no body, the forwarded marker still goes there
-            // so the recipient can see it's a forward.
-            var captionForFirst = hadBody ? bodyToSend : '[Forwarded attachment]';
-            forwardPromise = (function () {
-                var failed = [];
-                var chain = Promise.resolve();
-                attachments.forEach(function (att, idx) {
-                    chain = chain.then(function () {
-                        return fetchAttachmentAsFile(att).then(function (file) {
-                            var capForThis = idx === 0 ? captionForFirst : null;
-                            return JimApi.uploadAttachment(targetConversationId, file, capForThis);
-                        }).catch(function (error) {
-                            logError('forwardAttachment', error);
-                            failed.push(att.fileName || 'attachment');
-                        });
-                    });
-                });
-                return chain.then(function () {
-                    if (failed.length === attachments.length) {
-                        throw new Error('Could not forward attachment(s).');
-                    }
-                    if (failed.length) {
-                        // Surface a partial-success warning but treat the
-                        // overall forward as successful.
-                        if (els.forwardError) {
-                            els.forwardError.textContent = failed.length +
-                                ' attachment(s) skipped: ' + failed.join(', ');
-                            setHidden(els.forwardError, false);
-                        }
-                    }
-                });
-            })();
+            return JimApi.sendMessage(targetConversationId, bodyToSend, null);
         }
+        // Same attachment path as single-message Forward: download bytes the
+        // current user can already read, then re-upload into the target.
+        var captionForFirst = hadBody ? bodyToSend : '[Forwarded attachment]';
+        var failed = [];
+        var chain = Promise.resolve();
+        attachments.forEach(function (att, idx) {
+            chain = chain.then(function () {
+                return fetchAttachmentAsFile(att).then(function (file) {
+                    var capForThis = idx === 0 ? captionForFirst : null;
+                    return JimApi.uploadAttachment(targetConversationId, file, capForThis);
+                }).catch(function (error) {
+                    logError('forwardAttachment', error);
+                    failed.push(att.fileName || 'attachment');
+                });
+            });
+        });
+        return chain.then(function () {
+            if (failed.length === attachments.length) {
+                throw new Error(t('Could not forward attachment(s).'));
+            }
+            return { skippedAttachments: failed };
+        });
+    }
 
-        forwardPromise.then(function () {
+    function submitForward(targetConversationId) {
+        var ids = (state.forwardingMessageIds && state.forwardingMessageIds.length)
+            ? state.forwardingMessageIds.slice()
+            : (state.forwardingMessageId ? [state.forwardingMessageId] : []);
+        if (!ids.length || !targetConversationId || state.forwardingInProgress) {
+            return;
+        }
+        var already = {};
+        (state.forwardedIds || []).forEach(function (id) { already[id] = true; });
+        var remaining = ids.filter(function (id) { return !already[id]; });
+        if (!remaining.length) {
             closeForwardModal();
-            // If we forwarded into the conversation we're already viewing,
-            // refresh the message list immediately so the user sees it.
+            exitSelectionMode();
+            showError(t('Messages forwarded.'));
+            return;
+        }
+        if (els.forwardError) {
+            els.forwardError.textContent = t('Forwarding…');
+            setHidden(els.forwardError, false);
+        }
+        state.forwardingInProgress = true;
+        var failed = [];
+        var skippedAttachments = [];
+        var chain = Promise.resolve();
+        remaining.forEach(function (id) {
+            chain = chain.then(function () {
+                var message = findMessageById(id);
+                if (!message || !isForwardableMessage(message)) {
+                    failed.push(id);
+                    return;
+                }
+                return forwardOneMessage(message, targetConversationId).then(function (result) {
+                    state.forwardedIds = (state.forwardedIds || []).concat([id]);
+                    if (result && result.skippedAttachments && result.skippedAttachments.length) {
+                        skippedAttachments = skippedAttachments.concat(result.skippedAttachments);
+                    }
+                }).catch(function (error) {
+                    logError('forwardMessage', error);
+                    var status = error && error.status;
+                    if (status === 401 || status === 403) {
+                        var perm = new Error(t('You do not have permission to perform this action.'));
+                        perm.status = status;
+                        throw perm;
+                    }
+                    failed.push(id);
+                });
+            });
+        });
+        chain.then(function () {
+            state.forwardingInProgress = false;
+            var done = (state.forwardedIds || []).length;
+            if (!done && failed.length) {
+                if (els.forwardError) {
+                    els.forwardError.textContent = t('Unable to forward messages.');
+                    setHidden(els.forwardError, false);
+                }
+                return;
+            }
+            closeForwardModal();
+            exitSelectionMode();
             if (state.selectedConversationId === targetConversationId) {
                 loadMessages(state.selectedConversationId, false, true);
             }
             loadConversations(false);
+            if (failed.length) {
+                showError(t('Unable to forward messages.') + ' (' + locDigits(String(done)) + '/' + locDigits(String(done + failed.length)) + ')');
+            } else if (skippedAttachments.length) {
+                showError(t('Messages forwarded.') + ' — ' + t('Could not forward attachment(s).'));
+            } else {
+                showError(done > 1 ? t('Messages forwarded.') : t('Message forwarded.'));
+            }
         }).catch(function (error) {
+            state.forwardingInProgress = false;
             logError('forwardMessage', error);
-            var detail = error && error.message ? error.message : 'Unable to forward message.';
+            var detail = error && error.message ? error.message : t('Unable to forward message.');
             if (els.forwardError) {
                 els.forwardError.textContent = detail;
                 setHidden(els.forwardError, false);
@@ -4197,7 +4474,7 @@
             loadConversations();
         }).catch(function (error) {
             logError('bulkHideForMe', error);
-            showError(error && error.message ? error.message : 'Unable to delete the selected messages for you.');
+            showError(error && error.message ? error.message : t('Unable to delete the selected messages for you.'));
         });
     }
 
@@ -4206,12 +4483,56 @@
             return '';
         }
         var count = state.selectedIds ? state.selectedIds.length : 0;
-        return '<div class="jim-selection-toolbar" role="toolbar" aria-label="Selection actions">' +
-            '<button type="button" class="jim-selection-cancel" data-action="selection-cancel" aria-label="Cancel selection">✕</button>' +
-            '<span class="jim-selection-count">' + count + ' selected</span>' +
+        var selected = selectedMessages();
+        var anyForwardable = selected.some(isForwardableMessage);
+        var allCopyable = count > 0 && selected.every(function (m) { return m && m.body; });
+        var anyShareable = selected.some(function (m) { return m && m.body; });
+        var allSavable = count > 0 && !isSelfConversation(state.selectedConversation)
+            && selected.every(function (m) { return m && !m.deleted && !isSystemMessage(m); });
+        return '<div class="jim-selection-toolbar" role="toolbar" aria-label="' + escapeHtml(t('Select')) + '">' +
+            '<button type="button" class="jim-selection-cancel" data-action="selection-cancel" aria-label="' + escapeHtml(t('Cancel')) + '">✕</button>' +
+            '<span class="jim-selection-count">' + escapeHtml(selectionCountLabel(count)) + '</span>' +
+            '<button type="button" class="jim-selection-copy" data-action="bulk-copy"' +
+            (allCopyable ? '' : ' disabled title="' + escapeHtml(t('Only messages with text can be copied')) + '"') + '>' + escapeHtml(t('Copy')) + '</button>' +
+            '<button type="button" class="jim-selection-share" data-action="bulk-share"' +
+            (anyShareable ? '' : ' disabled title="' + escapeHtml(t('Share is not available for this selection')) + '"') + '>' + escapeHtml(t('Share')) + '</button>' +
+            '<button type="button" class="jim-selection-forward" data-action="bulk-forward"' +
+            (anyForwardable ? '' : ' disabled title="' + escapeHtml(t('For Forward, select only one message.')) + '"') + '>' + escapeHtml(t('Forward')) + '</button>' +
+            '<button type="button" class="jim-selection-save" data-action="bulk-save"' +
+            (allSavable ? '' : ' disabled title="' + escapeHtml(t('Save is not available for this selection')) + '"') + '>' + escapeHtml(t('Save to Saved Messages')) + '</button>' +
             '<button type="button" class="jim-selection-delete" data-action="bulk-hide-for-me"' +
-            (count === 0 ? ' disabled' : '') + '>Delete for me</button>' +
+            (count === 0 ? ' disabled' : '') + '>' + escapeHtml(t('Delete for me')) + '</button>' +
             '</div>';
+    }
+
+    function openConversationAtMessage(conversationId, messageId) {
+        hideMessageSearchResults();
+        if (els.msgSearch) {
+            els.msgSearch.value = '';
+        }
+        if (!conversationId || !messageId) {
+            return;
+        }
+        if (state.selectedConversationId !== conversationId) {
+            selectConversation(conversationId);
+        }
+        var attempts = 0;
+        (function tryJump() {
+            attempts++;
+            var target = els.messageList
+                ? els.messageList.querySelector('[data-message-id="' + messageId + '"]') : null;
+            if (target) {
+                scrollToReplyTarget(messageId);
+                return;
+            }
+            if (attempts > 12) {
+                return;
+            }
+            if (attempts > 2 && state.hasMoreOlder !== false && !state.loadingOlder) {
+                loadOlderMessages();
+            }
+            window.setTimeout(tryJump, 350);
+        })();
     }
 
     function scrollToReplyTarget(messageId) {
@@ -4303,7 +4624,7 @@
             // Sprint 12: in multi-select mode a click toggles the message's
             // selection (except clicks on the selection toolbar's own buttons).
             if (state.selectionMode) {
-                var toolbarBtn = target.closest('[data-action="bulk-hide-for-me"], [data-action="selection-cancel"]');
+                var toolbarBtn = target.closest('[data-action="bulk-hide-for-me"], [data-action="bulk-copy"], [data-action="bulk-share"], [data-action="bulk-forward"], [data-action="bulk-save"], [data-action="selection-cancel"]');
                 if (!toolbarBtn) {
                     var selRow = target.closest('[data-message-id]');
                     if (selRow) {
@@ -4345,6 +4666,26 @@
             if (action === 'bulk-hide-for-me') {
                 event.preventDefault();
                 bulkHideForMe();
+                return;
+            }
+            if (action === 'bulk-copy') {
+                event.preventDefault();
+                copySelectedMessages();
+                return;
+            }
+            if (action === 'bulk-share') {
+                event.preventDefault();
+                shareSelectedMessages();
+                return;
+            }
+            if (action === 'bulk-forward') {
+                event.preventDefault();
+                forwardSelectedMessages();
+                return;
+            }
+            if (action === 'bulk-save') {
+                event.preventDefault();
+                saveSelectedMessages();
                 return;
             }
 
@@ -4431,8 +4772,24 @@
                 setReplyTarget(findMessageById(messageId));
                 return;
             }
+            if (action === 'copy') {
+                copyMessageBody(findMessageById(messageId));
+                return;
+            }
+            if (action === 'share') {
+                shareMessageBody(findMessageById(messageId));
+                return;
+            }
             if (action === 'forward') {
                 openForwardModal(messageId);
+                return;
+            }
+            if (action === 'save-saved') {
+                saveMessageToSaved(findMessageById(messageId));
+                return;
+            }
+            if (action === 'copy-link') {
+                copyMessageLink(findMessageById(messageId));
                 return;
             }
             if (action === 'info') {
@@ -5200,6 +5557,188 @@
             '</div></div>';
     }
 
+    var sharedState = { type: 'files', cursor: null, hasMore: false, loading: false, items: [] };
+
+    function openSharedGallery(type) {
+        if (!state.selectedConversationId || !els.sharedModal) {
+            return;
+        }
+        sharedState.type = type || 'files';
+        sharedState.cursor = null;
+        sharedState.hasMore = false;
+        sharedState.items = [];
+        setHidden(els.sharedModal, false);
+        renderSharedTabs();
+        loadSharedPage(true);
+    }
+
+    function closeSharedGallery() {
+        if (els.sharedModal) {
+            setHidden(els.sharedModal, true);
+        }
+    }
+
+    function renderSharedTabs() {
+        if (!els.sharedTabs) {
+            return;
+        }
+        var tabs = [
+            { key: 'files', label: t('Files') },
+            { key: 'media', label: t('Media') },
+            { key: 'links', label: t('Links') }
+        ];
+        els.sharedTabs.innerHTML = tabs.map(function (tab) {
+            return '<button type="button" class="jim-shared-tab' +
+                (tab.key === sharedState.type ? ' is-active' : '') +
+                '" data-shared-type="' + tab.key + '">' + escapeHtml(tab.label) + '</button>';
+        }).join('');
+    }
+
+    function loadSharedPage(reset) {
+        if (!state.selectedConversationId || sharedState.loading) {
+            return;
+        }
+        sharedState.loading = true;
+        if (reset) {
+            els.sharedBody.innerHTML = '<div class="jim-loading">' + escapeHtml(t('Loading...')) + '</div>';
+        }
+        JimApi.listSharedContent(state.selectedConversationId, sharedState.type, reset ? null : sharedState.cursor, 25)
+            .then(function (response) {
+                sharedState.loading = false;
+                var items = (response && response.items) ? response.items : [];
+                if (reset) {
+                    sharedState.items = items;
+                } else {
+                    sharedState.items = sharedState.items.concat(items);
+                }
+                sharedState.cursor = response && response.nextCursor ? response.nextCursor : null;
+                sharedState.hasMore = !!(response && response.hasMore);
+                renderSharedBody();
+            })
+            .catch(function (error) {
+                sharedState.loading = false;
+                logError('sharedContent', error);
+                els.sharedBody.innerHTML =
+                    '<div class="jim-empty-state">' +
+                    escapeHtml(error && error.message ? error.message : t('Unable to load shared content.')) +
+                    '</div>' +
+                    '<button type="button" class="jim-shared-retry" data-shared-retry="1">' +
+                    escapeHtml(t('Retry')) + '</button>';
+            });
+    }
+
+    function renderSharedBody() {
+        if (!els.sharedBody) {
+            return;
+        }
+        if (!sharedState.items.length) {
+            var empty = sharedState.type === 'media'
+                ? t('No shared media yet.')
+                : (sharedState.type === 'links' ? t('No shared links yet.') : t('No shared files yet.'));
+            els.sharedBody.innerHTML = '<div class="jim-empty-state">' + escapeHtml(empty) + '</div>';
+            return;
+        }
+        var html = '';
+        if (sharedState.type === 'media') {
+            html += '<div class="jim-shared-media-grid">';
+            for (var i = 0; i < sharedState.items.length; i++) {
+                var media = sharedState.items[i];
+                var src = media.previewUrl || '';
+                html += '<button type="button" class="jim-shared-media-cell" data-shared-index="' + i + '">' +
+                    (src ? '<img src="' + escapeHtml(src) + '" alt="" />' : escapeHtml(media.filename || t('Media'))) +
+                    '</button>';
+            }
+            html += '</div>';
+        } else {
+            html += '<div class="jim-shared-list">';
+            for (var j = 0; j < sharedState.items.length; j++) {
+                var item = sharedState.items[j];
+                var title = item.title || item.filename || item.url || '';
+                var meta = [];
+                    if (item.size) {
+                    meta.push(formatSharedFileSize(item.size));
+                }
+                if (item.createdAt) {
+                    meta.push(formatTime(item.createdAt));
+                }
+                html += '<div class="jim-shared-row">' +
+                    '<div class="jim-shared-row-main">' +
+                    '<div class="jim-shared-row-title" dir="auto">' + escapeHtml(title) + '</div>' +
+                    (item.url ? '<div class="jim-shared-row-url" dir="ltr">' + escapeHtml(item.url) + '</div>' : '') +
+                    '<div class="jim-shared-row-meta">' + escapeHtml(meta.join(' · ')) + '</div>' +
+                    '</div>' +
+                    '<div class="jim-shared-row-actions">';
+                if (item.downloadUrl) {
+                    html += '<a class="jim-shared-action" href="' + escapeHtml(item.downloadUrl) + '" target="_blank" rel="noopener">' + escapeHtml(t('Download')) + '</a>';
+                }
+                if (item.url) {
+                    html += '<button type="button" class="jim-shared-action" data-copy-url="' + escapeHtml(item.url) + '">' + escapeHtml(t('Copy link')) + '</button>';
+                    html += '<a class="jim-shared-action" href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener">' + escapeHtml(t('Open')) + '</a>';
+                }
+                if (item.messageId) {
+                    html += '<button type="button" class="jim-shared-action" data-goto-message="' + item.messageId + '">' + escapeHtml(t('Open message')) + '</button>';
+                }
+                html += '</div></div>';
+            }
+            html += '</div>';
+        }
+        if (sharedState.hasMore) {
+            html += '<button type="button" class="jim-shared-more" data-shared-more="1">' + escapeHtml(t('Show all')) + '</button>';
+        }
+        els.sharedBody.innerHTML = html;
+    }
+
+    function formatSharedFileSize(bytes) {
+        var n = Number(bytes) || 0;
+        if (n < 1024) {
+            return n + ' B';
+        }
+        if (n < 1024 * 1024) {
+            return (n / 1024).toFixed(1) + ' KB';
+        }
+        return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function findSelfConversation() {
+        for (var i = 0; i < state.conversations.length; i++) {
+            if (isSelfConversation(state.conversations[i])) {
+                return state.conversations[i];
+            }
+        }
+        return null;
+    }
+
+    function openSavedMessages() {
+        if (state.licenseBlocked) {
+            return;
+        }
+        var existing = findSelfConversation();
+        if (existing && existing.id) {
+            selectConversation(existing.id);
+            return;
+        }
+        if (!state.currentUserKey) {
+            showError(t('Unable to open Saved Messages.'));
+            return;
+        }
+        JimApi.createDirectConversation(state.currentUserKey).then(function (conversation) {
+            var created = conversation && conversation.conversation ? conversation.conversation : conversation;
+            return loadConversations(false).then(function () {
+                var id = created && created.id;
+                if (!id) {
+                    var refreshed = findSelfConversation();
+                    id = refreshed && refreshed.id;
+                }
+                if (id) {
+                    selectConversation(id);
+                }
+            });
+        }).catch(function (error) {
+            logError('savedMessages', error);
+            showError(error && error.message ? error.message : t('Unable to open Saved Messages.'));
+        });
+    }
+
     function loadConversations(showLoading) {
         if (state.projectMode) {
             return loadProjectConversation();
@@ -5884,10 +6423,339 @@
         }
     }
 
+    function selectedMessages() {
+        var out = [];
+        var ids = state.selectedIds || [];
+        for (var i = 0; i < ids.length; i++) {
+            var m = findMessageById(ids[i]);
+            if (m) {
+                out.push(m);
+            }
+        }
+        return out;
+    }
+
+    function firstMessageUrl(message) {
+        if (!message) {
+            return '';
+        }
+        if (message.issueUrl) {
+            return String(message.issueUrl);
+        }
+        var body = message.body ? String(message.body) : '';
+        var match = body.match(/https?:\/\/[^\s<>\]"']+/i);
+        return match ? match[0] : '';
+    }
+
+    function copyMessageLink(message) {
+        var url = firstMessageUrl(message);
+        if (!url) {
+            showError(t('No link in this message.'));
+            return;
+        }
+        copyMessageBody({ body: url });
+    }
+
+    function ensureSelfConversation() {
+        var existing = findSelfConversation();
+        if (existing && existing.id) {
+            return Promise.resolve(existing);
+        }
+        if (!state.currentUserKey) {
+            return Promise.reject(new Error(t('Unable to open Saved Messages.')));
+        }
+        return JimApi.createDirectConversation(state.currentUserKey).then(function (conversation) {
+            var created = conversation && conversation.conversation ? conversation.conversation : conversation;
+            return loadConversations(false).then(function () {
+                return created && created.id ? created : findSelfConversation();
+            });
+        });
+    }
+
+    function saveMessageToSaved(message) {
+        if (!message || message.deleted || isSystemMessage(message)) {
+            return;
+        }
+        if (isSelfConversation(state.selectedConversation)) {
+            showError(t('This message is already in Saved Messages.'));
+            return;
+        }
+        ensureSelfConversation().then(function (conv) {
+            if (!conv || !conv.id) {
+                throw new Error(t('Unable to open Saved Messages.'));
+            }
+            return forwardOneMessage(message, conv.id);
+        }).then(function () {
+            showError(t('Message saved.'));
+        }).catch(function (error) {
+            logError('saveSaved', error);
+            showError(error && error.message ? error.message : t('Unable to save message.'));
+        });
+    }
+
+    function copySelectedMessages() {
+        var texts = selectedMessages().map(function (m) {
+            return m && m.body ? String(m.body) : '';
+        }).filter(function (text) { return text; });
+        if (!texts.length) {
+            return;
+        }
+        copyMessageBody({ body: texts.join('\n\n') });
+    }
+
+    function shareSelectedMessages() {
+        var texts = selectedMessages().map(function (m) {
+            return m && m.body ? String(m.body) : '';
+        }).filter(function (text) { return text; });
+        if (!texts.length) {
+            showError(t('Unable to share'));
+            return;
+        }
+        shareMessageBody({ body: texts.join('\n\n') });
+    }
+
+    function forwardSelectedMessages() {
+        var selected = selectedMessages();
+        var forwardable = chronologicalMessages(selected.filter(isForwardableMessage));
+        if (!forwardable.length) {
+            return;
+        }
+        openForwardModalForMessages(selected);
+    }
+
+    function saveSelectedMessages() {
+        var selected = chronologicalMessages(selectedMessages().filter(function (m) {
+            return m && !m.deleted && !isSystemMessage(m);
+        }));
+        if (!selected.length) {
+            return;
+        }
+        ensureSelfConversation().then(function (conv) {
+            if (!conv || !conv.id) {
+                throw new Error(t('Unable to open Saved Messages.'));
+            }
+            var chain = Promise.resolve();
+            selected.forEach(function (message) {
+                chain = chain.then(function () {
+                    return forwardOneMessage(message, conv.id);
+                });
+            });
+            return chain;
+        }).then(function () {
+            exitSelectionMode();
+            showError(t('Messages saved.'));
+        }).catch(function (error) {
+            logError('bulkSave', error);
+            showError(error && error.message ? error.message : t('Unable to save messages.'));
+        });
+    }
+
+    function hideMessageMenu() {
+        if (els.messageMenu) {
+            els.messageMenu.hidden = true;
+            els.messageMenu.innerHTML = '';
+        }
+    }
+
+    function allowedMenuActions(message) {
+        if (!message || message.deleted) {
+            return [{ action: 'hide-for-me', label: t('Delete for me') }];
+        }
+        if (isSystemMessage(message)) {
+            return [];
+        }
+        var items = [
+            { action: 'reply', label: t('Reply') },
+            { action: 'copy', label: t('Copy') }
+        ];
+        if (message.body) {
+            items.push({ action: 'share', label: t('Share') });
+        }
+        if (isForwardableMessage(message)) {
+            items.push({ action: 'forward', label: t('Forward') });
+        }
+        items.push({ action: 'hide-for-me', label: t('Delete for me') });
+        if (!isSelfConversation(state.selectedConversation)) {
+            items.push({ action: 'save-saved', label: t('Save to Saved Messages') });
+        }
+        if (firstMessageUrl(message)) {
+            items.push({ action: 'copy-link', label: t('Copy link') });
+        }
+        items.push({ action: 'select-msg', label: t('Select') });
+        return items;
+    }
+
+    function showMessageMenu(message, clientX, clientY) {
+        if (!els.messageMenu || !message) {
+            return;
+        }
+        var items = allowedMenuActions(message);
+        if (!items.length) {
+            hideMessageMenu();
+            return;
+        }
+        var html = '';
+        for (var i = 0; i < items.length; i++) {
+            html += '<button type="button" class="jim-message-menu-item" role="menuitem" data-action="' +
+                items[i].action + '" data-message-id="' + message.id + '">' +
+                escapeHtml(items[i].label) + '</button>';
+        }
+        if (message.attachments && message.attachments.length && message.attachments[0].downloadUrl) {
+            html += '<a class="jim-message-menu-item" role="menuitem" href="' +
+                escapeHtml(resolveAttachmentUrl(message.attachments[0].downloadUrl)) +
+                '" target="_blank" rel="noopener">' + escapeHtml(t('Download')) + '</a>';
+        }
+        els.messageMenu.innerHTML = html;
+        els.messageMenu.hidden = false;
+        var x = clientX;
+        var y = clientY;
+        var width = 220;
+        var height = (items.length + 1) * 34;
+        if (x + width > window.innerWidth - 8) {
+            x = window.innerWidth - width - 8;
+        }
+        if (y + height > window.innerHeight - 8) {
+            y = window.innerHeight - height - 8;
+        }
+        els.messageMenu.style.left = Math.max(8, x) + 'px';
+        els.messageMenu.style.top = Math.max(8, y) + 'px';
+    }
+
+    var msgSearchTimer = null;
+    var msgSearchSeq = 0;
+
+    function toggleMessageSearch() {
+        if (!els.msgSearchPanel || !els.msgSearchToggle) {
+            return;
+        }
+        var open = els.msgSearchPanel.hidden;
+        els.msgSearchPanel.hidden = !open;
+        els.msgSearchToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open && els.msgSearch) {
+            try { els.msgSearch.focus(); } catch (e) {}
+        } else {
+            hideMessageSearchResults();
+        }
+    }
+
+    function onMessageSearchInput() {
+        if (!els.msgSearch) {
+            return;
+        }
+        var q = (els.msgSearch.value || '').trim();
+        if (msgSearchTimer) {
+            window.clearTimeout(msgSearchTimer);
+        }
+        if (q.length < 2) {
+            hideMessageSearchResults();
+            return;
+        }
+        msgSearchTimer = window.setTimeout(function () { runMessageSearch(q); }, 280);
+    }
+
+    function hideMessageSearchResults() {
+        if (els.msgSearchResults) {
+            els.msgSearchResults.hidden = true;
+            els.msgSearchResults.innerHTML = '';
+        }
+    }
+
+    function runMessageSearch(q) {
+        if (!els.msgSearchResults || !JimApi.searchMessages) {
+            return;
+        }
+        var seq = ++msgSearchSeq;
+        els.msgSearchResults.hidden = false;
+        els.msgSearchResults.innerHTML = '<div class="jim-search-status">' + escapeHtml(t('Searching…')) + '</div>';
+        JimApi.searchMessages(q, null, 25, null).then(function (data) {
+            if (seq !== msgSearchSeq) {
+                return;
+            }
+            renderMessageSearchResults((data && data.results) || []);
+        }).catch(function () {
+            if (seq !== msgSearchSeq) {
+                return;
+            }
+            els.msgSearchResults.innerHTML = '<div class="jim-search-status">' + escapeHtml(t('Search failed')) + '</div>';
+        });
+    }
+
+    function renderMessageSearchResults(results) {
+        if (!els.msgSearchResults) {
+            return;
+        }
+        if (!results.length) {
+            els.msgSearchResults.innerHTML = '<div class="jim-search-status">' + escapeHtml(t('No messages found')) + '</div>';
+            return;
+        }
+        var html = '';
+        for (var i = 0; i < results.length; i++) {
+            var r = results[i];
+            html += '<button type="button" class="jim-search-result jim-msg-result" data-conversation-id="' +
+                escapeHtml(String(r.conversationId)) + '" data-message-id="' + escapeHtml(String(r.messageId)) + '">' +
+                '<span class="jim-msg-result-title">' + escapeHtml(r.conversationTitle || '') + '</span>' +
+                '<span class="jim-msg-result-snippet">' + escapeHtml(r.snippet || '') + '</span></button>';
+        }
+        els.msgSearchResults.innerHTML = html;
+        var btns = els.msgSearchResults.querySelectorAll('.jim-msg-result');
+        for (var j = 0; j < btns.length; j++) {
+            btns[j].addEventListener('click', function () {
+                var cid = parseInt(this.getAttribute('data-conversation-id'), 10);
+                var mid = parseInt(this.getAttribute('data-message-id'), 10);
+                openConversationAtMessage(cid, mid);
+            });
+        }
+    }
+
     function bindEvents() {
         if (els.searchInput) {
             els.searchInput.addEventListener('input', onSearchInput);
         }
+        if (els.msgSearchToggle) {
+            els.msgSearchToggle.addEventListener('click', toggleMessageSearch);
+        }
+        if (els.msgSearch) {
+            els.msgSearch.addEventListener('input', onMessageSearchInput);
+            els.msgSearch.addEventListener('search', onMessageSearchInput);
+        }
+        if (els.messageList) {
+            els.messageList.addEventListener('contextmenu', function (event) {
+                var row = event.target.closest('[data-message-id]');
+                if (!row) {
+                    return;
+                }
+                var message = findMessageById(parseInt(row.getAttribute('data-message-id'), 10));
+                if (!message) {
+                    return;
+                }
+                event.preventDefault();
+                showMessageMenu(message, event.clientX, event.clientY);
+            });
+        }
+        if (els.messageMenu) {
+            els.messageMenu.addEventListener('click', function (event) {
+                var item = event.target.closest('[data-action]');
+                if (!item) {
+                    return;
+                }
+                var action = item.getAttribute('data-action');
+                var messageId = parseInt(item.getAttribute('data-message-id'), 10);
+                hideMessageMenu();
+                var proxy = document.createElement('button');
+                proxy.setAttribute('data-action', action);
+                proxy.setAttribute('data-message-id', String(messageId));
+                proxy.style.display = 'none';
+                var host = els.messageList || document.body;
+                host.appendChild(proxy);
+                proxy.click();
+                host.removeChild(proxy);
+            });
+        }
+        document.addEventListener('click', function (event) {
+            if (els.messageMenu && !els.messageMenu.hidden && !els.messageMenu.contains(event.target)) {
+                hideMessageMenu();
+            }
+        });
         if (els.sendButton) {
             els.sendButton.addEventListener('click', sendMessage);
         }
@@ -5955,6 +6823,9 @@
         if (els.newGroupButton) {
             els.newGroupButton.addEventListener('click', openGroupModal);
         }
+        if (els.savedMessagesButton) {
+            els.savedMessagesButton.addEventListener('click', openSavedMessages);
+        }
         if (els.messageInfoModal) {
             els.messageInfoModal.addEventListener('click', function (event) {
                 if (event.target === els.messageInfoModal) {
@@ -5967,6 +6838,52 @@
             els.forwardModal.addEventListener('click', function (event) {
                 if (event.target === els.forwardModal) {
                     closeForwardModal();
+                }
+            });
+        }
+        if (els.sharedClose) {
+            els.sharedClose.addEventListener('click', closeSharedGallery);
+        }
+        if (els.sharedModal) {
+            els.sharedModal.addEventListener('click', function (event) {
+                if (event.target === els.sharedModal) {
+                    closeSharedGallery();
+                }
+            });
+        }
+        if (els.sharedTabs) {
+            els.sharedTabs.addEventListener('click', function (event) {
+                var tab = event.target.closest('[data-shared-type]');
+                if (!tab) {
+                    return;
+                }
+                openSharedGallery(tab.getAttribute('data-shared-type'));
+            });
+        }
+        if (els.sharedBody) {
+            els.sharedBody.addEventListener('click', function (event) {
+                if (event.target.getAttribute('data-shared-retry')) {
+                    loadSharedPage(true);
+                    return;
+                }
+                if (event.target.getAttribute('data-shared-more')) {
+                    loadSharedPage(false);
+                    return;
+                }
+                var copyUrl = event.target.getAttribute('data-copy-url');
+                if (copyUrl) {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(copyUrl);
+                    }
+                    return;
+                }
+                var messageId = event.target.getAttribute('data-goto-message');
+                if (messageId) {
+                    closeSharedGallery();
+                    var node = document.querySelector('#jim-message-list [data-message-id="' + messageId + '"]');
+                    if (node && node.scrollIntoView) {
+                        node.scrollIntoView({ block: 'center' });
+                    }
                 }
             });
         }
@@ -6541,6 +7458,9 @@
         }
         if (els.newConversationButton) {
             els.newConversationButton.disabled = true;
+        }
+        if (els.savedMessagesButton) {
+            els.savedMessagesButton.disabled = true;
         }
         updateComposerState();
     }

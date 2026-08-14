@@ -55,6 +55,7 @@ import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
 import com.corbitlogic.jira.internalmessenger.service.JimPresenceService;
 import com.corbitlogic.jira.internalmessenger.service.JimReadStateService;
+import com.corbitlogic.jira.internalmessenger.service.JimSharedContentService;
 import com.corbitlogic.jira.internalmessenger.util.JimIssueUrlBuilder;
 import com.corbitlogic.jira.internalmessenger.util.JimValidation;
 import java.io.File;
@@ -101,9 +102,10 @@ public class JimConversationResource {
     private final JimActivityService activityService;
     private final JimGroupService groupService;
     private final JimAvatarStorageService avatarStorageService;
+    private final JimSharedContentService sharedContentService;
 
     @Inject
-    public JimConversationResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimAttachmentStorageService attachmentStorageService, JimPresenceService presenceService, JimRestJsonMapper restJsonMapper, JimAccessPolicyService accessPolicyService, JimLicenseService licenseService, JimMessageUserStateService userStateService, JimActivityService activityService, JimGroupService groupService, JimAvatarStorageService avatarStorageService, JimPluginBootstrap pluginBootstrap) {
+    public JimConversationResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReadStateService readStateService, JimAttachmentService attachmentService, JimAttachmentStorageService attachmentStorageService, JimPresenceService presenceService, JimRestJsonMapper restJsonMapper, JimAccessPolicyService accessPolicyService, JimLicenseService licenseService, JimMessageUserStateService userStateService, JimActivityService activityService, JimGroupService groupService, JimAvatarStorageService avatarStorageService, JimSharedContentService sharedContentService, JimPluginBootstrap pluginBootstrap) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
@@ -119,6 +121,7 @@ public class JimConversationResource {
         this.activityService = activityService;
         this.groupService = groupService;
         this.avatarStorageService = avatarStorageService;
+        this.sharedContentService = sharedContentService;
     }
 
     private java.util.List<java.util.Map<String, Object>> activitiesFor(int conversationId, String viewerKey) {
@@ -174,6 +177,36 @@ public class JimConversationResource {
         }
         catch (Exception ex) {
             return JimRestResponses.internalError(log, "GET /rest/jim/1.0/conversations", userKey, ex, "internal_error", "An internal error occurred while loading conversations.");
+        }
+    }
+
+    /**
+     * Chat message search (Chat Search feature). Global across the user's conversations
+     * when {@code conversationId} is omitted, or scoped to one membership-checked
+     * conversation. Server-side permission enforced; never changes read state.
+     * {@code GET /rest/jim/1.0/conversations/search?q=&conversationId=&limit=&cursor=}
+     */
+    @GET
+    @Path(value="/search")
+    public Response searchMessages(@javax.ws.rs.QueryParam("q") String q,
+                                   @javax.ws.rs.QueryParam("conversationId") Integer conversationId,
+                                   @javax.ws.rs.QueryParam("limit") Integer limit,
+                                   @javax.ws.rs.QueryParam("cursor") Integer cursor) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            java.util.Map<String, Object> body = this.messageService.searchMessages(
+                    q, conversationId, limit == null ? 25 : limit.intValue(), cursor == null ? 0 : cursor.intValue());
+            return JimRestResponses.okJson(body);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return JimRestResponses.internalError(log, "GET /rest/jim/1.0/conversations/search",
+                    userKey, ex, "internal_error", "An internal error occurred during search.");
         }
     }
 
@@ -265,6 +298,30 @@ public class JimConversationResource {
         }
         catch (Exception ex) {
             return JimRestResponses.internalError(log, "POST /rest/jim/1.0/conversations/direct", userKey, ex, "internal_error", "An internal error occurred while creating the conversation.");
+        }
+    }
+
+    @GET
+    @Path(value="/{conversationId}/shared")
+    public Response listSharedContent(@PathParam(value="conversationId") int conversationId,
+                                      @QueryParam(value="type") @DefaultValue(value="files") String type,
+                                      @QueryParam(value="cursor") Integer cursor,
+                                      @QueryParam(value="limit") @DefaultValue(value="25") int limit) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            return JimRestResponses.okJson(this.sharedContentService.listShared(
+                    conversationId, currentUserKey, type, cursor, Integer.valueOf(limit)));
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return JimRestResponses.internalError(log, "GET /rest/jim/1.0/conversations/" + conversationId + "/shared",
+                    userKey, ex, "internal_error", "An internal error occurred while loading shared content.");
         }
     }
 

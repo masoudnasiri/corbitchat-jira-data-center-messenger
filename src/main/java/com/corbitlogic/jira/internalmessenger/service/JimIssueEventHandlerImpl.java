@@ -9,9 +9,15 @@
  */
 package com.corbitlogic.jira.internalmessenger.service;
 
+import com.atlassian.jira.component.ComponentAccessor;
 import com.atlassian.jira.config.properties.ApplicationProperties;
+import com.atlassian.jira.issue.Issue;
+import com.atlassian.jira.issue.comments.Comment;
 import com.atlassian.jira.user.ApplicationUser;
 import com.corbitlogic.jira.internalmessenger.ao.JimMessage;
+import com.corbitlogic.jira.internalmessenger.report.JimReportConfig;
+import com.corbitlogic.jira.internalmessenger.report.JimReportReplies;
+import com.corbitlogic.jira.internalmessenger.report.ReportResponsibilityService;
 import com.corbitlogic.jira.internalmessenger.event.AssignmentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.AttachmentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.CommentEventPayload;
@@ -69,43 +75,135 @@ implements JimIssueEventHandler {
             return;
         }
         try {
-            List<ApplicationUser> mentionedUsers = this.mentionParser.parseMentionedUsersAsList(payload.getCommentBody());
-            if (mentionedUsers.isEmpty()) {
-                log.debug("event=mention stage=process outcome=skipped reason=no_mentions issueKey={} commentId={}", (Object)payload.getIssueKey(), (Object)payload.getCommentId());
+            String body = payload.getCommentBody();
+            String issueKey = payload.getIssueKey();
+            String actorKey = payload.getActorUserKey();
+            String actorName = payload.getActorDisplayName() != null ? payload.getActorDisplayName() : "Someone";
+            Long commentId = payload.getCommentId();
+            String commentSuffix = commentId != null ? String.valueOf(commentId) : "unknown";
+            String issueUrl = JimIssueUrlBuilder.buildBrowseUrl(this.applicationProperties, issueKey);
+            // FULL comment body stored as eventText (permission re-gated at read); card
+            // body stays a short non-sensitive label.
+            String fullText = this.mentionParser.renderReadable(body, MENTION_TEXT_LENGTH);
+
+            // --- Report context (submission / reply / none) ---
+            Issue issue = loadIssue(issueKey);
+            boolean isSubmission = JimReportConfig.isReportSubmissionBody(body);
+            Comment parentReport = (!isSubmission && issue != null && commentId != null)
+                    ? JimReportReplies.parentReportFor(issue, commentId, body) : null;
+            boolean isReply = parentReport != null;
+            boolean reportContext = isSubmission || isReply;
+            boolean hasAttachment = bodyHasAttachment(body);
+
+            List<ApplicationUser> mentionedUsers = this.mentionParser.parseMentionedUsersAsList(body);
+            if (mentionedUsers.isEmpty() && !reportContext) {
+                log.debug("event=comment stage=process outcome=skipped reason=no_mentions_no_report issueKey={} commentId={}",
+                        (Object) issueKey, (Object) commentId);
                 return;
             }
-            // The FULL comment body is stored as eventText so the Assistant can
-            // show the whole mention message (permission re-gated at read time).
-            // The card `body` stays a short, non-sensitive label so it never
-            // leaks the comment text to a viewer who has lost browse permission.
-            String fullText = this.mentionParser.renderReadable(payload.getCommentBody(), MENTION_TEXT_LENGTH);
-            String commentSuffix = payload.getCommentId() != null ? String.valueOf(payload.getCommentId()) : "unknown";
+
+            // Users already notified for THIS comment (dedupe: one card per person per action).
+            java.util.Set<String> notified = new java.util.HashSet<String>();
+
+            // Report receiver = schedule-approval approver (same source as the report pause rule).
+            ApplicationUser receiver = issue != null ? ReportResponsibilityService.receiver(issue) : null;
+            String receiverKey = receiver != null ? receiver.getKey() : null;
+
+            // 1) Report SUBMISSION -> notify the report receiver/team lead (REPORT_SUBMITTED_TO_ME).
+            //    Recipient is resolved from the approver field only (never guessed from assignee).
+            if (isSubmission && receiverKey != null && this.permissionService.isActiveUser(receiverKey)
+                    && !receiverKey.equals(actorKey)) {
+                String label = actorName + " submitted a report on " + issueKey + " for you.";
+                String eventData = "recipientReason=report_receiver\nreportId=" + commentSuffix
+                        + (hasAttachment ? "\nhasAttachment=true" : "");
+                String fp = JimConversationKeys.buildEventFingerprint(
+                        JimEventType.REPORT_SUBMITTED_TO_ME.name(), receiverKey, issueKey, actorKey, commentSuffix);
+                this.createAssistantMessageSafely(receiverKey, JimEventType.REPORT_SUBMITTED_TO_ME, actorKey, actorName,
+                        issueKey, payload.getIssueSummary(), issueUrl, JimValidation.truncatePreview(label), fullText, eventData, fp);
+                notified.add(receiverKey);
+            }
+
+            // 2) Report REPLY -> notify the parent report author and the report receiver (REPORT_REPLY).
+            if (isReply) {
+                String parentReportId = parentReport.getId() != null ? String.valueOf(parentReport.getId()) : "";
+                java.util.LinkedHashMap<String, String> replyTargets = new java.util.LinkedHashMap<String, String>();
+                ApplicationUser parentAuthor = parentReport.getAuthorApplicationUser();
+                if (parentAuthor != null && parentAuthor.getKey() != null) {
+                    replyTargets.put(parentAuthor.getKey(), "parent_author");
+                }
+                if (receiverKey != null && !replyTargets.containsKey(receiverKey)) {
+                    replyTargets.put(receiverKey, "report_receiver");
+                }
+                for (java.util.Map.Entry<String, String> e : replyTargets.entrySet()) {
+                    String tk = e.getKey();
+                    if (tk == null || tk.equals(actorKey) || notified.contains(tk)
+                            || !this.permissionService.isActiveUser(tk)) {
+                        continue;
+                    }
+                    String label = actorName + " replied to a report on " + issueKey + ".";
+                    String eventData = "recipientReason=" + e.getValue() + "\nreportId=" + commentSuffix
+                            + "\nparentReportId=" + parentReportId + (hasAttachment ? "\nhasAttachment=true" : "");
+                    String fp = JimConversationKeys.buildEventFingerprint(
+                            JimEventType.REPORT_REPLY.name(), tk, issueKey, actorKey, commentSuffix);
+                    this.createAssistantMessageSafely(tk, JimEventType.REPORT_REPLY, actorKey, actorName,
+                            issueKey, payload.getIssueSummary(), issueUrl, JimValidation.truncatePreview(label), fullText, eventData, fp);
+                    notified.add(tk);
+                }
+            }
+
+            // 3) Mentions -> REPORT_MENTION inside a report/reply, else MENTION. Skip anyone already
+            //    notified for this comment (avoids duplicate cards for the receiver/parent author).
             for (ApplicationUser mentionedUser : mentionedUsers) {
                 if (mentionedUser == null || !this.permissionService.isActiveUser(mentionedUser.getKey())) {
-                    log.debug("event=mention stage=process outcome=skipped reason=inactive_user issueKey={} commentId={} userKey={}", new Object[]{payload.getIssueKey(), payload.getCommentId(), mentionedUser != null ? mentionedUser.getKey() : "null"});
                     continue;
                 }
-                if (payload.getActorUserKey() != null && payload.getActorUserKey().equals(mentionedUser.getKey())) {
-                    log.debug("event=mention stage=process outcome=skipped reason=self_mention issueKey={} commentId={} userKey={}", new Object[]{payload.getIssueKey(), payload.getCommentId(), mentionedUser.getKey()});
-                    continue;
+                String mk = mentionedUser.getKey();
+                if (actorKey != null && actorKey.equals(mk)) {
+                    continue; // self-mention
                 }
-                String body = payload.getActorDisplayName() + " mentioned you in " + payload.getIssueKey() + ".";
-                String fingerprint = JimConversationKeys.buildEventFingerprint(JimEventType.MENTION.name(), mentionedUser.getKey(), payload.getIssueKey(), payload.getActorUserKey(), commentSuffix);
-                this.createAssistantMessageSafely(mentionedUser.getKey(), JimEventType.MENTION, payload.getActorUserKey(), payload.getActorDisplayName(), payload.getIssueKey(), payload.getIssueSummary(), JimIssueUrlBuilder.buildBrowseUrl(this.applicationProperties, payload.getIssueKey()), JimValidation.truncatePreview(body), fullText, null, fingerprint);
-                // Combined mention+attachment: if files were attached to this
-                // same comment/update and processed just before this mention,
-                // fold them into THIS mention card (and remove the standalone
-                // attachment card) so the user sees one enriched notification.
+                if (notified.contains(mk)) {
+                    continue; // already got a receiver/reply card for this comment
+                }
+                JimEventType type = reportContext ? JimEventType.REPORT_MENTION : JimEventType.MENTION;
+                String label = reportContext
+                        ? (actorName + " mentioned you in a report on " + issueKey + ".")
+                        : (actorName + " mentioned you in " + issueKey + ".");
+                String eventData = reportContext
+                        ? ("recipientReason=mentioned\nreportContext=" + (isSubmission ? "report" : "reply")
+                            + (isReply ? "\nparentReportId=" + parentReport.getId() : "")
+                            + (hasAttachment ? "\nhasAttachment=true" : ""))
+                        : null;
+                String fp = JimConversationKeys.buildEventFingerprint(type.name(), mk, issueKey, actorKey, commentSuffix);
+                this.createAssistantMessageSafely(mk, type, actorKey, actorName, issueKey, payload.getIssueSummary(),
+                        issueUrl, JimValidation.truncatePreview(label), fullText, eventData, fp);
+                notified.add(mk);
                 try {
-                    this.messageService.reconcileMentionWithStandaloneAttachment(mentionedUser.getKey(), payload.getIssueKey());
+                    this.messageService.reconcileMentionWithStandaloneAttachment(mk, issueKey);
                 } catch (Exception ignore) {
-                    // Reconciliation is best-effort; a standalone card is still safe.
+                    // best-effort
                 }
             }
         }
         catch (Exception ex) {
-            log.error("event=mention stage=process outcome=error issueKey={} commentId={} message={}", new Object[]{payload.getIssueKey(), payload.getCommentId(), ex.getMessage(), ex});
+            log.error("event=comment stage=process outcome=error issueKey={} commentId={} message={}", new Object[]{payload.getIssueKey(), payload.getCommentId(), ex.getMessage(), ex});
         }
+    }
+
+    /** Load the Jira issue by key, or null on any failure (never throws to the caller). */
+    private Issue loadIssue(String issueKey) {
+        try {
+            return issueKey == null ? null : ComponentAccessor.getIssueManager().getIssueByCurrentKey(issueKey);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** Cheap check whether a comment body embeds a Jira attachment wiki token. */
+    private static boolean bodyHasAttachment(String body) {
+        if (body == null) {
+            return false;
+        }
+        return body.contains("[^") || body.matches("(?s).*!\\S+\\|thumbnail!.*");
     }
 
     @Override

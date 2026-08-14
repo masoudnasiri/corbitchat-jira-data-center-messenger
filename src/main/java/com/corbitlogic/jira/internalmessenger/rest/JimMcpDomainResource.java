@@ -33,6 +33,8 @@ import com.corbitlogic.jira.internalmessenger.service.JimGroupService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
 import com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService;
 import com.corbitlogic.jira.internalmessenger.service.JimReadStateService;
+import com.corbitlogic.jira.internalmessenger.service.JimSharedContentService;
+import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -42,6 +44,7 @@ import java.util.Map;
 
 import javax.inject.Inject;
 import javax.ws.rs.Consumes;
+import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
@@ -76,13 +79,15 @@ public class JimMcpDomainResource {
     private final JimMessageService messageService;
     private final JimReadStateService readStateService;
     private final JimRestJsonMapper restJsonMapper;
+    private final JimSharedContentService sharedContentService;
 
     @Inject
     public JimMcpDomainResource(JiraAuthenticationContext authenticationContext, SearchService searchService,
                                 AvatarService avatarService, ApplicationProperties applicationProperties,
                                 JimMobileFeatureService featureService, JimReportService reportService,
                                 JimConversationService conversationService, JimMessageService messageService,
-                                JimReadStateService readStateService, JimRestJsonMapper restJsonMapper) {
+                                JimReadStateService readStateService, JimRestJsonMapper restJsonMapper,
+                                JimSharedContentService sharedContentService) {
         this.authenticationContext = authenticationContext;
         this.searchService = searchService;
         this.avatarService = avatarService;
@@ -93,6 +98,7 @@ public class JimMcpDomainResource {
         this.messageService = messageService;
         this.readStateService = readStateService;
         this.restJsonMapper = restJsonMapper;
+        this.sharedContentService = sharedContentService;
     }
 
     private ApplicationUser viewer() {
@@ -504,13 +510,28 @@ public class JimMcpDomainResource {
                     .hasPermission(ProjectPermissions.ADD_COMMENTS, (Issue) issue, viewer);
             Map<String, Object> out = new LinkedHashMap<String, Object>();
             out.put("issueKey", issue.getKey());
-            boolean configured = s != null && s.configured && s.levelCode != null && s.applicable;
+            // Submission is NOT gated by enforcement scope — an out-of-scope issue can
+            // still receive an informational (unscored) report if the schedule is active
+            // and the caller can comment. Enforcement scope only affects scoring.
+            boolean configured = s != null && s.configured && s.levelCode != null;
+            boolean inScope = s != null && s.inEnforcementScope;
             boolean canSubmit = configured && s.submitActive && canComment;
             out.put("configured", configured);
-            out.put("applicable", s != null && s.applicable);
+            out.put("applicable", inScope);
+            out.put("inEnforcementScope", inScope);
+            out.put("enforcementEnabled", s != null && s.enforcementEnabled);
+            out.put("enforcementStartDate", s == null ? "" : s.enforcementStartDate);
+            out.put("enforcementDateBasis", s == null ? null : s.enforcementDateBasis);
+            out.put("fixedCounterStartMode", s != null && s.fixedCounterStartMode);
+            out.put("outOfScopeReason", s == null ? null : s.outOfScopeReason);
+            out.put("scoringPeriodStartMs", (s == null || s.scoringPeriodStartMs <= 0L
+                    || s.scoringPeriodStartMs == Long.MAX_VALUE) ? null : Long.valueOf(s.scoringPeriodStartMs));
+            out.put("reportRequiredForScoring", s != null && s.reportRequiredForScoring);
             out.put("submitActive", s != null && s.submitActive);
             out.put("canComment", canComment);
             out.put("canSubmit", canSubmit);
+            out.put("canSubmitReport", canSubmit);
+            out.put("informationalReportAllowed", canSubmit && !inScope);
             out.put("levelCode", s == null ? null : s.levelCode);
             out.put("statusCode", s == null ? null : s.statusCode);
             out.put("reportingControlState", s == null ? null : s.reportingControlState);
@@ -1050,6 +1071,27 @@ public class JimMcpDomainResource {
         body.put("truncated", msgs.size() >= scan);
         body.put("messages", this.restJsonMapper.toMessageMaps(hits, viewer, c, viewer.getKey()));
         return JimRestResponses.okJson(body);
+    }
+
+    @GET
+    @Path("/chat/conversations/{id}/shared")
+    public Response chatListShared(@PathParam("id") int id,
+                                   @QueryParam("type") @DefaultValue("files") String type,
+                                   @QueryParam("cursor") Integer cursor,
+                                   @QueryParam("limit") Integer limit) {
+        ApplicationUser viewer = viewer();
+        if (viewer == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "Not authenticated");
+        }
+        try {
+            return JimRestResponses.okJson(this.sharedContentService.listShared(
+                    id, viewer.getKey(), type, cursor, limit));
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            log.error("MCP shared content failed conversationId={}", id, ex);
+            return JimRestResponses.errorJson(500, "internal_error", "Unable to list shared content");
+        }
     }
 
     // ---------------------------------------------------------------- schedule approval (by issue key)

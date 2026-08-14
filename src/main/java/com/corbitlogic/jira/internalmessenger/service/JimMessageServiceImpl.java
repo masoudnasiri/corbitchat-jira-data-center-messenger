@@ -125,7 +125,25 @@ implements JimMessageService {
         });
         this.notifyGroupMentionsSafely(conversationId, senderUserKey, normalizedBody, created.getID());
         this.notifyDirectRecipientPushSafely(conversationId, senderUserKey, normalizedBody, created.getID());
+        this.triggerWorkspaceAgentSafely(conversationId, created);
         return created;
+    }
+
+    /**
+     * Best-effort post-commit hook for the ChatGPT Workspace Agent integration.
+     * Enqueues a trigger job when the message is eligible (direct-to-bot or bot
+     * mention). Never throws and never blocks message creation. Resolved lazily via
+     * ComponentAccessor so message creation has no hard dependency on the integration.
+     */
+    private void triggerWorkspaceAgentSafely(int conversationId, JimMessage created) {
+        try {
+            JimWorkspaceAgentService agent = JimWorkspaceAgentServiceImpl.instance();
+            if (agent != null) {
+                agent.onUserMessage(conversationId, created);
+            }
+        } catch (Throwable ignore) {
+            // Integration is optional; message creation must never fail because of it.
+        }
     }
 
     @Override
@@ -368,6 +386,16 @@ implements JimMessageService {
             }
             case ISSUE_ATTACHMENT: {
                 return issueKey != null ? "New attachment on " + issueKey : "New attachment";
+            }
+            case REPORT_SUBMITTED:
+            case REPORT_SUBMITTED_TO_ME: {
+                return issueKey != null ? "New report on " + issueKey : "New report submitted";
+            }
+            case REPORT_REPLY: {
+                return issueKey != null ? "New reply to a report on " + issueKey : "New report reply";
+            }
+            case REPORT_MENTION: {
+                return issueKey != null ? "You were mentioned in a report on " + issueKey : "You were mentioned in a report";
             }
         }
         return "Jira Assistant";
@@ -760,6 +788,11 @@ implements JimMessageService {
             case STATUS_CHANGE:
                 return MobilePushEvent.ISSUE_STATUS;
             case MENTION:
+            case REPORT_MENTION:
+                return MobilePushEvent.ISSUE_MENTION;
+            case REPORT_SUBMITTED:
+            case REPORT_SUBMITTED_TO_ME:
+            case REPORT_REPLY:
                 return MobilePushEvent.ISSUE_MENTION;
             default:
                 return MobilePushEvent.ISSUE_STATUS;
@@ -813,6 +846,233 @@ implements JimMessageService {
         ArrayList<JimMessage> result = new ArrayList<JimMessage>(Arrays.asList(messages));
         Collections.reverse(result);
         return result;
+    }
+
+    // ------------------------------------------------------------------ chat search
+    private static final int SEARCH_MIN_QUERY = 2;
+    private static final int SEARCH_MAX_LIMIT = 50;
+    private static final int SEARCH_CONVERSATION_CAP = 300;   // bounded global scan
+    private static final int SEARCH_SNIPPET_RADIUS = 60;
+
+    /** Escape LIKE wildcards so user input can't broaden the match (values are parameterized). */
+    private static String escapeLike(String s) {
+        return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
+    @Override
+    public java.util.Map<String, Object> searchMessages(String query, Integer conversationId, int limit, int offset) {
+        String userKey = this.permissionService.requireAuthenticatedUserKey();
+        String q = query == null ? "" : query.trim();
+        if (q.length() < SEARCH_MIN_QUERY) {
+            throw JimMessengerException.badRequest("Search query must be at least " + SEARCH_MIN_QUERY + " characters");
+        }
+        int max = limit < 1 ? 25 : Math.min(limit, SEARCH_MAX_LIMIT);
+        int off = Math.max(0, offset);
+        String needle = q.toLowerCase();
+        String like = "%" + escapeLike(q) + "%";
+
+        // Scope: one membership-checked conversation, or all the user's conversations.
+        List<JimConversation> convs = new ArrayList<JimConversation>();
+        String scope;
+        if (conversationId != null) {
+            JimConversation c = this.conversationService.getConversationForUser(conversationId.intValue(), userKey);
+            if (c != null) {
+                convs.add(c);
+            }
+            scope = "conversation";
+        } else {
+            List<JimConversation> all = this.conversationService.listConversationsForUser(userKey);
+            if (all != null) {
+                convs.addAll(all);
+            }
+            scope = "global";
+        }
+
+        JimReviewerService reviewer = component(JimReviewerService.class);
+        JimMessageUserStateService userState = component(JimMessageUserStateService.class);
+        UserManager userManager = ComponentAccessor.getUserManager();
+        // Per-conversation fetch cap: enough to paginate for a single conversation;
+        // small for global so no conversation dominates and no unbounded scan occurs.
+        int perConv = conversationId != null ? Math.min(off + max + 1, 200) : 25;
+
+        // messageId -> result row (dedupe; body match wins over filename-only match).
+        java.util.LinkedHashMap<Integer, Object[]> byId = new java.util.LinkedHashMap<Integer, Object[]>();
+        int scannedConvs = 0;
+        for (JimConversation c : convs) {
+            if (scannedConvs++ >= SEARCH_CONVERSATION_CAP) {
+                break;
+            }
+            java.util.Set<Integer> hidden;
+            try {
+                hidden = userState != null ? userState.hiddenMessageIds(userKey, c.getID())
+                        : java.util.Collections.<Integer>emptySet();
+            } catch (Throwable t) {
+                hidden = java.util.Collections.<Integer>emptySet();
+            }
+            // Body matches (indexed by CONVERSATION_ID; LIKE is case-insensitive on MySQL).
+            JimMessage[] byBody = (JimMessage[]) this.activeObjects.find(JimMessage.class,
+                    Query.select().where("CONVERSATION_ID = ? AND BODY LIKE ? AND (DELETED IS NULL OR DELETED = 0)",
+                            new Object[]{c.getID(), like}).order("ID DESC").limit(perConv));
+            for (JimMessage m : byBody) {
+                if (skipMessage(m, hidden, reviewer)) {
+                    continue;
+                }
+                byId.put(Integer.valueOf(m.getID()), new Object[]{m, c, null});
+            }
+            // Attachment filename matches (join back to the owning message).
+            try {
+                JimAttachment[] byFile = (JimAttachment[]) this.activeObjects.find(JimAttachment.class,
+                        Query.select().where("CONVERSATION_ID = ? AND ORIGINAL_FILENAME LIKE ? AND (DELETED IS NULL OR DELETED = 0)",
+                                new Object[]{c.getID(), like}).order("ID DESC").limit(perConv));
+                for (JimAttachment a : byFile) {
+                    Integer mid = Integer.valueOf(a.getMessageId());
+                    if (byId.containsKey(mid)) {
+                        continue; // already a body hit
+                    }
+                    JimMessage m = this.activeObjects.get(JimMessage.class, mid);
+                    if (m == null || m.getConversationId() != c.getID() || skipMessage(m, hidden, reviewer)) {
+                        continue;
+                    }
+                    byId.put(mid, new Object[]{m, c, a.getOriginalFilename()});
+                }
+            } catch (Throwable ignore) {
+                // attachment table optional; body results still returned
+            }
+        }
+
+        // Sort newest-first by created time, then paginate by offset/limit.
+        List<Object[]> rows = new ArrayList<Object[]>(byId.values());
+        rows.sort((x, y) -> Long.compare(createdMillis((JimMessage) y[0]), createdMillis((JimMessage) x[0])));
+        int total = rows.size();
+        List<Map<String, Object>> results = new ArrayList<Map<String, Object>>();
+        for (int i = off; i < total && results.size() < max; i++) {
+            Object[] row = rows.get(i);
+            JimMessage m = (JimMessage) row[0];
+            JimConversation c = (JimConversation) row[1];
+            String matchedFilename = (String) row[2];
+            Map<String, Object> item = new HashMap<String, Object>();
+            item.put("conversationId", c.getID());
+            item.put("conversationType", c.getConversationType());
+            item.put("conversationTitle", conversationTitle(c, userKey, userManager));
+            item.put("messageId", m.getID());
+            item.put("senderUserKey", m.getSenderUserKey());
+            item.put("senderDisplayName", senderDisplayName(m, userManager));
+            item.put("createdAt", createdMillis(m));
+            item.put("snippet", matchedFilename != null
+                    ? snippet(matchedFilename, needle) : snippet(m.getBody(), needle));
+            item.put("attachmentMatched", matchedFilename != null);
+            if (matchedFilename != null) {
+                item.put("matchedFilename", matchedFilename);
+            }
+            item.put("eventType", m.getEventType());
+            item.put("deepLink", "corbithub://chat/" + c.getID() + "?message=" + m.getID());
+            item.put("canOpen", true);
+            results.add(item);
+        }
+        Map<String, Object> out = new HashMap<String, Object>();
+        out.put("query", q);
+        out.put("scope", scope);
+        out.put("results", results);
+        out.put("matchCount", total);
+        Integer nextCursor = (off + results.size() < total) ? Integer.valueOf(off + results.size()) : null;
+        out.put("nextCursor", nextCursor);
+        return out;
+    }
+
+    /** Skip deleted, per-user hidden, and hidden-system-account (pluginuser) messages. */
+    private boolean skipMessage(JimMessage m, java.util.Set<Integer> hidden, JimReviewerService reviewer) {
+        if (m == null) {
+            return true;
+        }
+        if (m.getDeleted() != null && m.getDeleted().intValue() == 1) {
+            return true;
+        }
+        if (hidden != null && hidden.contains(Integer.valueOf(m.getID()))) {
+            return true;
+        }
+        if (reviewer != null && m.getSenderUserKey() != null
+                && reviewer.isHiddenSystemAccountUserKey(m.getSenderUserKey())) {
+            return true;
+        }
+        return false;
+    }
+
+    private static long createdMillis(JimMessage m) {
+        try {
+            return m.getCreatedAt() != null ? m.getCreatedAt().longValue() : 0L;
+        } catch (Throwable t) {
+            return 0L;
+        }
+    }
+
+    private String senderDisplayName(JimMessage m, UserManager userManager) {
+        if (JimSenderType.SYSTEM.name().equals(m.getSenderType())) {
+            return "Jira Assistant";
+        }
+        String key = m.getSenderUserKey();
+        if (key != null && userManager != null) {
+            ApplicationUser u = userManager.getUserByKey(key);
+            if (u != null) {
+                return u.getDisplayName();
+            }
+        }
+        return key != null ? key : "";
+    }
+
+    /** Human title for a conversation from the viewer's perspective (never leaks pluginuser). */
+    private String conversationTitle(JimConversation c, String viewerKey, UserManager userManager) {
+        String type = c.getConversationType();
+        if (JimConversationType.SYSTEM.name().equals(type)) {
+            return "Jira Assistant";
+        }
+        if (JimConversationType.GROUP.name().equals(type) || JimConversationType.PROJECT.name().equals(type)) {
+            String name = c.getGroupName();
+            if (name != null && !name.trim().isEmpty()) {
+                return name;
+            }
+            return JimConversationType.PROJECT.name().equals(type) && c.getProjectKey() != null
+                    ? c.getProjectKey() + " chat" : "Group";
+        }
+        // DIRECT: the other participant.
+        String other = viewerKey != null && viewerKey.equals(c.getUserAKey()) ? c.getUserBKey() : c.getUserAKey();
+        if (other != null && userManager != null) {
+            ApplicationUser u = userManager.getUserByKey(other);
+            if (u != null) {
+                return u.getDisplayName();
+            }
+        }
+        return other != null ? other : "Direct message";
+    }
+
+    /** Build a short snippet around the first case-insensitive match; mention tokens stripped. */
+    private String snippet(String body, String needleLower) {
+        if (body == null) {
+            return "";
+        }
+        String clean = body.replaceAll("\\[~[^\\]]+\\]", "").replaceAll("\\s+", " ").trim();
+        String lower = clean.toLowerCase();
+        int idx = lower.indexOf(needleLower);
+        if (idx < 0) {
+            return clean.length() > 160 ? clean.substring(0, 160) + "\u2026" : clean;
+        }
+        int start = Math.max(0, idx - SEARCH_SNIPPET_RADIUS);
+        int end = Math.min(clean.length(), idx + needleLower.length() + SEARCH_SNIPPET_RADIUS);
+        String snip = clean.substring(start, end);
+        if (start > 0) {
+            snip = "\u2026" + snip;
+        }
+        if (end < clean.length()) {
+            snip = snip + "\u2026";
+        }
+        return snip;
+    }
+
+    private static <T> T component(Class<T> type) {
+        try {
+            return ComponentAccessor.getOSGiComponentInstanceOfType(type);
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     @Override

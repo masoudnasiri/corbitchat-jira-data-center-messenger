@@ -34,6 +34,7 @@
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimReportControl</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimReportWindow</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimMcpToolPolicy</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimAgentTriggerJob</entity>
     </ao>
 
     <component-import key="activeObjects" interface="com.atlassian.activeobjects.external.ActiveObjects"/>
@@ -69,6 +70,11 @@
                class="com.corbitlogic.jira.internalmessenger.service.JimConversationServiceImpl">
         <description>Conversation persistence for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimConversationService</interface>
+    </component>
+
+    <component key="jimSharedContentService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimSharedContentService">
+        <description>Bounded shared Files/Media/Links listing for a conversation</description>
     </component>
 
     <component key="jimMessageService"
@@ -126,6 +132,12 @@
                class="com.corbitlogic.jira.internalmessenger.service.JimMcpServiceImpl">
         <description>MCP Control Plane: settings, tool policy, signed policy for the Corbit Logic Gateway</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimMcpService</interface>
+    </component>
+
+    <component key="jimWorkspaceAgentService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimWorkspaceAgentServiceImpl">
+        <description>ChatGPT Workspace Agent two-way chat trigger (async queue + write-only secret)</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimWorkspaceAgentService</interface>
     </component>
 
     <component key="jimMcpAdminServlet"

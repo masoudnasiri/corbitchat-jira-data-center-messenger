@@ -75,14 +75,11 @@ public class JimReportServiceImpl implements JimReportService {
 
     @Override
     public boolean isReportComment(String body) {
-        if (body == null) {
-            return false;
-        }
-        String marker = JimReportConfig.normalizePersian(JimReportConfig.marker());
-        if (marker.isEmpty()) {
-            return false;
-        }
-        return JimReportConfig.normalizePersian(body).contains(marker);
+        // A comment counts as a report ONLY when the marker appears OUTSIDE any
+        // quoted segment. This is the critical parser rule: a report reply quotes
+        // the parent report ({quote}...#گزارش...{quote}) and must never be counted
+        // as a new report (nor a quoted marker in any ordinary comment).
+        return JimReportConfig.isReportSubmissionBody(body);
     }
 
     @Override
@@ -129,25 +126,35 @@ public class JimReportServiceImpl implements JimReportService {
         s.dueEndMs = endOfDueDay(issue, tz);
         s.dueMissing = resolveEffectiveDueDate(issue) == null;
 
-        // Report applicability policy (reportscope): when enabled, gate scope
-        // BEFORE any counting/persistence. Out-of-scope issues short-circuit here
-        // — no ledger row is created, no mapped custom field is written and no
-        // missed/required accumulates. Any existing ledger row is left untouched
-        // (non-destructive; a separate, approval-gated cleanup handles those).
-        // The date basis uses the issue's SYSTEM due date so it matches the
-        // impact-scan JQL (duedate). Done = statusCategory Done (isDoneNow).
+        // Report ENFORCEMENT policy (reportscope): enforcement bounds SCORING ONLY —
+        // it never blocks report submission and never hides report history. When
+        // enabled it derives a per-issue lower bound
+        //   scoringPeriodStart = max(issueCreated, enforcementStartDate)
+        // that is applied to required/missed bucket generation. An issue whose whole
+        // period is before the start (or excluded by the date-basis filters) gets zero
+        // required/missed (statusCode NOT_ENFORCED) but keeps submitActive + items.
+        // The date basis uses the issue's SYSTEM due date so it matches the impact-scan
+        // JQL (duedate). Done = statusCategory Done (isDoneNow).
         Long sysDueMs = issue.getDueDate() != null ? issue.getDueDate().getTime() : null;
-        String applicabilityExclusion =
-                JimReportConfig.applicabilityExclusion(s.issueCreatedMs, sysDueMs, isDoneNow, tz);
-        if (applicabilityExclusion != null) {
-            s.applicable = false;
-            s.applicabilityReason = applicabilityExclusion;
-            s.compliance = "out_of_scope";
-            s.statusCode = "OUT_OF_SCOPE";
-            s.submitActive = false;
-            s.reportRequired = false;
-            s.inactiveReason = "out_of_scope";
-            return s; // no finalizeSummary → no persist, no accumulation
+        s.enforcementEnabled = JimReportConfig.applicabilityEnabled();
+        s.enforcementStartDate = JimReportConfig.effectiveFromDate();
+        s.enforcementDateBasis = JimReportConfig.applicabilityDateMode();
+        s.fixedCounterStartMode = s.enforcementEnabled
+                && "fixed_counter_start".equals(s.enforcementDateBasis);
+        String scopeExclusion = s.enforcementEnabled
+                ? JimReportConfig.applicabilityExclusion(s.issueCreatedMs, sysDueMs, isDoneNow, tz) : null;
+        s.inEnforcementScope = (scopeExclusion == null);
+        s.outOfScopeReason = scopeExclusion;
+        s.applicable = s.inEnforcementScope;           // back-compat with existing clients
+        s.applicabilityReason = scopeExclusion;
+        Long enforcementStartMsObj = s.enforcementEnabled ? JimReportConfig.effectiveFromMs(tz) : null;
+        long enforcementStartMs = enforcementStartMsObj != null ? enforcementStartMsObj.longValue() : 0L;
+        if (!s.inEnforcementScope) {
+            s.scoringPeriodStartMs = Long.MAX_VALUE;    // fully out of scope: zero scored buckets
+        } else if (enforcementStartMs > 0L) {
+            s.scoringPeriodStartMs = Math.max(s.issueCreatedMs, enforcementStartMs);
+        } else {
+            s.scoringPeriodStartMs = 0L;                // no date bound (policy off or empty date)
         }
 
         boolean fixedMin = "fixed_minimum".equals(s.countMode);
@@ -208,6 +215,19 @@ public class JimReportServiceImpl implements JimReportService {
         in.nowMs = System.currentTimeMillis();
         in.daily = "daily".equals(s.countMode);
         in.periodEndMs = countPeriodEnd(s, isDoneNow);
+        // Working-day gate: non-working days (Jira days-per-week + weekday fallback +
+        // holidays) generate no required buckets, so they never grow required/missed/
+        // streak counters. Null classifier when the feature is off (calendar days).
+        in.dayClassifier = ReportWorkingCalendarService.classifier(tz, issue);
+        // Report-receiver pause: skip buckets while the issue is assigned to the
+        // report receiver (approver), reconstructed from assignee change history.
+        long pauseUpper = in.daily
+                ? (startOfDay(in.nowMs, tz) + 24L * 60 * 60 * 1000L)
+                : (in.periodEndMs != null ? Math.max(in.periodEndMs, in.nowMs) : in.nowMs);
+        in.pausedIntervals = ReportResponsibilityService.pausedIntervals(issue, in.issueCreatedMs, pauseUpper);
+        // Enforcement scoring lower bound — bounds required/missed only (submission +
+        // history already flow normally above). 0 = no bound.
+        in.scoredPeriodStartMs = s.scoringPeriodStartMs;
         long[] ts = new long[s.items.size()];
         for (int i = 0; i < s.items.size(); i++) {
             ts[i] = s.items.get(i).createdMs;
@@ -218,6 +238,8 @@ public class JimReportServiceImpl implements JimReportService {
         s.requiredCount = r.requiredCount;
         s.validCount = r.validCount;
         s.outOfWindowCount = r.outOfWindowCount;
+        s.outOfScheduleCount = r.outOfScheduleCount;
+        s.outOfScopeReportCount = r.outOfScopeCount;
         s.duplicateCount = r.duplicateCount;
         s.missedCount = r.missedCount;
         s.requiredSoFar = r.requiredSoFar;
@@ -253,6 +275,12 @@ public class JimReportServiceImpl implements JimReportService {
         enforceClosedContract(s, isDoneNow);
         applyCommonExtras(issue, s, tz);
         computeStreakMetrics(s);
+        // Link report replies (real Jira comments) to their parent report for the UI/API.
+        // Never affects counting — replies are excluded by the parser rule.
+        try {
+            JimReportReplies.enrichSummary(issue, s, collectReportComments(issue));
+        } catch (Throwable ignore) {
+        }
         s.calcDurationMs = System.currentTimeMillis() - calcStart;
         persistMetrics(issue, s, null);
         persistLedger(issue, s);
@@ -463,9 +491,52 @@ public class JimReportServiceImpl implements JimReportService {
             s.reportedToday = true;
         }
         s.nextReportDueMs = s.nextExpectedMs;
+
+        // --- Working-day + report-receiver pause state (for the UI/API) ---
+        s.workingDaysEnabled = ReportWorkingCalendarService.isEnabled();
+        try {
+            ReportWorkingCalendarService.Resolved wc = ReportWorkingCalendarService.resolve(issue);
+            s.workingDaysSource = wc.resolvedSource;
+            s.workingCalendarSource = wc.source;
+            s.workingCalendarResolvedSource = wc.resolvedSource;
+            s.workingCalendarBoardId = wc.boardId > 0 ? wc.boardId : 0L;
+            s.workingCalendarBoardName = wc.boardName;
+            s.workingCalendarFallbackReason = wc.fallbackReason;
+            s.workingWeekdays = new java.util.ArrayList<Integer>(wc.workingDaysOfWeek);
+            s.nonWorkingDatesCount = wc.holidays.size();
+        } catch (Throwable ignore) {
+        }
+        s.todayWorkingDay = ReportWorkingCalendarService.isWorkingDay(now, tz, issue);
+        try {
+            if (s.workingDaysEnabled && !s.todayWorkingDay) {
+                s.todayNonWorkingReason = ReportWorkingCalendarService.nonWorkingReason(now, tz, issue);
+                s.nextWorkingDay = ReportWorkingCalendarService.nextWorkingDay(now, tz, issue);
+            }
+        } catch (Throwable ignore) {
+        }
+        ReportResponsibilityService.PauseState ps = ReportResponsibilityService.pauseState(issue);
+        s.receiverPauseEnabled = ps.enabled;
+        s.reportReceiverConfigured = ps.receiverConfigured;
+        s.reportReceiverKey = ps.receiverKey;
+        s.reportReceiverName = ps.receiverName;
+        s.pausedNow = ps.pausedNow;
+        s.pauseReason = ps.pauseReason;
+
         // Explicit contract flag, evaluated after the CLOSED enforcement so a
-        // closed issue is always reportRequired=false.
-        s.reportRequired = s.submitActive;
+        // closed issue is always reportRequired=false. When paused (assigned to the
+        // report receiver) no report is required of the receiver. When the issue is
+        // out of enforcement scoring scope no report is REQUIRED (but submission is
+        // still allowed — submitActive is unchanged).
+        s.reportRequired = s.submitActive && !s.pausedNow && s.inEnforcementScope;
+        s.reportRequiredForScoring = s.reportRequired;
+        // Out of scoring scope: never surface an overdue/missed state; submission and
+        // history remain available. statusCode NOT_ENFORCED is unambiguous for the UI.
+        if (s.enforcementEnabled && !s.inEnforcementScope) {
+            if ("overdue".equals(s.compliance)) {
+                s.compliance = "on_track";
+            }
+            s.statusCode = "NOT_ENFORCED";
+        }
     }
 
     /** Compute + persist the input fingerprint into the AO control row (survives restart). */
@@ -682,12 +753,37 @@ public class JimReportServiceImpl implements JimReportService {
                 }
             } catch (Throwable ignore) {
             }
+            // Per-level counting semantics (so a countMode/interval/activeUntil change
+            // invalidates the cached ledger — including the reportCountMode_high fix).
+            String countMode = level != null ? JimReportConfig.countModeForLevel(level) : null;
+            String activeUntil = level != null ? JimReportConfig.activeUntilForLevel(level) : null;
+            JimReportConfig.ReportSchedule sch = level != null ? JimReportConfig.scheduleForLevel(level) : null;
+            String schedSig = sch != null
+                    ? (sch.intervalMinutes + "/" + sch.windowStartMinute + "-" + sch.windowEndMinute) : "none";
             String cfgSig = JimReportConfig.marker()
                     + "|" + JimReportConfig.globalWindowStartMinute()
                     + "|" + JimReportConfig.globalWindowEndMinute()
                     + "|" + JimReportConfig.allowWithoutConfig()
-                    + "|" + JimReportConfig.fieldMappings().hashCode();
-            return count + ":" + maxId + ":" + level + ":" + dueMs + ":" + statusCat + ":" + cfgSig.hashCode();
+                    + "|" + JimReportConfig.fieldMappings().hashCode()
+                    // Enforcement (report-scope) policy: a change to enabled/start-date/
+                    // date-basis/non-done/missing-due must invalidate the cached ledger.
+                    + "|enf:" + JimReportConfig.applicabilityEnabled()
+                    + "|" + JimReportConfig.effectiveFromDate()
+                    + "|" + JimReportConfig.applicabilityDateMode()
+                    + "|" + JimReportConfig.applicabilityNonDoneOnly()
+                    + "|" + JimReportConfig.applicabilityMissingDuePolicy();
+            // Working-day source + report-receiver/assignee state so a working-week,
+            // holiday, receiver or assignment change recomputes (pause/resume).
+            String tzId = null;
+            try {
+                tzId = jiraTimeZone().getID();
+            } catch (Throwable ignore) {
+            }
+            String semanticSig = countMode + "|" + activeUntil + "|" + schedSig + "|" + tzId
+                    + "|" + ReportWorkingCalendarService.fingerprintSignature(issue)
+                    + "|" + ReportResponsibilityService.fingerprintSignature(issue);
+            return count + ":" + maxId + ":" + level + ":" + dueMs + ":" + statusCat
+                    + ":" + cfgSig.hashCode() + ":" + semanticSig.hashCode();
         } catch (Throwable t) {
             return null;
         }
@@ -784,12 +880,23 @@ public class JimReportServiceImpl implements JimReportService {
      * active and overdue once the endpoint has passed.
      */
     private void computeFixedMinimum(JimReportSummary s, TimeZone tz) {
-        int required = JimReportConfig.minCountForLevel(s.levelCode);
+        // Fully out of enforcement scope → no scoring obligation (history still shown).
+        boolean fullyOutOfScope = s.scoringPeriodStartMs == Long.MAX_VALUE;
+        boolean hasBound = s.scoringPeriodStartMs > 0L && !fullyOutOfScope;
+        int required = fullyOutOfScope ? 0 : JimReportConfig.minCountForLevel(s.levelCode);
         Long endpoint = s.reportingEndsMs; // due/done/earlier, or null = ongoing
         long now = System.currentTimeMillis();
         int validInWindow = 0;
+        int outOfScope = 0;
         for (JimReportSummary.Item it : s.items) {
             long ts = it.createdMs;
+            // Reports before the enforcement scoring start (or on a fully out-of-scope
+            // issue) are unscored history — never valid, missed or out-of-window.
+            if (fullyOutOfScope || (hasBound && ts < s.scoringPeriodStartMs)) {
+                it.status = JimReportCalculator.STATUS_OUT_OF_SCOPE;
+                outOfScope++;
+                continue;
+            }
             int mod = minuteOfDay(ts, tz);
             boolean inHours = mod >= s.windowStartMinute && mod < s.windowEndMinute;
             boolean beforeEnd = endpoint == null || ts <= endpoint;
@@ -800,10 +907,11 @@ public class JimReportServiceImpl implements JimReportService {
                 it.status = JimReportCalculator.STATUS_OUT_OF_WINDOW;
             }
         }
+        s.outOfScopeReportCount = outOfScope;
         s.requiredCount = required;
         s.validCount = Math.min(validInWindow, required);
         s.duplicateCount = 0; // interval-duplicate logic does not apply
-        s.outOfWindowCount = Math.max(0, s.rawCount - validInWindow);
+        s.outOfWindowCount = Math.max(0, s.rawCount - validInWindow - outOfScope);
         s.requiredSoFar = required;
         s.validSoFar = s.validCount;
         s.missedCount = Math.max(required - s.validCount, 0);

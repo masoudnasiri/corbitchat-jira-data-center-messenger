@@ -40,6 +40,7 @@ import com.corbitlogic.jira.internalmessenger.service.JimPresenceService;
 import com.corbitlogic.jira.internalmessenger.service.JimProjectChatService;
 import com.corbitlogic.jira.internalmessenger.service.JimReactionService;
 import com.corbitlogic.jira.internalmessenger.service.JimReadStateService;
+import com.corbitlogic.jira.internalmessenger.service.JimSharedContentService;
 import com.corbitlogic.jira.internalmessenger.service.JimUserSearchService;
 import java.io.File;
 import java.util.ArrayList;
@@ -111,6 +112,7 @@ public class CorbitMobileChatResource {
     private final JimMessageUserStateService userStateService;
     private final JimChatAuditService auditService;
     private final JimActivityService activityService;
+    private final JimSharedContentService sharedContentService;
 
     @Inject
     public CorbitMobileChatResource(JiraAuthenticationContext authenticationContext,
@@ -132,7 +134,8 @@ public class CorbitMobileChatResource {
                                     JimProjectChatService projectChatService,
                                     JimMessageUserStateService userStateService,
                                     JimChatAuditService auditService,
-                                    JimActivityService activityService) {
+                                    JimActivityService activityService,
+                                    JimSharedContentService sharedContentService) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
@@ -153,6 +156,7 @@ public class CorbitMobileChatResource {
         this.userStateService = userStateService;
         this.auditService = auditService;
         this.activityService = activityService;
+        this.sharedContentService = sharedContentService;
     }
 
     /** Serialize non-expired activities of OTHER participants for the poll response. */
@@ -196,6 +200,39 @@ public class CorbitMobileChatResource {
     }
 
     // --- Conversation list (DIRECT + GROUP, Sprint 08) ------------------------
+
+    /**
+     * Chat message search (mobile BFF). Global across the user's conversations when
+     * {@code conversationId} is omitted, or scoped to one membership-checked
+     * conversation. Server-side permission enforced; never changes read state.
+     * {@code GET /rest/corbit-mobile/1.0/chat/search?q=&conversationId=&limit=&cursor=}
+     */
+    @GET
+    @Path("/search")
+    public Response searchMessages(@javax.ws.rs.QueryParam("q") String q,
+                                   @javax.ws.rs.QueryParam("conversationId") Integer conversationId,
+                                   @javax.ws.rs.QueryParam("limit") Integer limit,
+                                   @javax.ws.rs.QueryParam("cursor") Integer cursor) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            Map<String, Object> body = this.messageService.searchMessages(
+                    q, conversationId, limit == null ? 25 : limit.intValue(), cursor == null ? 0 : cursor.intValue());
+            return JimRestResponses.okJson(body);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/chat/search", userKey, ex,
+                    "internal_error", "An internal error occurred during search.");
+        }
+    }
 
     @GET
     @Path("/conversations")
@@ -831,6 +868,52 @@ public class CorbitMobileChatResource {
                     "GET /rest/corbit-mobile/1.0/chat/conversations/" + conversationId
                             + "/messages/" + messageId + "/receipts",
                     userKey, ex, "internal_error", "An internal error occurred while loading message info.");
+        }
+    }
+
+    @GET
+    @Path("/conversations/{conversationId}/shared")
+    public Response listSharedContent(@PathParam("conversationId") int conversationId,
+                                      @QueryParam("type") @DefaultValue("files") String type,
+                                      @QueryParam("cursor") Integer cursor,
+                                      @QueryParam("limit") @DefaultValue("25") int limit) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            Map<String, Object> body = this.sharedContentService.listShared(
+                    conversationId, currentUserKey, type, cursor, Integer.valueOf(limit));
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> items = (List<Map<String, Object>>) body.get("items");
+            if (items != null) {
+                for (Map<String, Object> item : items) {
+                    Object preview = item.get("previewUrl");
+                    Object download = item.get("downloadUrl");
+                    if (preview instanceof String) {
+                        item.put("previewUrl", ((String) preview).replace(
+                                "/rest/jim/1.0/attachments/",
+                                "/rest/corbit-mobile/1.0/chat/attachments/"));
+                    }
+                    if (download instanceof String) {
+                        item.put("downloadUrl", ((String) download).replace(
+                                "/rest/jim/1.0/attachments/",
+                                "/rest/corbit-mobile/1.0/chat/attachments/"));
+                    }
+                }
+            }
+            return JimRestResponses.okJson(body);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/shared",
+                    userKey, ex, "internal_error", "An internal error occurred while loading shared content.");
         }
     }
 

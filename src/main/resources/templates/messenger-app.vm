@@ -39,15 +39,36 @@
                 <button id="jim-settings-btn" type="button" class="jim-settings-btn" title="Settings" aria-label="Settings" data-i18n-title="Settings">&#9881;</button>
             </header>
 
-            <div class="jim-sidebar-search jim-search">
-                <label class="jim-visually-hidden" for="jim-user-search">$i18n.getText("jim.search.label")</label>
-                <input id="jim-user-search"
+            <div class="jim-sidebar-search-row">
+                <div class="jim-sidebar-search jim-search">
+                    <label class="jim-visually-hidden" for="jim-user-search">$i18n.getText("jim.search.label")</label>
+                    <input id="jim-user-search"
+                           class="jim-search-input"
+                           type="search"
+                           autocomplete="off"
+                           data-i18n-ph="Search people"
+                           placeholder="$i18n.getText('jim.search.placeholder')" />
+                    <div id="jim-user-search-results" class="jim-search-results" hidden role="listbox" aria-label="User search results"></div>
+                </div>
+                <button id="jim-msg-search-toggle"
+                        type="button"
+                        class="jim-sidebar-icon-btn"
+                        title="Search messages"
+                        aria-label="Search messages"
+                        aria-expanded="false"
+                        aria-controls="jim-msg-search-panel">
+                    <span aria-hidden="true">&#128269;</span>
+                </button>
+            </div>
+            <div id="jim-msg-search-panel" class="jim-sidebar-search jim-msg-search" hidden>
+                <label class="jim-visually-hidden" for="jim-msg-search">Search messages</label>
+                <input id="jim-msg-search"
                        class="jim-search-input"
                        type="search"
                        autocomplete="off"
-                       data-i18n-ph="Search people"
-                       placeholder="$i18n.getText('jim.search.placeholder')" />
-                <div id="jim-user-search-results" class="jim-search-results" hidden role="listbox" aria-label="User search results"></div>
+                       data-i18n-ph="Search messages"
+                       placeholder="Search messages" />
+                <div id="jim-msg-search-results" class="jim-search-results jim-msg-search-results" hidden role="listbox" aria-label="Message search results"></div>
             </div>
 
             <div class="jim-sidebar-tabs" role="tablist" aria-label="Conversation filters">
@@ -62,10 +83,21 @@
             <div class="jim-loading">$i18n.getText("jim.loading.conversations")</div>
         </div>
 
-        <div class="jim-sidebar-actions">
-            <button id="jim-new-conversation" type="button" class="jim-new-conversation"><span data-i18n="New chat">New chat</span></button>
-            <button id="jim-new-group" type="button" class="jim-new-conversation jim-new-group"><span data-i18n="New group">New group</span></button>
+        <div class="jim-sidebar-actions jim-sidebar-actions-compact">
+            <button id="jim-saved-messages" type="button" class="jim-sidebar-action-btn jim-saved-messages" title="Saved Messages" aria-label="Saved Messages">
+                <span class="jim-sidebar-action-icon" aria-hidden="true">&#128278;</span>
+                <span data-i18n="Saved Messages">Saved Messages</span>
+            </button>
+            <button id="jim-new-conversation" type="button" class="jim-sidebar-action-btn" title="New chat" aria-label="New chat">
+                <span class="jim-sidebar-action-icon" aria-hidden="true">+</span>
+                <span data-i18n="New chat">New chat</span>
+            </button>
+            <button id="jim-new-group" type="button" class="jim-sidebar-action-btn jim-new-group" title="New group" aria-label="New group">
+                <span class="jim-sidebar-action-icon" aria-hidden="true">&#128101;</span>
+                <span data-i18n="New group">New group</span>
+            </button>
         </div>
+        <div id="jim-message-menu" class="jim-message-menu" hidden role="menu" aria-label="Message actions"></div>
 
         <footer class="jim-sidebar-footer">
             #if($currentUserAvatarUrl)
@@ -262,6 +294,17 @@
                 <div class="jim-modal-actions">
                     <button id="jim-message-info-close" type="button" class="jim-modal-button" data-i18n="Close">Close</button>
                 </div>
+            </div>
+        </div>
+
+        <div id="jim-shared-modal" class="jim-modal-overlay" hidden>
+            <div class="jim-modal jim-shared-modal" role="dialog" aria-modal="true" aria-labelledby="jim-shared-modal-title">
+                <div class="jim-shared-modal-header">
+                    <h3 id="jim-shared-modal-title" class="jim-modal-title" data-i18n="Shared">Shared</h3>
+                    <button id="jim-shared-close" type="button" class="jim-modal-button" data-i18n="Close">Close</button>
+                </div>
+                <div id="jim-shared-tabs" class="jim-shared-tabs" role="tablist"></div>
+                <div id="jim-shared-body" class="jim-shared-body"></div>
             </div>
         </div>
 

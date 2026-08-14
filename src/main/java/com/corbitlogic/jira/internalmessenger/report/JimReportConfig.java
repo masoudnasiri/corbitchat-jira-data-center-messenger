@@ -193,6 +193,12 @@ public final class JimReportConfig {
         if (!enabled) {
             return null;
         }
+        // fixed_counter_start: created/due (and Done status) are NOT used as scope
+        // filters. Every issue with a report level is in scope; the enforcement start
+        // date is applied purely as a scoring lower bound (in computeSummary).
+        if ("fixed_counter_start".equals(mode)) {
+            return null;
+        }
         if (nonDoneOnly && isDone) {
             return "excluded_done_status";
         }
@@ -349,6 +355,54 @@ public final class JimReportConfig {
             case "managerial": return "\u0645\u062f\u06cc\u0631\u06cc\u062a\u06cc"; // مدیریتی
             default:           return code;
         }
+    }
+
+    /**
+     * Remove Jira wiki quoted segments ({@code {quote}...{quote}} blocks and
+     * {@code bq.} line-quotes) from a comment body. Used by report detection so a
+     * <b>reply that quotes a report</b> (the parent report text — including the
+     * {@code #گزارش} marker — is inside a {@code {quote}} block) is NOT miscounted
+     * as a new report. Only a marker appearing OUTSIDE any quote makes a comment a
+     * report submission. Never used for display; purely for classification.
+     */
+    public static String stripQuotedSegments(String body) {
+        if (body == null) {
+            return "";
+        }
+        String out = body;
+        // {quote}...{quote} blocks (case-insensitive, across newlines). Handles an
+        // unbalanced trailing {quote} by removing to end-of-text.
+        try {
+            out = out.replaceAll("(?is)\\{quote\\}.*?\\{quote\\}", " ");
+            out = out.replaceAll("(?is)\\{quote\\}.*$", " ");
+        } catch (Throwable ignored) {
+        }
+        // bq. line quotes (a single quoted line).
+        StringBuilder sb = new StringBuilder();
+        for (String line : out.split("\n", -1)) {
+            String t = line.trim();
+            if (t.startsWith("bq.")) {
+                continue;
+            }
+            sb.append(line).append('\n');
+        }
+        return sb.toString();
+    }
+
+    /**
+     * True when {@code body} is an original report submission: the report marker
+     * appears outside any quoted segment. Replies/quotes/ordinary comments that
+     * only contain the marker inside a {@code {quote}} return false.
+     */
+    public static boolean isReportSubmissionBody(String body) {
+        if (body == null) {
+            return false;
+        }
+        String marker = normalizePersian(marker());
+        if (marker.isEmpty()) {
+            return false;
+        }
+        return normalizePersian(stripQuotedSegments(body)).contains(marker);
     }
 
     /** Normalize Arabic yeh/kaf to Persian and strip zero-width chars + trim. */

@@ -89,6 +89,68 @@ public class JimReportResource {
         }
     }
 
+    /**
+     * List the replies linked to a report comment (Report Replies feature). Replies
+     * are real Jira comments that quote the parent report; they are never counted as
+     * reports (parser rule). Browse-gated.
+     */
+    @GET
+    @Path(value = "/{issueKey}/replies/{commentId}")
+    public Response getReplies(@PathParam(value = "issueKey") String issueKey,
+                               @PathParam(value = "commentId") long commentId) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return JimRestResponses.errorJson(404, "not_found",
+                        "Issue not found or you do not have permission to view it.");
+            }
+            CommentManager cm = ComponentAccessor.getCommentManager();
+            Comment parent = null;
+            try {
+                parent = cm.getCommentById(commentId);
+            } catch (Throwable ignored) {
+            }
+            if (parent == null || !this.reportService.isReportComment(parent.getBody())) {
+                return JimRestResponses.errorJson(404, "not_found", "Report comment not found.");
+            }
+            Map<Long, List<Comment>> byReport =
+                    com.corbitlogic.jira.internalmessenger.report.JimReportReplies.repliesByReport(
+                            issue, Collections.singletonList(parent));
+            List<Comment> replies = byReport.get(commentId);
+            AvatarService avatarService = ComponentAccessor.getComponent(AvatarService.class);
+            List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+            if (replies != null) {
+                for (Comment c : replies) {
+                    Map<String, Object> rm;
+                    try {
+                        rm = JimMobileIssueDetail.commentMap(issue, c, viewer, avatarService);
+                    } catch (Throwable t) {
+                        rm = new LinkedHashMap<String, Object>();
+                        rm.put("id", c.getId());
+                        rm.put("body", c.getBody());
+                    }
+                    rm.put("parentReportId", commentId);
+                    out.add(rm);
+                }
+            }
+            Map<String, Object> body = new LinkedHashMap<String, Object>();
+            body.put("issueKey", issue.getKey());
+            body.put("reportId", commentId);
+            body.put("count", out.size());
+            body.put("canComment", ComponentAccessor.getPermissionManager()
+                    .hasPermission(ProjectPermissions.ADD_COMMENTS, (Issue) issue, viewer));
+            body.put("replies", out);
+            return JimRestResponses.okJson(body);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log, "GET /rest/jim/1.0/report/" + issueKey + "/replies/" + commentId,
+                    viewer.getKey(), ex, "internal_error", "An internal error occurred while loading replies.");
+        }
+    }
+
     /** Submit a report (text only): creates a Jira comment carrying the marker. */
     @POST
     @Path(value = "/{issueKey}/submit")
@@ -311,6 +373,18 @@ public class JimReportResource {
         m.put("configured", s.configured);
         m.put("applicable", s.applicable);
         m.put("applicabilityReason", s.applicabilityReason);
+        // Report ENFORCEMENT policy (scoring scope only; submission/display never blocked).
+        m.put("enforcementEnabled", s.enforcementEnabled);
+        m.put("enforcementStartDate", s.enforcementStartDate);
+        m.put("enforcementDateBasis", s.enforcementDateBasis);
+        m.put("fixedCounterStartMode", s.fixedCounterStartMode);
+        m.put("inEnforcementScope", s.inEnforcementScope);
+        m.put("outOfScopeReason", s.outOfScopeReason);
+        m.put("scoringPeriodStartMs",
+                (s.scoringPeriodStartMs != Long.MAX_VALUE && s.scoringPeriodStartMs > s.issueCreatedMs)
+                        ? Long.valueOf(s.scoringPeriodStartMs) : null);
+        m.put("reportRequiredForScoring", s.reportRequiredForScoring);
+        m.put("outOfScopeReportCount", s.outOfScopeReportCount);
         m.put("levelCode", s.levelCode);
         m.put("levelText", s.levelText);
         m.put("levelLabelFa", s.levelCode != null ? JimReportConfig.levelLabelFa(s.levelCode) : null);
@@ -323,6 +397,7 @@ public class JimReportResource {
         m.put("validCount", s.validCount);
         m.put("rawCount", s.rawCount);
         m.put("outOfWindowCount", s.outOfWindowCount);
+        m.put("outOfScheduleCount", s.outOfScheduleCount);
         m.put("duplicateCount", s.duplicateCount);
         m.put("missedCount", s.missedCount);
         m.put("requiredSoFar", s.requiredSoFar);
@@ -350,6 +425,25 @@ public class JimReportResource {
         m.put("reportingEndsMs", s.reportingEndsMs);
         m.put("lastReporterName", s.lastReporterName);
         m.put("lastReportSummary", s.lastReportSummary);
+        // Working-day + report-receiver pause state (Report Replies & Working-Days).
+        m.put("workingDaysEnabled", s.workingDaysEnabled);
+        m.put("workingDaysSource", s.workingDaysSource);
+        m.put("todayWorkingDay", s.todayWorkingDay);
+        // Working calendar (board vs plugin) exposure (Board Working-Days feature).
+        m.put("workingCalendarSource", s.workingCalendarSource);
+        m.put("workingCalendarResolvedSource", s.workingCalendarResolvedSource);
+        m.put("workingCalendarBoardId", s.workingCalendarBoardId > 0 ? Long.valueOf(s.workingCalendarBoardId) : null);
+        m.put("workingCalendarBoardName", s.workingCalendarBoardName);
+        m.put("workingCalendarFallbackReason", s.workingCalendarFallbackReason);
+        m.put("workingWeekdays", s.workingWeekdays);
+        m.put("nonWorkingDatesCount", s.nonWorkingDatesCount);
+        m.put("todayNonWorkingReason", s.todayNonWorkingReason);
+        m.put("nextWorkingDay", s.nextWorkingDay);
+        m.put("receiverPauseEnabled", s.receiverPauseEnabled);
+        m.put("reportReceiverConfigured", s.reportReceiverConfigured);
+        m.put("reportReceiverName", s.reportReceiverName);
+        m.put("pausedNow", s.pausedNow);
+        m.put("pauseReason", s.pauseReason);
         return m;
     }
 
@@ -374,8 +468,11 @@ public class JimReportResource {
                 m.put("id", it.commentId);
                 m.put("body", c.getBody());
             }
-            m.put("status", it.status); // 0=valid,1=duplicate,2=out-of-window
+            m.put("status", it.status); // 0=valid,1=duplicate,2=out-of-window,3=out-of-schedule
             m.put("createdMs", it.createdMs);
+            m.put("repliesCount", it.repliesCount);
+            m.put("latestReplyPreview", it.latestReplyPreview);
+            m.put("latestReplyMs", it.latestReplyMs);
             try {
                 m.put("reactions", this.reactionService.listForComment(it.commentId,
                         viewer != null ? viewer.getKey() : null));

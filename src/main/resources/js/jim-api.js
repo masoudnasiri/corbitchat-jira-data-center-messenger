@@ -75,6 +75,23 @@
             return request('POST', '/conversations/direct', { targetUserKey: targetUserKey });
         },
 
+        listSharedContent: function (conversationId, type, cursor, limit) {
+            var query = '?type=' + encodeURIComponent(type || 'files') +
+                '&limit=' + encodeURIComponent(limit || 25);
+            if (cursor) {
+                query += '&cursor=' + encodeURIComponent(cursor);
+            }
+            return request('GET', '/conversations/' + conversationId + '/shared' + query);
+        },
+
+        searchMessages: function (query, conversationId, limit, cursor) {
+            var q = '?q=' + encodeURIComponent(query || '');
+            if (conversationId) { q += '&conversationId=' + encodeURIComponent(conversationId); }
+            if (limit) { q += '&limit=' + encodeURIComponent(limit); }
+            if (cursor) { q += '&cursor=' + encodeURIComponent(cursor); }
+            return request('GET', '/conversations/search' + q);
+        },
+
         listMessages: function (conversationId, limit, beforeMessageId) {
             var query = '?limit=' + encodeURIComponent(limit || 50);
             if (beforeMessageId) {

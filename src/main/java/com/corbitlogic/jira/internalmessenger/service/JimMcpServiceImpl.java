@@ -31,7 +31,12 @@ public class JimMcpServiceImpl implements JimMcpService {
     private static final Logger log = LoggerFactory.getLogger(JimMcpServiceImpl.class);
     private static final String NS = "com.corbitlogic.jira.internalmessenger.mcp:";
     private static final String UPSTREAM_VERSION = "0.23.0";
-    private static final String CONTRACT_HASH = "ae110094e3d3";
+    /** 12-char prefix of the live served catalog (jira_* + corbit_*), algorithm corbit-canonical-json-v2. */
+    private static final String CONTRACT_HASH = "0ada7c331fc8";
+    /** Jira-upstream seed only (jira-registry-seed.json); not the served catalog. */
+    private static final String JIRA_UPSTREAM_SEED = "ae110094e3d3";
+    private static final String EXPECTED_SERVED_HASH =
+            "0ada7c331fc80c3f46a231555cfae14b2e37d00351cc1182f4052b73813302ae";
     private static final int SCHEMA_VERSION = 1;
     private static final int POLICY_TTL_SECONDS = 300;
 
@@ -711,6 +716,9 @@ public class JimMcpServiceImpl implements JimMcpService {
         m.put("revision", getRevision());
         m.put("upstreamVersion", UPSTREAM_VERSION);
         m.put("contractHash", CONTRACT_HASH);
+        m.put("jiraUpstreamSeed", JIRA_UPSTREAM_SEED);
+        m.put("expectedServedContractHash", EXPECTED_SERVED_HASH);
+        m.put("contractHashAlgorithm", "corbit-canonical-json-v2");
         String gwUrl = get("gatewayUrl", "");
         m.put("gatewayUrl", gwUrl);
         m.put("gatewayConfigured", !gwUrl.isEmpty());

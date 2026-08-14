@@ -49,6 +49,19 @@ public interface JimMessageService {
 
     public List<JimMessage> listMessages(int var1, int var2, Integer var3, Long sinceMillis);
 
+    /**
+     * Chat message search for the authenticated user. When {@code conversationId} is
+     * non-null the search is limited to that one conversation (membership enforced);
+     * otherwise it is a GLOBAL search across every conversation the user participates
+     * in (direct/group/project/system). Matches message body text and attachment
+     * filenames (case-insensitive, MySQL {@code LIKE}), skips deleted/hidden/pluginuser
+     * messages, and NEVER changes read state. Offset-based pagination. Returns a wire
+     * map: {@code query, scope, results[], nextCursor}. Each result carries
+     * conversationId/type/title, messageId, sender, createdAt, snippet, attachment
+     * indicator and open target.
+     */
+    public java.util.Map<String, Object> searchMessages(String query, Integer conversationId, int limit, int offset);
+
     public boolean hasMessagesBefore(int conversationId, int messageId);
 
     public JimMessage setPinned(int var1, String var2, boolean var3);

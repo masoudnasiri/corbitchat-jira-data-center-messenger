@@ -137,6 +137,67 @@ public class CorbitMobileIssueResource {
         }
     }
 
+    /**
+     * List the replies linked to a report comment (Report Replies feature). Replies
+     * are real Jira comments quoting the parent report; they are never counted as
+     * reports. Returns author, rendered/plain body, attachments and createdAt.
+     */
+    @GET
+    @Path("/{issueKey}/report/{commentId}/replies")
+    public Response getReportReplies(@PathParam("issueKey") String issueKey,
+                                     @PathParam("commentId") long commentId) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            CommentManager cm = ComponentAccessor.getCommentManager();
+            Comment parent = findVisibleComment(cm, issue, viewer, commentId);
+            if (parent == null || !this.reportService.isReportComment(parent.getBody())) {
+                return notFound();
+            }
+            java.util.Map<Long, List<Comment>> byReport =
+                    com.corbitlogic.jira.internalmessenger.report.JimReportReplies.repliesByReport(
+                            issue, java.util.Collections.singletonList(parent));
+            List<Comment> replies = byReport.get(commentId);
+            boolean canComment = ComponentAccessor.getPermissionManager()
+                    .hasPermission(ProjectPermissions.ADD_COMMENTS, (Issue) issue, viewer);
+            boolean canAttach = ComponentAccessor.getPermissionManager()
+                    .hasPermission(ProjectPermissions.CREATE_ATTACHMENTS, (Issue) issue, viewer);
+            List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+            if (replies != null) {
+                for (Comment c : replies) {
+                    Map<String, Object> rm;
+                    try {
+                        rm = JimMobileIssueDetail.commentMap(issue, c, viewer, this.avatarService);
+                    } catch (Throwable t) {
+                        rm = new LinkedHashMap<String, Object>();
+                        rm.put("id", c.getId());
+                        rm.put("body", c.getBody());
+                    }
+                    rm.put("parentReportId", commentId);
+                    rm.put("issueKey", issue.getKey());
+                    out.add(rm);
+                }
+            }
+            Map<String, Object> resp = new LinkedHashMap<String, Object>();
+            resp.put("issueKey", issue.getKey());
+            resp.put("reportId", commentId);
+            resp.put("canReply", canComment);
+            resp.put("canAttach", canAttach);
+            resp.put("count", out.size());
+            resp.put("replies", out);
+            return JimRestResponses.okJson(resp);
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log, "GET /rest/corbit-mobile/1.0/issues/" + issueKey + "/report/" + commentId + "/replies",
+                    viewer.getKey(), ex, "internal_error", "An internal error occurred while loading replies.");
+        }
+    }
+
     /** Submit a report (text only) — creates a #marker Jira comment. */
     @POST
     @Path("/{issueKey}/report/submit")
@@ -359,6 +420,7 @@ public class CorbitMobileIssueResource {
         m.put("validCount", s.validCount);
         m.put("rawCount", s.rawCount);
         m.put("outOfWindowCount", s.outOfWindowCount);
+        m.put("outOfScheduleCount", s.outOfScheduleCount);
         m.put("duplicateCount", s.duplicateCount);
         m.put("missedCount", s.missedCount);
         m.put("totalRequiredReportsUntilEnd", s.totalRequiredUntilEnd);
@@ -374,10 +436,51 @@ public class CorbitMobileIssueResource {
         m.put("dueMissing", s.dueMissing);
         m.put("reportingEndsMs", s.reportingEndsMs);
         m.put("issueCreatedMs", s.issueCreatedMs);
-        m.put("canComment", ComponentAccessor.getPermissionManager()
-                .hasPermission(ProjectPermissions.ADD_COMMENTS, issue, viewer));
-        m.put("canAttach", ComponentAccessor.getPermissionManager()
-                .hasPermission(ProjectPermissions.CREATE_ATTACHMENTS, issue, viewer));
+        // Working-day + report-receiver pause state (Report Replies & Working-Days).
+        m.put("workingDaysEnabled", s.workingDaysEnabled);
+        m.put("workingDaysSource", s.workingDaysSource);
+        m.put("todayWorkingDay", s.todayWorkingDay);
+        // Working calendar (board vs plugin) exposure for the mobile banners.
+        m.put("workingCalendarSource", s.workingCalendarSource);
+        m.put("workingCalendarResolvedSource", s.workingCalendarResolvedSource);
+        m.put("workingCalendarBoardId", s.workingCalendarBoardId > 0 ? Long.valueOf(s.workingCalendarBoardId) : null);
+        m.put("workingCalendarBoardName", s.workingCalendarBoardName);
+        m.put("workingCalendarFallbackReason", s.workingCalendarFallbackReason);
+        m.put("workingWeekdays", s.workingWeekdays);
+        m.put("nonWorkingDatesCount", s.nonWorkingDatesCount);
+        m.put("todayNonWorkingReason", s.todayNonWorkingReason);
+        m.put("nextWorkingDay", s.nextWorkingDay);
+        m.put("receiverPauseEnabled", s.receiverPauseEnabled);
+        m.put("reportReceiverConfigured", s.reportReceiverConfigured);
+        m.put("reportReceiverName", s.reportReceiverName);
+        m.put("pausedNow", s.pausedNow);
+        m.put("pauseReason", s.pauseReason);
+        m.put("reportRequired", s.reportRequired);
+        // Report ENFORCEMENT policy (scoring scope only; submission/display never blocked).
+        m.put("enforcementEnabled", s.enforcementEnabled);
+        m.put("enforcementStartDate", s.enforcementStartDate);
+        m.put("enforcementDateBasis", s.enforcementDateBasis);
+        m.put("fixedCounterStartMode", s.fixedCounterStartMode);
+        m.put("inEnforcementScope", s.inEnforcementScope);
+        m.put("outOfScopeReason", s.outOfScopeReason);
+        // Expose the scoring lower bound only when it actually delays counting past
+        // issue creation (a real bound), never the sentinel or the creation instant.
+        m.put("scoringPeriodStartMs",
+                (s.scoringPeriodStartMs != Long.MAX_VALUE && s.scoringPeriodStartMs > s.issueCreatedMs)
+                        ? Long.valueOf(s.scoringPeriodStartMs) : null);
+        m.put("reportRequiredForScoring", s.reportRequiredForScoring);
+        m.put("outOfScopeReportCount", s.outOfScopeReportCount);
+        boolean canComment = ComponentAccessor.getPermissionManager()
+                .hasPermission(ProjectPermissions.ADD_COMMENTS, issue, viewer);
+        boolean canAttach = ComponentAccessor.getPermissionManager()
+                .hasPermission(ProjectPermissions.CREATE_ATTACHMENTS, issue, viewer);
+        m.put("canComment", canComment);
+        m.put("canReply", canComment);
+        m.put("canAttach", canAttach);
+        // Submission is allowed whenever the report is otherwise active + user can comment,
+        // even for out-of-scope issues (informational report, not scored).
+        m.put("canSubmitReport", canComment && s.submitActive);
+        m.put("informationalReportAllowed", canComment && s.submitActive && !s.inEnforcementScope);
         CommentManager cm = ComponentAccessor.getCommentManager();
         List<Map<String, Object>> items = new ArrayList<Map<String, Object>>();
         for (com.corbitlogic.jira.internalmessenger.report.JimReportSummary.Item it : s.items) {
@@ -399,6 +502,11 @@ public class CorbitMobileIssueResource {
             }
             im.put("status", it.status);
             im.put("createdMs", it.createdMs);
+            im.put("repliesCount", it.repliesCount);
+            im.put("latestReplyPreview", it.latestReplyPreview);
+            im.put("latestReplyMs", it.latestReplyMs);
+            im.put("canReply", canComment);
+            im.put("canAttach", canAttach);
             try {
                 im.put("reactions", this.commentReactionService.listForComment(it.commentId, viewer.getKey()));
             } catch (Throwable ignored) {

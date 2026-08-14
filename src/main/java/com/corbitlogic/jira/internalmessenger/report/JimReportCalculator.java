@@ -38,11 +38,34 @@ public final class JimReportCalculator {
     public static final int STATUS_VALID = 0;
     public static final int STATUS_DUPLICATE = 1;
     public static final int STATUS_OUT_OF_WINDOW = 2;
+    /**
+     * Report submitted on a non-working day or during a paused (assigned-to-report-receiver)
+     * interval. Shown in raw history as "extra / out-of-schedule" but never creates a required
+     * bucket and never counts as valid/missed. (Report Replies &amp; Working-Days feature.)
+     */
+    public static final int STATUS_OUT_OF_SCHEDULE = 3;
+    /**
+     * Report submitted before the enforcement scoring start date (or on an issue that is
+     * out of enforcement scope). Shown in raw history as "out of scope / unscored" but
+     * never creates a required bucket and never counts as valid/missed/out-of-window.
+     * (Report Enforcement Start Date feature.)
+     */
+    public static final int STATUS_OUT_OF_SCOPE = 4;
 
     public static final String COMPLIANCE_ON_TRACK = "on_track";
     public static final String COMPLIANCE_OVERDUE = "overdue";
 
     private JimReportCalculator() {
+    }
+
+    /**
+     * Classifies a day (given its start-of-day millis in the report timezone) as a Jira
+     * working day. Pure — the resolution of the real Jira source lives in
+     * {@code ReportWorkingCalendarService}. When {@code null} every day is a working day
+     * (fully back-compatible with the pre-working-days engine).
+     */
+    public interface DayClassifier {
+        boolean isWorkingDay(long dayStartMs);
     }
 
     public static final class Input {
@@ -56,6 +79,25 @@ public final class JimReportCalculator {
         public long nowMs;
         public TimeZone tz;
         public long[] reports = new long[0];
+        /**
+         * Working-day gate. When set, days classified non-working generate no buckets, so
+         * they never increase required/missed/streaks. {@code null} = every day works.
+         */
+        public DayClassifier dayClassifier;
+        /**
+         * Half-open [start,end) intervals during which report counting is paused because the
+         * issue is assigned to the report receiver / team lead. Buckets whose start falls in
+         * any interval are not generated (no required/missed) and resume automatically after.
+         */
+        public long[][] pausedIntervals = new long[0][];
+        /**
+         * Enforcement scoring lower bound (epoch ms). Required/missed buckets are only
+         * generated at/after this instant, so nothing before it is required or missed.
+         * Reports before it are classified {@link #STATUS_OUT_OF_SCOPE} (visible history,
+         * never scored). {@code 0} = no bound. {@code Long.MAX_VALUE} = fully out of scope
+         * (zero scored buckets). Composes with the working-day + pause gates.
+         */
+        public long scoredPeriodStartMs;
     }
 
     public static final class Result {
@@ -65,6 +107,10 @@ public final class JimReportCalculator {
         public int outOfWindowCount;
         public int duplicateCount;
         public int missedCount;
+        /** Reports that fell on a non-working day or in a paused interval (raw only, out-of-schedule). */
+        public int outOfScheduleCount;
+        /** Reports before the enforcement scoring start / out of scope (raw only, unscored). */
+        public int outOfScopeCount;
         /** Buckets whose start is at/before now (required "so far"). */
         public int requiredSoFar;
         /** Valid buckets whose start is at/before now (valid "so far"). */
@@ -149,7 +195,17 @@ public final class JimReportCalculator {
             long ts = reports[idx];
             Bucket b = findBucket(buckets, ts);
             if (b == null) {
-                r.reportStatus[idx] = STATUS_OUT_OF_WINDOW;
+                // No required bucket. Distinguish so the UI can label it correctly; none of
+                // these ever count toward valid/missed.
+                if (in.scoredPeriodStartMs > 0L && ts < in.scoredPeriodStartMs) {
+                    // Before the enforcement scoring start (or fully out of scope): unscored
+                    // history, NOT out-of-window and NOT invalid.
+                    r.reportStatus[idx] = STATUS_OUT_OF_SCOPE;
+                } else {
+                    boolean offSchedule = isPaused(ts, in.pausedIntervals)
+                            || (in.dayClassifier != null && !in.dayClassifier.isWorkingDay(startOfDay(ts, tz)));
+                    r.reportStatus[idx] = offSchedule ? STATUS_OUT_OF_SCHEDULE : STATUS_OUT_OF_WINDOW;
+                }
             } else {
                 b.rawCount++;
                 b.reportIndexes.add(idx);
@@ -209,18 +265,55 @@ public final class JimReportCalculator {
                 r.duplicateCount++;
             } else if (s == STATUS_OUT_OF_WINDOW) {
                 r.outOfWindowCount++;
+            } else if (s == STATUS_OUT_OF_SCHEDULE) {
+                r.outOfScheduleCount++;
+            } else if (s == STATUS_OUT_OF_SCOPE) {
+                r.outOfScopeCount++;
             }
         }
         return r;
     }
 
+    /** True when {@code ts} falls inside any half-open [start,end) paused interval. */
+    private static boolean isPaused(long ts, long[][] pausedIntervals) {
+        if (pausedIntervals == null) {
+            return false;
+        }
+        for (long[] iv : pausedIntervals) {
+            if (iv != null && iv.length == 2 && ts >= iv[0] && ts < iv[1]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static List<Bucket> buildBuckets(Input in, TimeZone tz, long firstDayAnchor, long genEnd) {
         List<Bucket> buckets = new ArrayList<>();
+        // Fully out of enforcement scope → zero scored buckets (all reports become
+        // unscored OUT_OF_SCOPE history; requiredCount/missedCount stay 0).
+        if (in.scoredPeriodStartMs == Long.MAX_VALUE) {
+            return buckets;
+        }
         long creationDayStart = startOfDay(in.issueCreatedMs, tz);
         long cursorDay = in.daily ? startOfDay(in.nowMs, tz) : creationDayStart;
+        // Enforcement scoring lower bound: advance the first scored day so no required
+        // bucket is generated before the enforcement start (out-of-scope issues use
+        // Long.MAX_VALUE → zero scored buckets). Composes with the per-bucket guard below.
+        if (!in.daily && in.scoredPeriodStartMs > 0L && in.scoredPeriodStartMs != Long.MAX_VALUE) {
+            long boundDay = startOfDay(in.scoredPeriodStartMs, tz);
+            if (boundDay > cursorDay) {
+                cursorDay = boundDay;
+            }
+        }
         long lastDay = startOfDay(genEnd, tz);
         int guard = 0;
         while (cursorDay <= lastDay && guard++ < 4000) {
+            // Working-day gate: non-working days generate no required buckets, so they never
+            // increase required/missed/streak counters (Jira working-days rule).
+            if (in.dayClassifier != null && !in.dayClassifier.isWorkingDay(cursorDay)) {
+                cursorDay = nextDayStart(cursorDay, tz);
+                continue;
+            }
             long dayWindowStart = atMinuteOfDay(cursorDay, in.windowStartMin, tz);
             long dayWindowEnd = atMinuteOfDay(cursorDay, in.windowEndMin, tz);
             long segStart = dayWindowStart;
@@ -228,12 +321,25 @@ public final class JimReportCalculator {
             if (sameDay(cursorDay, in.issueCreatedMs, tz)) {
                 segStart = Math.max(dayWindowStart, in.issueCreatedMs);
             }
+            // Enforcement scoring lower bound on the first scored day.
+            if (in.scoredPeriodStartMs > 0L && in.scoredPeriodStartMs != Long.MAX_VALUE
+                    && sameDay(cursorDay, in.scoredPeriodStartMs, tz)) {
+                segStart = Math.max(segStart, in.scoredPeriodStartMs);
+            }
             long segEnd = dayWindowEnd;
             if (!in.daily && genEnd < segEnd) {
                 segEnd = genEnd; // cap the final day at the period end
             }
             long intervalMs = (long) in.intervalMinutes * 60000L;
             for (long t = segStart; t < segEnd; t += intervalMs) {
+                // Enforcement scoring lower bound (covers daily mode + future start dates).
+                if (in.scoredPeriodStartMs > 0L && t < in.scoredPeriodStartMs) {
+                    continue;
+                }
+                // Pause gate: skip buckets whose start falls in an assigned-to-receiver interval.
+                if (isPaused(t, in.pausedIntervals)) {
+                    continue;
+                }
                 buckets.add(new Bucket(t, Math.min(t + intervalMs, dayWindowEnd)));
             }
             cursorDay = nextDayStart(cursorDay, tz);

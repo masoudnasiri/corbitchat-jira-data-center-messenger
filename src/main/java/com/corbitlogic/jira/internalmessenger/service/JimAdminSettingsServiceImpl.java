@@ -63,6 +63,19 @@ implements JimAdminSettingsService {
     static final String KEY_REPORT_ALLOW_WITHOUT_CONFIG = "reportAllowWithoutConfig";
     static final String KEY_REPORT_REOPEN_REACTIVATION = "reportReopenReactivation";
     static final String KEY_REPORT_TIMEZONE = "reportTimezone";
+    // --- Working-day counter + report-receiver pause ---
+    static final String KEY_REPORT_WORKING_DAYS_ENABLED = "reportWorkingDaysEnabled";
+    static final String KEY_REPORT_WORKING_DAYS_CSV = "reportWorkingDaysCsv";
+    static final String KEY_REPORT_HOLIDAYS_CSV = "reportHolidaysCsv";
+    // --- Working calendar (board vs plugin) source selection ---
+    static final String KEY_REPORT_WORKING_CALENDAR_SOURCE = "reportWorkingCalendarSource";
+    static final String KEY_REPORT_DEFAULT_BOARD_ID = "reportDefaultBoardId";
+    static final String KEY_REPORT_PROJECT_BOARD_MAPPING = "reportProjectBoardMapping";
+    static final List<String> WORKING_CALENDAR_SOURCES = Arrays.asList(
+            "jira_board_first", "plugin_calendar_only",
+            "plugin_calendar_plus_board_holidays", "time_tracking_fallback");
+    static final String DEFAULT_WORKING_CALENDAR_SOURCE = "time_tracking_fallback";
+    static final String KEY_REPORT_RECEIVER_PAUSE_ENABLED = "reportReceiverPauseEnabled";
     static final String REPORT_MAP_PREFIX = "reportMap_";
     // --- Report Applicability Policy (reportscope) ---
     static final String KEY_REPORT_APPLICABILITY_ENABLED = "reportApplicabilityEnabled";
@@ -72,7 +85,10 @@ implements JimAdminSettingsService {
     static final String KEY_REPORT_APPLICABILITY_MISSING_DUE_POLICY = "reportApplicabilityMissingDuePolicy";
     static final List<String> APPLICABILITY_DATE_MODES = Arrays.asList(
             "created_on_or_after", "due_on_or_after",
-            "created_and_due_on_or_after", "created_or_due_on_or_after");
+            "created_and_due_on_or_after", "created_or_due_on_or_after",
+            // Fixed global counter start: ignore created/due as scope filters; use the
+            // enforcement start date only as a scoring lower bound for all issues.
+            "fixed_counter_start");
     static final List<String> APPLICABILITY_MISSING_DUE_POLICIES = Arrays.asList(
             "exclude_missing_due", "include_if_created_matches");
     static final String DEFAULT_APPLICABILITY_DATE_MODE = "created_on_or_after";
@@ -229,6 +245,54 @@ implements JimAdminSettingsService {
     }
 
     @Override
+    public boolean isReportWorkingDaysEnabled() {
+        return this.boolValue(KEY_REPORT_WORKING_DAYS_ENABLED, true);
+    }
+
+    @Override
+    public String getReportWorkingDaysCsv() {
+        String v = this.stringValue(KEY_REPORT_WORKING_DAYS_CSV);
+        return v != null ? v : "";
+    }
+
+    @Override
+    public String getReportHolidaysCsv() {
+        String v = this.stringValue(KEY_REPORT_HOLIDAYS_CSV);
+        return v != null ? v : "";
+    }
+
+    @Override
+    public String getReportWorkingCalendarSource() {
+        return this.enumLowerValue(KEY_REPORT_WORKING_CALENDAR_SOURCE,
+                WORKING_CALENDAR_SOURCES, DEFAULT_WORKING_CALENDAR_SOURCE);
+    }
+
+    @Override
+    public long getReportDefaultBoardId() {
+        String v = this.stringValue(KEY_REPORT_DEFAULT_BOARD_ID);
+        if (v == null || v.trim().isEmpty()) {
+            return 0L;
+        }
+        try {
+            long b = Long.parseLong(v.trim());
+            return b > 0 ? b : 0L;
+        } catch (NumberFormatException ex) {
+            return 0L;
+        }
+    }
+
+    @Override
+    public String getReportProjectBoardMapping() {
+        String v = this.stringValue(KEY_REPORT_PROJECT_BOARD_MAPPING);
+        return v != null ? v : "";
+    }
+
+    @Override
+    public boolean isReportReceiverPauseEnabled() {
+        return this.boolValue(KEY_REPORT_RECEIVER_PAUSE_ENABLED, true);
+    }
+
+    @Override
     public boolean isReportApplicabilityEnabled() {
         return this.boolValue(KEY_REPORT_APPLICABILITY_ENABLED, false);
     }
@@ -353,6 +417,13 @@ implements JimAdminSettingsService {
         settings.put(KEY_REPORT_ALLOW_WITHOUT_CONFIG, this.isReportAllowWithoutConfig());
         settings.put(KEY_REPORT_REOPEN_REACTIVATION, this.isReportReopenReactivation());
         settings.put(KEY_REPORT_TIMEZONE, this.getReportTimezone());
+        settings.put(KEY_REPORT_WORKING_DAYS_ENABLED, this.isReportWorkingDaysEnabled());
+        settings.put(KEY_REPORT_WORKING_DAYS_CSV, this.getReportWorkingDaysCsv());
+        settings.put(KEY_REPORT_HOLIDAYS_CSV, this.getReportHolidaysCsv());
+        settings.put(KEY_REPORT_WORKING_CALENDAR_SOURCE, this.getReportWorkingCalendarSource());
+        settings.put(KEY_REPORT_DEFAULT_BOARD_ID, this.getReportDefaultBoardId());
+        settings.put(KEY_REPORT_PROJECT_BOARD_MAPPING, this.getReportProjectBoardMapping());
+        settings.put(KEY_REPORT_RECEIVER_PAUSE_ENABLED, this.isReportReceiverPauseEnabled());
         settings.put(KEY_REPORT_APPLICABILITY_ENABLED, this.isReportApplicabilityEnabled());
         settings.put(KEY_REPORT_EFFECTIVE_FROM_DATE, this.getReportEffectiveFromDate());
         settings.put(KEY_REPORT_APPLICABILITY_DATE_MODE, this.getReportApplicabilityDateMode());
@@ -502,11 +573,119 @@ implements JimAdminSettingsService {
         if (KEY_REPORT_ENABLED.equals(key) || KEY_REPORT_ALLOW_WITHOUT_CONFIG.equals(key)
                 || KEY_REPORT_REOPEN_REACTIVATION.equals(key)
                 || KEY_REPORT_APPLICABILITY_ENABLED.equals(key)
-                || KEY_REPORT_APPLICABILITY_NON_DONE_ONLY.equals(key)) {
+                || KEY_REPORT_APPLICABILITY_NON_DONE_ONLY.equals(key)
+                || KEY_REPORT_WORKING_DAYS_ENABLED.equals(key)
+                || KEY_REPORT_RECEIVER_PAUSE_ENABLED.equals(key)) {
             if (!"true".equalsIgnoreCase(value) && !"false".equalsIgnoreCase(value)) {
                 throw JimMessengerException.badRequest(key + " must be true or false");
             }
             return value.toLowerCase(Locale.ROOT);
+        }
+        if (KEY_REPORT_WORKING_DAYS_CSV.equals(key)) {
+            if (value.isEmpty()) {
+                return ""; // derive from Jira time-tracking days-per-week
+            }
+            StringBuilder norm = new StringBuilder();
+            for (String part : value.split(",")) {
+                String t = part.trim();
+                if (t.isEmpty()) {
+                    continue;
+                }
+                int d;
+                try {
+                    d = Integer.parseInt(t);
+                } catch (NumberFormatException ex) {
+                    throw JimMessengerException.badRequest(key + " must be a CSV of weekday numbers 1-7");
+                }
+                if (d < 1 || d > 7) {
+                    throw JimMessengerException.badRequest(key + " weekday numbers must be 1(Sun)-7(Sat)");
+                }
+                if (norm.length() > 0) {
+                    norm.append(',');
+                }
+                norm.append(d);
+            }
+            return norm.toString();
+        }
+        if (KEY_REPORT_WORKING_CALENDAR_SOURCE.equals(key)) {
+            if (value.isEmpty()) {
+                return DEFAULT_WORKING_CALENDAR_SOURCE;
+            }
+            String lower = value.toLowerCase(Locale.ROOT);
+            if (!WORKING_CALENDAR_SOURCES.contains(lower)) {
+                throw JimMessengerException.badRequest(key + " must be one of " + String.valueOf(WORKING_CALENDAR_SOURCES));
+            }
+            return lower;
+        }
+        if (KEY_REPORT_DEFAULT_BOARD_ID.equals(key)) {
+            if (value.isEmpty() || "0".equals(value)) {
+                return "";
+            }
+            long b;
+            try {
+                b = Long.parseLong(value);
+            } catch (NumberFormatException ex) {
+                throw JimMessengerException.badRequest(key + " must be a positive board (rapidView) id or empty");
+            }
+            if (b <= 0) {
+                throw JimMessengerException.badRequest(key + " must be a positive board id or empty");
+            }
+            return String.valueOf(b);
+        }
+        if (KEY_REPORT_PROJECT_BOARD_MAPPING.equals(key)) {
+            if (value.isEmpty()) {
+                return "";
+            }
+            StringBuilder norm = new StringBuilder();
+            for (String part : value.split(",")) {
+                String t = part.trim();
+                if (t.isEmpty()) {
+                    continue;
+                }
+                if (t.indexOf('=') < 0) {
+                    throw JimMessengerException.badRequest(key + " must be CSV of PROJKEY=boardId pairs");
+                }
+                String[] kv = t.split("=", 2);
+                String pk = kv[0].trim().toUpperCase(Locale.ROOT);
+                String bid = kv[1].trim();
+                if (!pk.matches("[A-Z0-9_]{1,30}")) {
+                    throw JimMessengerException.badRequest(key + ": invalid project key '" + kv[0].trim() + "'");
+                }
+                long b;
+                try {
+                    b = Long.parseLong(bid);
+                } catch (NumberFormatException ex) {
+                    throw JimMessengerException.badRequest(key + ": board id for " + pk + " must be a number");
+                }
+                if (b <= 0) {
+                    throw JimMessengerException.badRequest(key + ": board id for " + pk + " must be positive");
+                }
+                if (norm.length() > 0) {
+                    norm.append(',');
+                }
+                norm.append(pk).append('=').append(b);
+            }
+            return norm.toString();
+        }
+        if (KEY_REPORT_HOLIDAYS_CSV.equals(key)) {
+            if (value.isEmpty()) {
+                return "";
+            }
+            StringBuilder norm = new StringBuilder();
+            for (String part : value.split(",")) {
+                String t = part.trim();
+                if (t.isEmpty()) {
+                    continue;
+                }
+                if (!t.matches("\\d{4}-\\d{2}-\\d{2}")) {
+                    throw JimMessengerException.badRequest(key + " must be a CSV of YYYY-MM-DD dates");
+                }
+                if (norm.length() > 0) {
+                    norm.append(',');
+                }
+                norm.append(t);
+            }
+            return norm.toString();
         }
         if (KEY_REPORT_EFFECTIVE_FROM_DATE.equals(key)) {
             if (value.isEmpty()) {

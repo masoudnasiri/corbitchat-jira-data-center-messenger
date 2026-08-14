@@ -10,7 +10,20 @@ only in that it adds backup + smoke-test + rollback steps; the
 underlying install mechanism is the same because production runs
 the same single-container Docker layout as dev.
 
-> **Current production plugin version: `1.0.0-s12e-reportscope1`.**
+> **Current production plugin version: `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat4e-regressionfix`.**
+> Official freeze: `docs/production-baseline.md`.
+> Source repo (only): `/root/jira-dev/jira-issue-chat-panel-mcp-control-plane`.
+> **Never build from** `/root/jira-dev/jira-issue-chat-panel`.
+> (Deployed 2026-08-14 via Path B — P0 restore of Assistant report filters
+> and `openConversationAtMessage` search jump after the figmachat4 rebuild
+> dropped them. Backend event types were never removed. Jar sha256
+> `8fade54586fe1679cc2e511b24ee64ec619a4d83bc191c99feb0783530492dc8`.
+> DB backup: `/root/jira-backups/jira-db-20260814-074500.sql`.
+> Rollback jar (`figmachat4d-forward-hotfix`):
+> `/root/jira-backups/installed-plugins-20260814-074500/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat4d-forward-hotfix.jar`.
+> Rollback script: `/root/jira-backups/rollback-figmachat4e-20260814-074500/ROLLBACK-plugin.sh`.
+> Tag: `plugin-figmachat4e-regressionfix-prod`.)
+> Previous marker below (`1.0.0-s12e-reportscope1`) retained for history:
 > (Deployed 2026-07-29 via Path B — Phase 2 of the Report Applicability Policy.
 > Adds the compute-level applicability gate + admin settings + read-only impact
 > endpoint (`GET /rest/jim/1.0/admin/report-applicability/impact`). Shipped with
@@ -170,8 +183,9 @@ before considering a rollback.
 On the build host, in the plugin repo:
 
 ```bash
-cd /root/jira-dev/jira-issue-chat-panel
+cd /root/jira-dev/jira-issue-chat-panel-mcp-control-plane
 
+# NEVER build from /root/jira-dev/jira-issue-chat-panel
 # Bump <version> in pom.xml for every release so it is traceable
 # and rollback-able. Keep the plugin key UNCHANGED
 # (com.corbitlogic.corbitchat.jira.dc) or AO data is orphaned.

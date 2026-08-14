@@ -265,6 +265,14 @@
         setVal('jim-set-reportEffectiveFromDate', settings.reportEffectiveFromDate || '');
         setVal('jim-set-reportApplicabilityDateMode', settings.reportApplicabilityDateMode || 'created_on_or_after');
         setVal('jim-set-reportApplicabilityMissingDuePolicy', settings.reportApplicabilityMissingDuePolicy || 'exclude_missing_due');
+        // Working calendar (board vs plugin)
+        setVal('jim-set-reportWorkingCalendarSource', settings.reportWorkingCalendarSource || 'time_tracking_fallback');
+        setVal('jim-set-reportDefaultBoardId', (settings.reportDefaultBoardId && settings.reportDefaultBoardId > 0) ? settings.reportDefaultBoardId : '');
+        setVal('jim-set-reportProjectBoardMapping', settings.reportProjectBoardMapping || '');
+        setVal('jim-set-reportWorkingDaysCsv', settings.reportWorkingDaysCsv || '');
+        setVal('jim-set-reportHolidaysCsv', settings.reportHolidaysCsv || '');
+        var wdEnabled = el('jim-set-reportWorkingDaysEnabled');
+        if (wdEnabled) { wdEnabled.checked = settings.reportWorkingDaysEnabled !== false; }
         for (var mi = 0; mi < REPORT_METRICS.length; mi++) {
             var mk = REPORT_METRICS[mi][0];
             setVal('jim-set-reportMap_' + mk, settings['reportMap_' + mk] || '');
@@ -415,7 +423,45 @@
                     var inp = el('jim-set-reportMap_' + mk);
                     if (inp) { changes['reportMap_' + mk] = (inp.value || '').trim(); }
                 }
+                // Working calendar settings
+                var calSrc = el('jim-set-reportWorkingCalendarSource');
+                if (calSrc) { changes.reportWorkingCalendarSource = calSrc.value; }
+                var defBoard = el('jim-set-reportDefaultBoardId');
+                if (defBoard) { changes.reportDefaultBoardId = (defBoard.value || '').trim(); }
+                var projMap = el('jim-set-reportProjectBoardMapping');
+                if (projMap) { changes.reportProjectBoardMapping = (projMap.value || '').trim(); }
+                var wdCsv = el('jim-set-reportWorkingDaysCsv');
+                if (wdCsv) { changes.reportWorkingDaysCsv = (wdCsv.value || '').trim(); }
+                var holCsv = el('jim-set-reportHolidaysCsv');
+                if (holCsv) { changes.reportHolidaysCsv = (holCsv.value || '').trim(); }
+                var wdEn = el('jim-set-reportWorkingDaysEnabled');
+                if (wdEn) { changes.reportWorkingDaysEnabled = wdEn.checked; }
                 saveSettings(changes, 'Report schedule saved.');
+            });
+        }
+
+        var calDiag = el('jim-report-calendar-diag');
+        if (calDiag) {
+            calDiag.addEventListener('click', function () {
+                var out = el('jim-report-calendar-diag-out');
+                if (out) { out.textContent = 'در حال خواندن… / reading…'; }
+                request('GET', '/reporting/diagnostics').then(function (res) {
+                    if (!out) { return; }
+                    var w = (res && res.workingDays) || {};
+                    var lines = [];
+                    lines.push('فعال / enabled: ' + w.enabled);
+                    lines.push('منبع انتخابی / selected source: ' + w.selectedSource);
+                    lines.push('منبع مؤثر / resolved source: ' + w.resolvedSource);
+                    lines.push('روزهای کاری (1=یکشنبه..7=شنبه): ' + JSON.stringify(w.workingDaysOfWeek));
+                    lines.push('تعداد تعطیلات / holidays: ' + w.holidayCount);
+                    lines.push('برد / board: ' + (w.boardId != null ? w.boardId : '-') + (w.boardName ? ' (' + w.boardName + ')' : ''));
+                    lines.push('منطقه زمانی برد / board tz: ' + (w.boardTimezone || '-'));
+                    lines.push('دلیل fallback: ' + (w.fallbackReason || '-'));
+                    lines.push('قابلیت خواندن برد / board readable: ' + w.boardCalendarReadable);
+                    out.textContent = lines.join('\n');
+                }).catch(function (err) {
+                    if (out) { out.textContent = 'خطا / error: ' + (err && err.message ? err.message : err); }
+                });
             });
         }
 
@@ -449,6 +495,91 @@
                 });
             });
         }
+
+        // ---- ChatGPT Workspace Agent integration ----
+        (function wireWorkspaceAgent() {
+            function waReq(method, path, body) {
+                return new Promise(function (resolve, reject) {
+                    var xhr = new XMLHttpRequest();
+                    xhr.open(method, contextPath() + '/rest/jim/1.0/workspace-agent' + path, true);
+                    xhr.setRequestHeader('Accept', 'application/json');
+                    xhr.setRequestHeader('X-Atlassian-Token', 'no-check');
+                    if (body !== undefined) { xhr.setRequestHeader('Content-Type', 'application/json'); }
+                    xhr.onreadystatechange = function () {
+                        if (xhr.readyState !== 4) { return; }
+                        var parsed = null;
+                        try { parsed = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch (e) { parsed = null; }
+                        if (xhr.status >= 200 && xhr.status < 300) { resolve(parsed); }
+                        else { reject(new Error(parsed && parsed.message ? parsed.message : 'Request failed (' + xhr.status + ')')); }
+                    };
+                    xhr.send(body !== undefined ? JSON.stringify(body) : null);
+                });
+            }
+            var statusBox = el('jim-workspace-agent-status');
+            function applyStatus(s) {
+                if (!s) { return; }
+                if (el('jim-set-workspaceAgentEnabled')) { el('jim-set-workspaceAgentEnabled').checked = s.enabled === true; }
+                if (el('jim-set-workspaceAgentChannelId')) { el('jim-set-workspaceAgentChannelId').value = s.agentChannelConfigured ? (el('jim-set-workspaceAgentChannelId').value || '') : (el('jim-set-workspaceAgentChannelId').value || ''); }
+                if (el('jim-set-workspaceAgentTenantId')) { el('jim-set-workspaceAgentTenantId').value = s.tenantId || 'default'; }
+                if (el('jim-set-workspaceAgentGroupMention')) { el('jim-set-workspaceAgentGroupMention').checked = s.groupMentionMode === true; }
+                if (el('jim-set-workspaceAgentProjectAllowlist')) { el('jim-set-workspaceAgentProjectAllowlist').value = s.projectAllowlist || ''; }
+                if (statusBox) {
+                    statusBox.textContent =
+                        'enabled=' + s.enabled + ' | effective=' + s.effectiveEnabled
+                        + '\ntokenConfigured=' + s.tokenConfigured + ' | channel=' + s.agentChannelConfigured + ' | triggerUrl=' + s.triggerUrlConfigured
+                        + '\nassistantUser=' + s.assistantUser + ' valid=' + s.assistantUserValid
+                        + '\nqueueDepth=' + s.queueDepth + ' pending=' + s.pendingCount + ' running=' + s.runningCount
+                        + ' failed=' + s.failedCount + ' deadLetter=' + s.deadLetterCount + ' succeeded=' + s.succeededCount
+                        + '\nlastSuccessAt=' + s.lastTriggerSuccessAt + ' lastFailureAt=' + s.lastTriggerFailureAt
+                        + (s.lastFailureSummary ? '\nlastFailure=' + s.lastFailureSummary : '');
+                }
+            }
+            function refresh() { waReq('GET', '/status').then(applyStatus).catch(function () {}); }
+            if (el('jim-workspace-agent-save')) {
+                el('jim-workspace-agent-save').addEventListener('click', function () {
+                    waReq('PUT', '/config', {
+                        enabled: el('jim-set-workspaceAgentEnabled').checked,
+                        channelId: (el('jim-set-workspaceAgentChannelId').value || '').trim(),
+                        triggerUrl: (el('jim-set-workspaceAgentTriggerUrl').value || '').trim(),
+                        tenantId: (el('jim-set-workspaceAgentTenantId').value || '').trim(),
+                        groupMentionMode: el('jim-set-workspaceAgentGroupMention').checked,
+                        projectAllowlist: (el('jim-set-workspaceAgentProjectAllowlist').value || '').trim()
+                    }).then(function (s) { applyStatus(s); showMessage('Workspace Agent settings saved.'); })
+                      .catch(function (err) { showMessage('Error: ' + err.message, true); });
+                });
+            }
+            if (el('jim-workspace-agent-token-save')) {
+                el('jim-workspace-agent-token-save').addEventListener('click', function () {
+                    var t = (el('jim-workspace-agent-token').value || '').trim();
+                    if (!t) { showMessage('Enter a token first.', true); return; }
+                    waReq('POST', '/token', { token: t }).then(function () {
+                        el('jim-workspace-agent-token').value = '';
+                        showMessage('Token saved (write-only).'); refresh();
+                    }).catch(function (err) { showMessage('Error: ' + err.message, true); });
+                });
+            }
+            if (el('jim-workspace-agent-token-revoke')) {
+                el('jim-workspace-agent-token-revoke').addEventListener('click', function () {
+                    waReq('DELETE', '/token').then(function () { showMessage('Token revoked.'); refresh(); })
+                      .catch(function (err) { showMessage('Error: ' + err.message, true); });
+                });
+            }
+            if (el('jim-workspace-agent-test')) {
+                el('jim-workspace-agent-test').addEventListener('click', function () {
+                    waReq('POST', '/test', {}).then(function (r) {
+                        showMessage(r && r.ok ? 'Test trigger OK' + (r.runId ? ' (run ' + r.runId + ')' : '') : 'Test failed: ' + (r && r.error ? r.error : 'unknown'), !(r && r.ok));
+                        refresh();
+                    }).catch(function (err) { showMessage('Error: ' + err.message, true); });
+                });
+            }
+            if (el('jim-workspace-agent-scan')) {
+                el('jim-workspace-agent-scan').addEventListener('click', function () {
+                    waReq('POST', '/scan').then(function (r) { showMessage('Fallback scan enqueued: ' + (r ? r.enqueued : '?')); refresh(); })
+                      .catch(function (err) { showMessage('Error: ' + err.message, true); });
+                });
+            }
+            refresh();
+        })();
 
         var saveJiraDates = el('jim-save-jira-dates');
         if (saveJiraDates) {
