@@ -12,7 +12,12 @@ the same single-container Docker layout as dev.
 
 > **Current production plugin version: `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1`.**
 > **Current production PWA: `1.0.0+94 / figma-phase7b-design-lock1-prod` (7G TECH).**
-> Rollback plugin: `figmachat5a-shared-open-hotfix`. Rollback PWA: `+88`.
+> **Status: accepted by owner manual test (2026-08-14). Do not rollback.**
+> Gateway: `gateway-2.7-prod16` unchanged. Rollback scripts unused:
+> `/root/jira-backups/rollback-figmachat7b-20260814-194654/`.
+> Public basic-auth smoke may return `403 AUTHENTICATION_DENIED`
+> (CAPTCHA / failed-login lock). That is not a plugin outage — do not
+> retry the same credentials. Use browser/session or localhost 401/302.
 > Official freeze: `docs/production-baseline.md`.
 > Source repo (only): `/root/jira-dev/jira-issue-chat-panel-mcp-control-plane`.
 > **Never build from** `/root/jira-dev/jira-issue-chat-panel`.
@@ -392,7 +397,14 @@ Keep the last few backups. For a big instance, also snapshot the
 
 Wait until Jira is up (health flips 503 → 401/200), then test both
 the existing web REST and the new mobile BFF. Use a real admin /
-user credential:
+user credential.
+
+If public basic-auth returns `403 AUTHENTICATION_DENIED`, treat it as
+an auth-smoke limitation (CAPTCHA / failed-login lock / auth policy),
+not a plugin outage. Do not keep retrying the same credentials.
+Prefer browser/session verification, localhost unauthenticated 401/302,
+or unlock/reset the test account first. Owner UI test is the
+acceptance signal after Phase 7B.
 
 ```bash
 BASE='https://jira.7gtech.net'   # or http://193.162.129.56:8080

@@ -96,3 +96,26 @@ Do **not** run any gateway rollback.
 ## 10–11
 
 Gateway unchanged. Phase 7C not started.
+
+## 12. Close-out (owner accepted — no rollback)
+
+Owner manually tested Production after the plugin restart and confirmed
+there is no functional issue. **Do not rollback** plugin or PWA.
+**Do not restart Gateway.**
+
+| Item | Result |
+|------|--------|
+| Final plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1` |
+| Final PWA | `1.0.0+94 / figma-phase7b-design-lock1-prod` (7G TECH) |
+| Gateway | `gateway-2.7-prod16` / `mcp-atlassian-prod` unchanged |
+| Owner manual test | Passed |
+| Rollback | Not run. Scripts remain at `/root/jira-backups/rollback-figmachat7b-20260814-194654/` |
+
+A later public basic-auth smoke returned `403 AUTHENTICATION_DENIED`.
+That is an auth-smoke limitation (CAPTCHA / failed-login lock / auth
+policy), not a Production failure. Do not retry public basic-auth with
+the same credentials. Prefer browser/session verification or localhost
+unauthenticated 401/302.
+
+Next recommended step: start the next DEV-only design slice only after
+owner approval.

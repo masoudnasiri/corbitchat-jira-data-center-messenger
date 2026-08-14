@@ -1,19 +1,34 @@
 # Production baseline — figmachat7a-correct1 + PWA +94
 
-Updated: 2026-08-14. Owner accepted Phase 7B on DEV (`+94`) and
-approved this Production rollout. Plugin `figmachat7a-correct1` is
-required so the full emoji picker can persist (5a still allowlisted
-presets). PWA is 7G TECH `1.0.0+94 / figma-phase7b-design-lock1-prod`.
-Gateway remains `gateway-2.7-prod16` / `mcp-atlassian-prod` (not
-restarted). Phase 7C was **not** started.
+Updated: 2026-08-14. **Production status: accepted by owner manual
+test.** Phase 7B is closed. Do **not** rollback plugin or PWA. Do
+**not** restart Gateway. Phase 7C / the next DEV-only design slice
+starts only after owner approval.
 
-Previous Production (`figmachat5a-shared-open-hotfix` / `+88`) is the
-rollback target. See `docs/phase7b-production-rollout.md`.
+| Surface | Version |
+|---|---|
+| Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1` |
+| PWA | `1.0.0+94 / figma-phase7b-design-lock1-prod` (7G TECH) |
+| Gateway | `gateway-2.7-prod16` / `mcp-atlassian-prod` (**unchanged**) |
 
-Owner manual QA (`docs/manual-qa-phase6-chat.md`) is **accepted as
-non-blocking / owner-signed**. Hardening produced docs and DEV-safe
-scripts only: no product-code change, no version bump, no Production
-deploy.
+Plugin `figmachat7a-correct1` is required so the full emoji picker can
+persist (5a still allowlisted presets). After `jira-srv` restart,
+`/rest/jim/1.0/health` moved 503 → 401 in about six minutes. That is
+normal startup, not a failure.
+
+Previous Production (`figmachat5a-shared-open-hotfix` / `+88`) remains
+the unused rollback target. See `docs/phase7b-production-rollout.md`.
+
+## Auth-smoke limitation (not a Production failure)
+
+A later public basic-auth check returned `403 AUTHENTICATION_DENIED`.
+That is Jira blocking basic auth from that host/account (CAPTCHA /
+failed-login lock / auth policy). It is **not** a plugin outage.
+
+Do **not** keep retrying public basic-auth with the same credentials.
+Use browser/session-based manual verification, localhost unauthenticated
+401/302 behavior, or unlock/reset the test account before repeating
+credential-based smokes. Owner UI test is the acceptance signal.
 
 ## Current Production plugin
 
@@ -39,7 +54,9 @@ deploy.
 | PWA | `1.0.0+88 / figma-chat-shared-open-hotfix` (sha256 `e2beaf936471ba6cac652243c1740caad2ea5f739698ea64a1b4a172036951db`) |
 | Gateway | **Do not roll back** — Gateway was not changed in this rollout |
 
-Backups and scripts: `/root/jira-backups/rollback-figmachat7b-20260814-194654/` on `corbit-prod`.
+Backups and scripts remain available but **unused** (owner accepted;
+no rollback): `/root/jira-backups/rollback-figmachat7b-20260814-194654/`
+on `corbit-prod`.
 
 ## Root cause
 
