@@ -23,7 +23,15 @@ feature work from any other tree.
 | Branch | `feature/mcp-control-plane` |
 | Freeze commit (source) | `68d3b33bcb62dffcdb2580db0f895d2c7b6d5bba` |
 | Tag commit | `d8199a97a417906db691df3275d1079fa4cce57a` (contains freeze `68d3b33`) |
-| Release tag | `plugin-figmachat4e-regressionfix-prod` |
+| Release tag | `plugin-figmachat4e-regressionfix-prod` (local only) |
+| Remote tag | **Pending** — this host has no GitHub push credentials and sometimes cannot resolve `github.com`. Do not store a PAT in `~/.git-credentials`. |
+
+When the owner provides temporary GitHub authentication, push **only** the existing local tag (do not retag, do not force-push):
+
+```bash
+cd /root/jira-dev/jira-issue-chat-panel-mcp-control-plane
+git push origin plugin-figmachat4e-regressionfix-prod
+```
 
 **Never build future plugin work from** `/root/jira-dev/jira-issue-chat-panel`
 or any `reportreplies-workdays1` / `feature/reply-composer-attachments` lineage.
