@@ -1,7 +1,10 @@
 # Production baseline — figmachat5a-shared-open-hotfix
 
-Updated: 2026-08-14. This P0 hotfix is the official Production baseline.
-This is not Phase 6. Do not start new feature work from any other tree.
+Updated: 2026-08-14. Phase 5 and the shared-gallery open-message hotfix
+are **accepted**. This is the official working baseline for any future
+phase. Do not deploy further Phase 5 changes. Do not start Phase 6
+until the owner opens that phase. Do not change Production from this
+close-out.
 
 ## Current Production plugin
 
@@ -109,6 +112,25 @@ plugin is rolled back.
 Also preserved on this baseline: compact sidebar, shared galleries,
 multi-forward, Saved Messages, Copy/Share/Forward/Delete/Save, MCP admin,
 report/calendar admin, Workspace Agent.
+
+## Before any future phase
+
+1. Build plugin only from `/root/jira-dev/jira-issue-chat-panel-mcp-control-plane`.
+2. Do mobile/PWA work only from `/root/jira-dev/corbitchat-mobile`.
+3. Never use `/root/jira-dev/jira-issue-chat-panel` (stale).
+4. Keep Assistant report filters (`گزارش‌ها`, `منشن گزارش`, `گزارش‌های دریافتی`).
+5. Keep search jump via `openConversationAtMessage`.
+6. Keep shared-gallery Open message on `openConversationAtMessage`.
+7. Keep Production PWA branding as **7G TECH**.
+8. Do not ship Gateway MCP search to Production unless the owner
+   decides that separately.
+
+## Pending (non-blocking)
+
+- Owner hard-refresh and confirm the final UI click/highlight.
+- Push plugin/mobile commits (and tags) to GitHub when credentials
+  and network are available. Do not store a PAT in `~/.git-credentials`.
+- Decide separately whether to ship Gateway MCP search to Production.
 
 ## Build
 

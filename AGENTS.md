@@ -14,7 +14,10 @@ P2 plugin for **Jira Data Center 9.17.x** running in the `jira-srv` Docker conta
 - **Rollback plugin:** `figmachat5-search-mentions`
 - **Rollback PWA:** `+87 / figma-chat-design-reconcile1`
 
-## Production baseline (frozen 2026-08-14)
+## Production baseline (Phase 5 closed — 2026-08-14)
+
+Phase 5 and the shared-gallery open-message hotfix are accepted.
+Do not start Phase 6 until the owner opens that phase.
 
 Official Production plugin. Restore these before any new phase:
 
