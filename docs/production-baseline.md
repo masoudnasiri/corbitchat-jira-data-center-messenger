@@ -2,9 +2,10 @@
 
 Updated: 2026-08-14. Phase 5 and the shared-gallery open-message hotfix
 are **accepted**. This is the official working baseline for any future
-phase. Do not deploy further Phase 5 changes. Do not start Phase 6
-until the owner opens that phase. Do not change Production from this
-close-out.
+phase. Phase 6 (hardening / QA only) is open: see
+`docs/phase6-hardening-plan.md`. Do not deploy Production from Phase 6
+unless the owner explicitly approves. Do not start Phase 7 features
+from this close-out.
 
 ## Current Production plugin
 

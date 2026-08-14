@@ -207,7 +207,8 @@ cp target/corbitchat-jira-dc-<version>.jar /root/jira-dev/releases/
 ### 2.1 Pre-package checklist (mandatory — every future chat build)
 
 Do this **before** `mvn ... package`. Fail the release if any item is missing.
-Do not start Phase 5 or any new chat work from another tree.
+Do not start new chat work from another tree. Phase 6 scripts:
+`scripts/run-phase6-dev.sh` and `docs/regression-checklist.md`.
 
 ```bash
 REPO=/root/jira-dev/jira-issue-chat-panel-mcp-control-plane
