@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 JIM_BASE="${JIM_BASE:-http://185.83.181.194:8080}"
 JIM_USER="${JIM_USER:-m.nasiri}"
-JIM_PASS="${JIM_PASS:-Man@782761}"
+require_jim_pass
 
 if echo "$JIM_BASE" | grep -Eq '7gtech|193\\.162\\.129'; then
   fail "refusing to run against Production ($JIM_BASE)"

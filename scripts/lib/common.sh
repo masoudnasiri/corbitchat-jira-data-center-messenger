@@ -24,6 +24,15 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "FAIL  missing command: $1"; exit 1; }
 }
 
+# Username may default. Password/token must come from the environment.
+require_jim_pass() {
+  if [ -z "${JIM_PASS:-}" ]; then
+    echo "FAIL  JIM_PASS is required in the environment (do not put passwords in source)"
+    echo "FAIL  example: JIM_PASS=... $0"
+    exit 1
+  fi
+}
+
 OFFICIAL_PLUGIN_REPO="/root/jira-dev/jira-issue-chat-panel-mcp-control-plane"
 STALE_PLUGIN_REPO="/root/jira-dev/jira-issue-chat-panel"
 OFFICIAL_MOBILE_REPO="/root/jira-dev/corbitchat-mobile"

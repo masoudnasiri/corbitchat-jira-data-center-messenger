@@ -3,6 +3,10 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export JIM_BASE="${JIM_BASE:-http://185.83.181.194:8080}"
+if [ -z "${JIM_PASS:-}" ]; then
+  echo "FAIL  JIM_PASS is required in the environment (do not put passwords in source)"
+  exit 1
+fi
 FAILED=0
 run() {
   echo
