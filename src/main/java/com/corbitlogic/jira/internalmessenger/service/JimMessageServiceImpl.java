@@ -906,6 +906,31 @@ implements JimMessageService {
             }
             convs = filtered;
         }
+        // Project chats are opened from the Jira project page and are not in
+        // listConversationsForUser (sidebar is DIRECT/GROUP/SYSTEM only).
+        // Global / type=PROJECT search must still cover PROJECT conversations
+        // the caller is a participant of (explicit member or current lead).
+        if (conversationId == null && (typeFilter.isEmpty() || "PROJECT".equals(typeFilter))) {
+            java.util.Set<Integer> have = new java.util.HashSet<Integer>();
+            for (JimConversation c : convs) {
+                have.add(Integer.valueOf(c.getID()));
+            }
+            JimConversation[] projects = (JimConversation[]) this.activeObjects.find(JimConversation.class,
+                    Query.select().where("CONVERSATION_TYPE = ?",
+                            new Object[]{JimConversationType.PROJECT.name()}));
+            for (JimConversation c : projects) {
+                if (c == null || have.contains(Integer.valueOf(c.getID()))) {
+                    continue;
+                }
+                if (c.getArchived() != null && c.getArchived().intValue() != 0) {
+                    continue;
+                }
+                if (this.permissionService.isParticipant(c, userKey)) {
+                    convs.add(c);
+                    have.add(Integer.valueOf(c.getID()));
+                }
+            }
+        }
 
         JimReviewerService reviewer = component(JimReviewerService.class);
         JimMessageUserStateService userState = this.userStateService;
