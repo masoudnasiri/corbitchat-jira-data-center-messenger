@@ -152,10 +152,20 @@ Phase 6 docs: `docs/phase6-hardening-plan.md`,
 
 ## Security follow-up (do not rewrite history)
 
-- Current source is clean after `750ba86` (`fix(scripts): require JIM_PASS from the environment`). Phase 6 scripts require `JIM_PASS` from the environment. A documented DEV **username** is acceptable; a password/token in source is not.
-- Commit `501bc05` contained a DEV password default in the Phase 6 smoke scripts. That default is removed at HEAD. **Do not rewrite history** unless the owner explicitly approves.
-- `AGENTS.md` and `docs/handover-mobile-app.md` contain **pre-existing** credential documentation. Sanitize those files before any public/shared GitHub push.
-- Do not store a PAT or other credentials in `~/.git-credentials` or in the repo.
+- Current HEAD docs/scripts are sanitized: no real passwords in
+  `AGENTS.md`, handover docs, or Phase 6 smokes. Scripts require
+  `JIM_PASS` / `MYSQL_PASSWORD` from the environment. Run
+  `scripts/check-no-secrets.sh` before every package (see
+  `docs/deployment-production.md` §2.1).
+- Commit `501bc05` still contains a DEV password default in Phase 6
+  smoke scripts **in history**. `AGENTS.md` on older commits (including
+  GitHub `origin/main` and other origin branches) still contains that
+  DEV password. **Do not rewrite history** unless the owner explicitly
+  approves after the hygiene decision package.
+- Set secrets through environment variables or secure server-side
+  config only. Do not store a PAT in `~/.git-credentials` or in the repo.
+- Rotate the exposed DEV Jira password. See the source-security
+  hygiene report. Production Jira password was **not** found in git.
 
 ## Gateway MCP chat search close (2026-08-14)
 

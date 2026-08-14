@@ -6,8 +6,11 @@ P2 plugin for **Jira Data Center 9.17.x** running in the `jira-srv` Docker conta
 - **Do not use:** `/root/jira-dev/jira-issue-chat-panel` (stale; caused the figmachat4 P0 regression)
 - **Plugin key (never change):** `com.corbitlogic.corbitchat.jira.dc` (marketplace branch; internal branch uses `com.corbitlogic.jira.internalmessenger.jira-internal-messenger`)
 - **Jira URL:** `http://185.83.181.194:8080`
-- **Test user:** `m.nasiri` / `Man@782761`
+- **Test user:** `m.nasiri` (password from `JIM_PASS` in the environment only)
 - **Chat page:** `http://185.83.181.194:8080/plugins/servlet/jim/chat`
+
+Set secrets through environment variables or secure server-side config only.
+Do not put passwords, tokens, PATs, or cookies in docs or scripts.
 - **Production baseline:** `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix`
   (see `docs/production-baseline.md`)
 - **Production PWA:** `1.0.0+88 / figma-chat-shared-open-hotfix` (7G TECH)
@@ -35,7 +38,8 @@ Never reuse versions `figmachat4c`, `figmachat4d`, `figmachat4e`,
 or `figmachat5-search-mentions`.
 
 Before every future `mvn ... package`, run the mandatory pre-package
-checklist in `docs/deployment-production.md` §2.1.
+checklist in `docs/deployment-production.md` §2.1, including
+`scripts/check-no-secrets.sh`.
 
 ## Build (offline Maven — always use these flags)
 
@@ -63,7 +67,9 @@ Do NOT use `-it` with `docker exec` (no TTY in this environment).
 Jira returns 503 while starting, then 401/200 when ready. Poll like this:
 
 ```bash
-AUTH='m.nasiri:Man@782761'; BASE='http://185.83.181.194:8080'
+JIM_USER="${JIM_USER:-m.nasiri}"
+: "${JIM_PASS:?Set JIM_PASS in the environment}"
+AUTH="$JIM_USER:$JIM_PASS"; BASE='http://185.83.181.194:8080'
 for i in $(seq 1 50); do
   code=$(curl -s -u "$AUTH" -o /dev/null -w '%{http_code}' "$BASE/rest/jim/1.0/health" 2>/dev/null || echo 000)
   [ "$code" = "200" ] && echo ready && break
@@ -76,7 +82,9 @@ Use a shell timeout (`block_until_ms`) of at least 250–300 s for this poll.
 ## Test after every build/install
 
 ```bash
-AUTH='m.nasiri:Man@782761'; BASE='http://185.83.181.194:8080'
+JIM_USER="${JIM_USER:-m.nasiri}"
+: "${JIM_PASS:?Set JIM_PASS in the environment}"
+AUTH="$JIM_USER:$JIM_PASS"; BASE='http://185.83.181.194:8080'
 for p in /rest/jim/1.0/health /rest/jim/1.0/ao-health /rest/jim/1.0/conversations /plugins/servlet/jim/chat; do
   echo "$p => $(curl -s -u "$AUTH" -o /dev/null -w '%{http_code}' "$BASE$p")"
 done

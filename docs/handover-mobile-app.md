@@ -199,8 +199,11 @@ runs shell commands on the host, which talks to Docker directly.
 
 - Host: container `mysql-jira` (from other containers) or via
   `docker exec mysql-jira …` from the host.
-- User / password: `jira` / `123123`.
+- User: `jira`. Password: set `MYSQL_PASSWORD` in the environment
+  (do not store database passwords in docs).
 - Database: `jira`.
+- Set secrets through environment variables or secure server-side
+  config only.
 - Plugin AO tables: `AO_099FDF_JIM_*` (see `docs/architecture.md`
   §4).
 
@@ -229,7 +232,7 @@ for i in $(seq 1 60); do
 done
 
 # Inspect AO tables
-docker exec mysql-jira mysql -ujira -p123123 jira \
+docker exec mysql-jira mysql -ujira -p"$MYSQL_PASSWORD" jira \
   -e "SELECT * FROM AO_099FDF_JIM_CONVERSATION LIMIT 5;"
 
 # Read Jira application log

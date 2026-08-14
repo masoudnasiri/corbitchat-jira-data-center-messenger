@@ -18,6 +18,7 @@ run() {
     FAILED=1
   fi
 }
+run "$ROOT/scripts/check-no-secrets.sh"
 run "$ROOT/scripts/check-no-stale-repo.sh"
 run "$ROOT/scripts/check-release-assets.sh"
 run "$ROOT/scripts/smoke-chat-web.sh"

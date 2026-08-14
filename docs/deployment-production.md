@@ -220,6 +220,7 @@ VM=$REPO/src/main/resources/templates/messenger-app.vm
 # 1. Build only from the official repo
 [ "$(pwd)" = "$REPO" ] || { echo FAIL: not in $REPO; exit 1; }
 [ ! -e "$STALE" ] || echo "WARN: stale tree exists at $STALE — do not build from it"
+"$REPO/scripts/check-no-secrets.sh" || { echo FAIL: secret scan; exit 1; }
 
 # 2. Assistant report filters + event types in JS config
 grep -q "key: 'reports'" "$JS" || { echo FAIL: reports filter; exit 1; }
