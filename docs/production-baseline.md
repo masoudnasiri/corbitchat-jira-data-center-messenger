@@ -1,19 +1,58 @@
-# Production baseline freeze — figmachat4e-regressionfix
+# Production baseline — figmachat5a-shared-open-hotfix
 
-Frozen: 2026-08-14 after the accepted P0 regression restore.
-
-This is the official Production plugin baseline. Do not start new
-feature work from any other tree.
+Updated: 2026-08-14. This P0 hotfix is the official Production baseline.
+This is not Phase 6. Do not start new feature work from any other tree.
 
 ## Current Production plugin
 
 | Field | Value |
 |---|---|
-| Version | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat4e-regressionfix` |
+| Version | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix` |
 | Plugin key | `com.corbitlogic.corbitchat.jira.dc` (never change) |
-| Jar sha256 | `8fade54586fe1679cc2e511b24ee64ec619a4d83bc191c99feb0783530492dc8` |
-| Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat4e-regressionfix.jar` |
-| Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat4e-regressionfix.jar` (inside `jira-srv`) |
+| Jar sha256 | `aebc17088461e9792e5f87cf9b5cb94493dc08a68aa25336d8ce52e53843b373` |
+| Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix.jar` |
+| Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix.jar` (inside `jira-srv`) |
+| Plugin freeze commit | recorded in this freeze commit on `feature/mcp-control-plane` |
+| Production PWA | `1.0.0+88 / figma-chat-shared-open-hotfix` |
+| PWA sha256 | `e2beaf936471ba6cac652243c1740caad2ea5f739698ea64a1b4a172036951db` |
+| Mobile freeze commit | recorded in the matching `corbitchat-mobile` commit on `main` |
+| Gateway | **unchanged** (`gateway-2.7-prod15`). MCP search remains DEV-only. |
+
+## Rollback targets
+
+| Surface | Roll back to |
+|---|---|
+| Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5-search-mentions` (sha256 `f6618ae08478f0218ada56afc3bd38d5497c80b7b4270e9277a8fa736632f1b6`) |
+| PWA | `1.0.0+87 / figma-chat-design-reconcile1` (sha256 `b54e3dca3edb88d24a1f8bb4f6601657addafcc504490f188b40d0c3dddda1d3`) |
+
+Backups and scripts: `/root/jira-backups/*-20260814-125535*` and
+`/root/jira-backups/rollback-figmachat5a-20260814-125535/` on `corbit-prod`.
+
+## Root cause
+
+Shared gallery “Open message” / `باز کردن پیام` used a local
+`querySelector` + `scrollIntoView` on `#jim-message-list`. That only
+worked when the source message was already in the loaded page. On
+Production (longer threads) the click closed the modal and did nothing:
+no `openConversationAtMessage`, no `/messages/around/{messageId}`, no
+highlight, no snackbar. The shared API DTO already had `conversationId`
+and `messageId`. This was not a cache-only issue.
+
+The hotfix routes Files / Media / Links through the same Phase 5 search
+jump: `openConversationAtMessage(conversationId, messageId)` on web, and
+`ConversationScreen` + `loadAroundAsInitial` / `messagesAround` on PWA.
+
+## Branding
+
+| Environment | PWA brand | Build |
+|---|---|---|
+| Production (`jira.7gtech.net/mobile/`) | **7G TECH** | `+88 / figma-chat-shared-open-hotfix` |
+| DEV (`jira.corbitlogic.com/mobile/`) | **Hub** | `+88 / figma-chat-shared-open-hotfix` |
+
+DEV Hub is the DEV brand, not a Production leak. Production index/manifest
+title is `7G TECH`. There is no user-visible `Corbit Hub` string on
+Production `/mobile/`. Do not replace DEV Hub with 7G TECH unless the
+owner asks for customer-brand parity on the DEV host.
 
 ## Source of truth
 
@@ -41,13 +80,16 @@ That tree is stale and caused the figmachat4 filter/jump regression.
 
 | Kind | Path |
 |---|---|
-| Previous live jar (`figmachat4d-forward-hotfix`) | `/root/jira-backups/installed-plugins-20260814-074500/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat4d-forward-hotfix.jar` |
-| Previous jar sha256 | `89813048109f0bdc9b2071d9cf6883fe186dbd13477ca4938eeaf3eb4d0cf710` |
-| Plugin listing | `/root/jira-backups/plugin-listing-20260814-074500.txt` |
-| DB dump | `/root/jira-backups/jira-db-20260814-074500.sql` |
-| Rollback script | `/root/jira-backups/rollback-figmachat4e-20260814-074500/ROLLBACK-plugin.sh` |
+| Previous live jar (`figmachat5-search-mentions`) | `/root/jira-backups/corbitchat-jira-dc-figmachat5-search-mentions-20260814-125535.jar` |
+| Previous jar sha256 | `f6618ae08478f0218ada56afc3bd38d5497c80b7b4270e9277a8fa736632f1b6` |
+| Previous PWA (+87) | `/root/jira-backups/prod-mobile-87-before-figmachat5a-20260814-125535.tgz` |
+| Plugin listing | `/root/jira-backups/plugin-listing-20260814-125535.txt` |
+| DB dump | `/root/jira-backups/jira-db-20260814-125535.sql` |
+| Rollback scripts | `/root/jira-backups/rollback-figmachat5a-20260814-125535/ROLLBACK-plugin.sh` and `ROLLBACK-pwa.sh` |
 
-Rollback restores `figmachat4d-forward-hotfix` and restarts `jira-srv`.
+Rollback restores plugin `figmachat5-search-mentions` and/or PWA
+`+87 / figma-chat-design-reconcile1`, then restarts `jira-srv` if the
+plugin is rolled back.
 
 ## Restored P0 behaviors (must not regress)
 
@@ -59,6 +101,10 @@ Rollback restores `figmachat4d-forward-hotfix` and restarts `jira-srv`.
    `openConversationAtMessage(conversationId, messageId)`, loads older
    pages with a bounded limit if needed, scrolls, and applies
    `jim-message-highlight`.
+3. **Shared gallery Open message** — Files / Media / Links `باز کردن پیام`
+   must call the same `openConversationAtMessage` path (web) or
+   `loadAroundAsInitial` / `messagesAround` (PWA). Do not use
+   querySelector-only scroll.
 
 Also preserved on this baseline: compact sidebar, shared galleries,
 multi-forward, Saved Messages, Copy/Share/Forward/Delete/Save, MCP admin,

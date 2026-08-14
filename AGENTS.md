@@ -8,8 +8,11 @@ P2 plugin for **Jira Data Center 9.17.x** running in the `jira-srv` Docker conta
 - **Jira URL:** `http://185.83.181.194:8080`
 - **Test user:** `m.nasiri` / `Man@782761`
 - **Chat page:** `http://185.83.181.194:8080/plugins/servlet/jim/chat`
-- **Production baseline:** `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat4e-regressionfix`
+- **Production baseline:** `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix`
   (see `docs/production-baseline.md`)
+- **Production PWA:** `1.0.0+88 / figma-chat-shared-open-hotfix` (7G TECH)
+- **Rollback plugin:** `figmachat5-search-mentions`
+- **Rollback PWA:** `+87 / figma-chat-design-reconcile1`
 
 ## Production baseline (frozen 2026-08-14)
 
@@ -17,8 +20,11 @@ Official Production plugin. Restore these before any new phase:
 
 - Assistant report filters (`گزارش‌ها`, `منشن گزارش`, `گزارش‌های دریافتی`)
 - `openConversationAtMessage` chat search jump-to-message
+- Shared gallery `باز کردن پیام` must use `openConversationAtMessage`
+  (never querySelector-only scroll)
 
-Never reuse versions `figmachat4c`, `figmachat4d`, or `figmachat4e`.
+Never reuse versions `figmachat4c`, `figmachat4d`, `figmachat4e`,
+or `figmachat5-search-mentions`.
 
 Before every future `mvn ... package`, run the mandatory pre-package
 checklist in `docs/deployment-production.md` §2.1.

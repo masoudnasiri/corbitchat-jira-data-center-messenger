@@ -154,7 +154,7 @@
         'No messages found': 'پیامی یافت نشد', 'Retry': 'تلاش دوباره',
         'Matched filename': 'نام فایل', 'Matched issue': 'کلید مسئله',
         'Mention': 'منشن', 'Open latest mention': 'باز کردن آخرین منشن',
-        'Message not available': 'پیام در دسترس نیست',
+        'Message not available': 'این پیام در دسترس نیست یا حذف شده است.',
         'Filter by type': 'فیلتر بر اساس نوع', 'Show all': 'نمایش همه',
         'No messages in this category.': 'پیامی در این دسته نیست.',
         'Admin': 'مدیر', 'Make admin': 'ارتقا به مدیر', 'Remove admin': 'حذف مدیر',
@@ -5716,9 +5716,15 @@
             for (var i = 0; i < sharedState.items.length; i++) {
                 var media = sharedState.items[i];
                 var src = media.previewUrl || '';
-                html += '<button type="button" class="jim-shared-media-cell" data-shared-index="' + i + '">' +
+                var mediaCid = media.conversationId || state.selectedConversationId || '';
+                html += '<div class="jim-shared-media-cell">' +
                     (src ? '<img src="' + escapeHtml(src) + '" alt="" />' : escapeHtml(media.filename || t('Media'))) +
-                    '</button>';
+                    (media.messageId
+                        ? '<button type="button" class="jim-shared-action jim-shared-media-open" data-goto-message="' +
+                            media.messageId + '" data-goto-conversation="' + mediaCid + '">' +
+                            escapeHtml(t('Open message')) + '</button>'
+                        : '') +
+                    '</div>';
             }
             html += '</div>';
         } else {
@@ -5748,7 +5754,9 @@
                     html += '<a class="jim-shared-action" href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener">' + escapeHtml(t('Open')) + '</a>';
                 }
                 if (item.messageId) {
-                    html += '<button type="button" class="jim-shared-action" data-goto-message="' + item.messageId + '">' + escapeHtml(t('Open message')) + '</button>';
+                    html += '<button type="button" class="jim-shared-action" data-goto-message="' + item.messageId +
+                        '" data-goto-conversation="' + (item.conversationId || state.selectedConversationId || '') + '">' +
+                        escapeHtml(t('Open message')) + '</button>';
                 }
                 html += '</div></div>';
             }
@@ -6975,12 +6983,20 @@
                     }
                     return;
                 }
-                var messageId = event.target.getAttribute('data-goto-message');
-                if (messageId) {
+                var gotoBtn = event.target.closest
+                    ? event.target.closest('[data-goto-message]')
+                    : (event.target.getAttribute && event.target.getAttribute('data-goto-message') ? event.target : null);
+                if (gotoBtn) {
+                    var messageId = parseInt(gotoBtn.getAttribute('data-goto-message'), 10);
+                    var conversationId = parseInt(gotoBtn.getAttribute('data-goto-conversation'), 10);
+                    if (isNaN(conversationId)) {
+                        conversationId = state.selectedConversationId;
+                    }
                     closeSharedGallery();
-                    var node = document.querySelector('#jim-message-list [data-message-id="' + messageId + '"]');
-                    if (node && node.scrollIntoView) {
-                        node.scrollIntoView({ block: 'center' });
+                    if (!isNaN(messageId) && conversationId) {
+                        openConversationAtMessage(conversationId, messageId);
+                    } else {
+                        showError(t('Message not available'));
                     }
                 }
             });

@@ -1,9 +1,9 @@
 # CorbitChat / Hub — Agent Handover (state as of 2026-07-05)
 
 > **CURRENT (2026-08-14):** Official Production baseline is
-> `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat4e-regressionfix`.
-> Source repo is `/root/jira-dev/jira-issue-chat-panel-mcp-control-plane`
-> (tag `plugin-figmachat4e-regressionfix-prod`).
+> `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix`
+> and PWA `1.0.0+88 / figma-chat-shared-open-hotfix` (7G TECH).
+> Source repo is `/root/jira-dev/jira-issue-chat-panel-mcp-control-plane`.
 > See `docs/production-baseline.md`. Do **not** use
 > `/root/jira-dev/jira-issue-chat-panel`. Historical sections below
 > describe an older handover and are not the live baseline.

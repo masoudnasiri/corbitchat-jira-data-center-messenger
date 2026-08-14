@@ -10,19 +10,18 @@ only in that it adds backup + smoke-test + rollback steps; the
 underlying install mechanism is the same because production runs
 the same single-container Docker layout as dev.
 
-> **Current production plugin version: `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat4e-regressionfix`.**
+> **Current production plugin version: `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix`.**
+> **Current production PWA: `1.0.0+88 / figma-chat-shared-open-hotfix` (7G TECH).**
 > Official freeze: `docs/production-baseline.md`.
 > Source repo (only): `/root/jira-dev/jira-issue-chat-panel-mcp-control-plane`.
 > **Never build from** `/root/jira-dev/jira-issue-chat-panel`.
-> (Deployed 2026-08-14 via Path B — P0 restore of Assistant report filters
-> and `openConversationAtMessage` search jump after the figmachat4 rebuild
-> dropped them. Backend event types were never removed. Jar sha256
-> `8fade54586fe1679cc2e511b24ee64ec619a4d83bc191c99feb0783530492dc8`.
-> DB backup: `/root/jira-backups/jira-db-20260814-074500.sql`.
-> Rollback jar (`figmachat4d-forward-hotfix`):
-> `/root/jira-backups/installed-plugins-20260814-074500/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat4d-forward-hotfix.jar`.
-> Rollback script: `/root/jira-backups/rollback-figmachat4e-20260814-074500/ROLLBACK-plugin.sh`.
-> Tag: `plugin-figmachat4e-regressionfix-prod`.)
+> (Deployed 2026-08-14 via Path B — P0 shared-gallery Open message hotfix.
+> Shared `باز کردن پیام` now calls `openConversationAtMessage`.
+> Jar sha256 `aebc17088461e9792e5f87cf9b5cb94493dc08a68aa25336d8ce52e53843b373`.
+> Rollback plugin: `figmachat5-search-mentions`.
+> Rollback PWA: `+87 / figma-chat-design-reconcile1`.
+> Backups: `/root/jira-backups/*-20260814-125535*` on `corbit-prod`.
+> Rollback scripts: `/root/jira-backups/rollback-figmachat5a-20260814-125535/`.)
 > Previous marker below (`1.0.0-s12e-reportscope1`) retained for history:
 > (Deployed 2026-07-29 via Path B — Phase 2 of the Report Applicability Policy.
 > Adds the compute-level applicability gate + admin settings + read-only impact
