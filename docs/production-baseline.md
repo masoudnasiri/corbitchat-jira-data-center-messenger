@@ -1,22 +1,21 @@
-# Production baseline — figmachat7h-functional1 + PWA +102
+# Production baseline — figmachat7h-functional1 + PWA +107
 
-Updated: 2026-08-15. **Production status: Phase 7H deployed**
-(watched-only follow-up, approval filters, mobile +102). Gateway was
-**not** restarted. Workspace Agent and report/calendar logic were
-**not** changed. Hub was **not** deployed. See
-`docs/phase7h-production-rollout.md`.
+Updated: 2026-08-15. **Production status: Phase 7H plugin + mobile +107**
+(7G TECH PWA only). Plugin, Gateway, Workspace Agent, and
+report/calendar logic were **not** changed in the +107 swap. Hub was
+**not** deployed. See `docs/phase7h-pwa107-production-rollout.md`.
 
 | Surface | Version |
 |---|---|
 | Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1` |
-| PWA | `1.0.0+102 / figma-phase7h-functional1-prod` (7G TECH) |
+| PWA | `1.0.0+107 / figma-task-detail-person-spacing2-prod` (7G TECH) |
 | Gateway | `gateway-2.7-prod16` / `mcp-atlassian-prod` (**unchanged**, StartedAt `2026-07-31T23:35:19Z`) |
 
 After `jira-srv` restart, localhost `/rest/jim/1.0/health` moved
 503 → 401 in about 6.5 minutes. That is normal startup, not a failure.
 
-Rollback: plugin `figmachat7g-dashboard-metrics1`, PWA
-`+101 / figma-phase7g-dashboard-copy-rtl1-prod`.
+Rollback: plugin unchanged (still `figmachat7h-functional1`). PWA
+`+102 / figma-phase7h-functional1-prod`.
 
 ## Auth-smoke limitation (not a Production failure)
 
@@ -39,11 +38,11 @@ credential-based smokes. Owner UI test is the acceptance signal.
 | Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1.jar` |
 | Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1.jar` (inside `jira-srv`) |
 | Plugin source commit | `95f50c6ff9e0b02f83856a7f107b300ddb6e749b` |
-| Production PWA | `1.0.0+102 / figma-phase7h-functional1-prod` (7G TECH) |
-| PWA sha256 | `673d654c318c6d4364c6db3ddfab7212dc5f2559c1537be33e61ee2437736cf5` |
-| Mobile APK | `/root/jira-dev/releases/corbitchat-mobile-7gtech-1.0.0+102-figma-phase7h-functional1-prod.apk` |
-| APK sha256 | `98237f9b1025e010c1585bcc3b87c3f9d01d3f32ee6f20062670d77f5b045774` |
-| Mobile source commit | `18b0777b51161bc3fd0d3bba5c0c90c29c178df3` |
+| Production PWA | `1.0.0+107 / figma-task-detail-person-spacing2-prod` (7G TECH) |
+| PWA sha256 | `87492330e09e9c6a0815613bbf293867eaad808adf89171cc440d7c208dcaeb9` |
+| Mobile APK | `/root/jira-dev/releases/corbitchat-mobile-7gtech-1.0.0+107-figma-task-detail-person-spacing2-prod.apk` |
+| APK sha256 | `61f3a0ac022fe8e3483baba2711d15f39bd32668174face3c57e4dddb7878df8` |
+| Mobile source commit | `78a6eeb0eed3deb23ba5e8437a32395da68a7022` |
 | Gateway | `gateway-2.7-prod16` (commit `738009d0b6700fd2e960b4f9a29f87cd37890e3b`). MCP chat search **shipped** and **closed** after owner ChatGPT Scan Tools / Refresh. |
 | Gateway contract hash | `102b6bfad85b083fbfffe20f5dae7695e646bd6d89a2b97f903bcfe64fe2e340` |
 
@@ -51,14 +50,14 @@ credential-based smokes. Owner UI test is the acceptance signal.
 
 | Surface | Roll back to |
 |---|---|
-| Plugin | `figmachat7g-dashboard-metrics1` |
-| PWA | `1.0.0+101 / figma-phase7g-dashboard-copy-rtl1-prod` |
+| Plugin | **Do not roll back** — plugin was not changed in +107 |
+| PWA | `1.0.0+102 / figma-phase7h-functional1-prod` |
 | Gateway | **Do not roll back** — Gateway was not changed |
 
-On `corbit-prod` (TS `20260815-110909`):
+On `corbit-prod` (TS `20260815-174930`):
 
-- Plugin: `/root/jira-backups/rollback-figmachat7h-20260815-110909/ROLLBACK-plugin.sh`
-- PWA: `/root/jira-backups/rollback-figmachat7h-20260815-110909/ROLLBACK-pwa.sh`
+- PWA: `/root/jira-backups/rollback-pwa-107-20260815-174930/ROLLBACK-pwa.sh`
+- Previous 7H plugin rollback (unused for this swap): `/root/jira-backups/rollback-figmachat7h-20260815-110909/ROLLBACK-plugin.sh`
 
 ## Root cause
 
