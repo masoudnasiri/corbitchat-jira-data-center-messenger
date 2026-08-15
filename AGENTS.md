@@ -12,18 +12,17 @@ P2 plugin for **Jira Data Center 9.17.x** running in the `jira-srv` Docker conta
 
 Set secrets through environment variables or secure server-side config only.
 Do not put passwords, tokens, PATs, or cookies in docs or scripts.
-- **Production baseline:** `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7a-correct1`
+- **Production baseline:** `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1`
   (see `docs/production-baseline.md`)
-- **Production PWA:** `1.0.0+95 / figma-phase7c-ui-pass1-prod` (7G TECH)
-- **Rollback plugin:** unused for 7C (plugin unchanged; still `figmachat7a-correct1`)
-- **Rollback PWA:** `+94 / figma-phase7b-design-lock1-prod`
+- **Production PWA:** `1.0.0+102 / figma-phase7h-functional1-prod` (7G TECH)
+- **Rollback plugin:** `figmachat7g-dashboard-metrics1`
+- **Rollback PWA:** `+101 / figma-phase7g-dashboard-copy-rtl1-prod`
 
 ## Production baseline (Phase 5 and Phase 6 closed — 2026-08-14)
 
-Phase 5–6 are closed. Phase 7C PWA is on Production
-(`figmachat7a-correct1` + 7G TECH PWA `+95`). Plugin was not changed
-in 7C. Do not rollback unless a later blocking issue appears.
-Phase 7D is not started. Public basic-auth smoke may return
+Phase 5–7H are closed on Production
+(`figmachat7h-functional1` + 7G TECH PWA `+102`). Do not rollback
+unless a later blocking issue appears. Public basic-auth smoke may return
 `403 AUTHENTICATION_DENIED` (CAPTCHA / login lock) — that is not a
 plugin outage; do not retry the same credentials. Do not deploy
 Phase 7A to Production unless the owner approves a separate rollout.
