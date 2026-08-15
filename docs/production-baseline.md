@@ -1,22 +1,22 @@
-# Production baseline — figmachat7f-backend1 + PWA +99
+# Production baseline — figmachat7g-dashboard-metrics1 + PWA +101
 
-Updated: 2026-08-15. **Production status: Phase 7F plugin unchanged;
-PWA assignee-align hotfix `+99` deployed.** Gateway was **not**
-restarted. Workspace Agent and report/calendar logic were **not**
-changed. Hub was **not** deployed. Phase 7G was **not** started.
-See `docs/phase7f-assignee-align-production-rollout.md`.
+Updated: 2026-08-15. **Production status: Phase 7G deployed**
+(dashboard `reportSummary` + 7G TECH PWA copy/RTL). Gateway was
+**not** restarted. Workspace Agent and report/calendar logic were
+**not** changed. Hub was **not** deployed. See
+`docs/phase7g-production-rollout.md`.
 
 | Surface | Version |
 |---|---|
-| Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7f-backend1` |
-| PWA | `1.0.0+99 / figma-task-assignee-align1-prod` (7G TECH) |
-| Gateway | `gateway-2.7-prod16` / `mcp-atlassian-prod` (**unchanged**, Up 14 days) |
+| Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7g-dashboard-metrics1` |
+| PWA | `1.0.0+101 / figma-phase7g-dashboard-copy-rtl1-prod` (7G TECH) |
+| Gateway | `gateway-2.7-prod16` / `mcp-atlassian-prod` (**unchanged**, StartedAt `2026-07-31T23:35:19Z`) |
 
 After `jira-srv` restart, localhost `/rest/jim/1.0/health` moved
-503 → 401 in about six minutes. That is normal startup, not a failure.
+503 → 401 in about seven minutes. That is normal startup, not a failure.
 
-Rollback: plugin `figmachat7a-correct1` (unchanged this hotfix),
-PWA `+98 / figma-phase7f-backend1-prod`.
+Rollback: plugin `figmachat7f-backend1`, PWA
+`+99 / figma-task-assignee-align1-prod`.
 
 ## Auth-smoke limitation (not a Production failure)
 
@@ -33,17 +33,17 @@ credential-based smokes. Owner UI test is the acceptance signal.
 
 | Field | Value |
 |---|---|
-| Version | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7f-backend1` |
+| Version | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7g-dashboard-metrics1` |
 | Plugin key | `com.corbitlogic.corbitchat.jira.dc` (never change) |
-| Jar sha256 | `fa69a697e95bdb6e2642a4fbec14cd52ea7ef421b5861afdb2f574aef6f10b46` |
-| Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7f-backend1.jar` |
-| Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7f-backend1.jar` (inside `jira-srv`) |
-| Plugin source commit | `f380f15f369f9afb1c2f136011d078280bf048cd` |
-| Production PWA | `1.0.0+99 / figma-task-assignee-align1-prod` (7G TECH) |
-| PWA sha256 | `d163f511a3e1e2baccc99fe77189961c806882ac9aff9f9ecc009505d63be326` |
-| Mobile APK | `/root/jira-dev/releases/corbitchat-mobile-7gtech-1.0.0+99-figma-task-assignee-align1-prod.apk` |
-| APK sha256 | `eb97626015ed3f099523f73f63eb9732e862c46c92297182a614633dd11113a5` |
-| Mobile source commit | `9ca87ec02c16bbdf05f6cc674c6a9012e5ad60bf` |
+| Jar sha256 | `acd2929b4ec1c74d08e83df87ad0515ef5b0e02b95c368724168cd4032a941d2` |
+| Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7g-dashboard-metrics1.jar` |
+| Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7g-dashboard-metrics1.jar` (inside `jira-srv`) |
+| Plugin source commit | `773c762c801c7fb8c35711a713f0466fa1223148` |
+| Production PWA | `1.0.0+101 / figma-phase7g-dashboard-copy-rtl1-prod` (7G TECH) |
+| PWA sha256 | `f8436e69fb7b0ee2f700512f19f845ef93e164d86c87667544240d523d4d4987` |
+| Mobile APK | `/root/jira-dev/releases/corbitchat-mobile-7gtech-1.0.0+101-figma-phase7g-dashboard-copy-rtl1-prod.apk` |
+| APK sha256 | `1eb87ead1eb83064cf3a4d4a6b52e580e031cd1f7e3bd2c0e87740d95952e6d4` |
+| Mobile source commit | `ad7268aee9f21f9957dc24521ae37c627c6a157a` |
 | Gateway | `gateway-2.7-prod16` (commit `738009d0b6700fd2e960b4f9a29f87cd37890e3b`). MCP chat search **shipped** and **closed** after owner ChatGPT Scan Tools / Refresh. |
 | Gateway contract hash | `102b6bfad85b083fbfffe20f5dae7695e646bd6d89a2b97f903bcfe64fe2e340` |
 
@@ -51,16 +51,14 @@ credential-based smokes. Owner UI test is the acceptance signal.
 
 | Surface | Roll back to |
 |---|---|
-| Plugin | **Do not roll back** — plugin was not changed (`figmachat7f-backend1`) |
-| PWA | `1.0.0+98 / figma-phase7f-backend1-prod` |
+| Plugin | `figmachat7f-backend1` |
+| PWA | `1.0.0+99 / figma-task-assignee-align1-prod` |
 | Gateway | **Do not roll back** — Gateway was not changed |
 
-PWA rollback on `corbit-prod`:  
-`/root/jira-backups/ROLLBACK-pwa-assignee-align-20260814-232749.sh`  
-Backup: `/root/jira-backups/prod-mobile-98-before-assignee-align-20260814-232749.tgz`
+On `corbit-prod` (TS `20260815-031631`):
 
-Prior Phase 7F plugin rollback (unused this hotfix):  
-`/root/jira-backups/rollback-figmachat7f-20260814-222910/ROLLBACK-plugin.sh`
+- Plugin: `/root/jira-backups/rollback-figmachat7g-20260815-031631/ROLLBACK-plugin.sh`
+- PWA: `/root/jira-backups/rollback-figmachat7g-20260815-031631/ROLLBACK-pwa.sh`
 
 ## Root cause
 
@@ -80,8 +78,8 @@ jump: `openConversationAtMessage(conversationId, messageId)` on web, and
 
 | Environment | PWA brand | Build |
 |---|---|---|
-| Production (`jira.7gtech.net/mobile/`) | **7G TECH** | `+99 / figma-task-assignee-align1-prod` |
-| DEV (`jira.corbitlogic.com/mobile/`) | **Hub** | `+99 / figma-task-assignee-align1` |
+| Production (`jira.7gtech.net/mobile/`) | **7G TECH** | `+101 / figma-phase7g-dashboard-copy-rtl1-prod` |
+| DEV (`jira.corbitlogic.com/mobile/`) | **Hub** | `+101 / figma-phase7g-dashboard-copy-rtl1` |
 
 DEV Hub is the DEV brand, not a Production leak. Production index/manifest
 title is `7G TECH`. There is no user-visible `Corbit Hub` string on
@@ -139,6 +137,14 @@ plugin is rolled back.
    must call the same `openConversationAtMessage` path (web) or
    `loadAroundAsInitial` / `messagesAround` (PWA). Do not use
    querySelector-only scroll.
+4. **Dashboard reports card** — `گزارش‌ها` reads additive
+   `reportSummary` from the report engine (`complete` / `onTrack` /
+   `overdue`). It must not use task `statusCounts`. Top numbers stay
+   on `openWorkCounts`.
+5. **RTL forward chevrons** — More / profile / settings / about /
+   shared / chat-info rows use `ForwardChevron` (physical left in
+   Persian, pointing left). Do not use Material `Icons.chevron_left`
+   for those rows.
 
 Also preserved on this baseline: compact sidebar, shared galleries,
 multi-forward, Saved Messages, Copy/Share/Forward/Delete/Save, MCP admin,

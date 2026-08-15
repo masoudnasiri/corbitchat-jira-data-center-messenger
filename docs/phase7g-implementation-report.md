@@ -1,6 +1,9 @@
 # Phase 7G — Dashboard metrics correctness (DEV)
 
-DEV-only. Production, Gateway, and Workspace Agent were not changed.
+DEV shipped first. Production later received the same plugin
+(`figmachat7g-dashboard-metrics1`) plus 7G TECH PWA `+101`.
+Gateway and Workspace Agent were not changed. See
+`docs/phase7g-production-rollout.md`.
 
 ## What shipped
 
@@ -32,6 +35,7 @@ was also assignee + `statusCategory` + issue `updated` / `duedate`.
 
 See the agent final report for sha256 paths after APK packaging.
 
-## Not started
+## Production
 
-Phase 7G Production rollout. Week/month report buckets.
+Deployed 2026-08-15. Week/month report buckets remain uncomputed
+(`available: false` where the engine has no period). Phase 7H not started.

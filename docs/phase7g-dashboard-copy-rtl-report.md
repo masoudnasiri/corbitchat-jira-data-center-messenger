@@ -1,7 +1,9 @@
 # Phase 7G corrective 2 — report wording + RTL chevrons (DEV)
 
-Mobile-only. Plugin stays `figmachat7g-dashboard-metrics1`.
-Production / Gateway / Workspace Agent were not changed.
+Mobile-only relative to the 7G plugin. Plugin stays
+`figmachat7g-dashboard-metrics1`. Production later received 7G TECH
+PWA `+101`. Gateway / Workspace Agent were not changed. See
+`docs/phase7g-production-rollout.md`.
 
 ## Reports card wording
 

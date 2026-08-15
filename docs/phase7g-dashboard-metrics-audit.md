@@ -1,6 +1,8 @@
 # Phase 7G — Dashboard metrics audit
 
-DEV-only. Production stays on `figmachat7f-backend1` / PWA `+99`.
+Contract for Phase 7G. Production is now
+`figmachat7g-dashboard-metrics1` / PWA `+101`. See
+`docs/phase7g-production-rollout.md`.
 Source: plugin `CorbitMobileDashboardResource`, mobile `dashboard_tab.dart`,
 `/issues/reports`, `JimMobileIssues` filters, Figma Dashboard frame.
 

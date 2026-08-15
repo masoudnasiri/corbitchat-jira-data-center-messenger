@@ -10,11 +10,11 @@ only in that it adds backup + smoke-test + rollback steps; the
 underlying install mechanism is the same because production runs
 the same single-container Docker layout as dev.
 
-> **Current production plugin version: `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7f-backend1`.**
-> **Current production PWA: `1.0.0+99 / figma-task-assignee-align1-prod` (7G TECH).**
-> **Status: Phase 7F plugin unchanged; PWA assignee-align hotfix (2026-08-15). Gateway not restarted. Phase 7G not started.**
-> Gateway: `gateway-2.7-prod16` unchanged. PWA rollback:
-> `/root/jira-backups/ROLLBACK-pwa-assignee-align-20260814-232749.sh`.
+> **Current production plugin version: `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7g-dashboard-metrics1`.**
+> **Current production PWA: `1.0.0+101 / figma-phase7g-dashboard-copy-rtl1-prod` (7G TECH).**
+> **Status: Phase 7G Production deployed (2026-08-15). Gateway not restarted.**
+> Gateway: `gateway-2.7-prod16` unchanged. Rollback:
+> `/root/jira-backups/rollback-figmachat7g-20260815-031631/`.
 > Public basic-auth smoke may return `403 AUTHENTICATION_DENIED`
 > (CAPTCHA / failed-login lock). That is not a plugin outage — do not
 > retry the same credentials. Use browser/session or localhost 401/302.
