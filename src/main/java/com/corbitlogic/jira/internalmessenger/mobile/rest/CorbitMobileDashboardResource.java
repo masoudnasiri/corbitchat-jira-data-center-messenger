@@ -284,10 +284,7 @@ public class CorbitMobileDashboardResource {
                 "assignee = currentUser() AND statusCategory != Done"));
         out.put("overdue", jqlCount(viewer, openDueJql("<", clause, today)));
         out.put("today", jqlCount(viewer, openDueJql("=", clause, today)));
-        // Follow-up mirrors the existing filter (issues the user reported and
-        // still open) but excludes Done as well.
-        out.put("followup", jqlCount(viewer,
-                "reporter = currentUser() AND statusCategory != Done"));
+        out.put("followup", jqlCount(viewer, JimMobileIssues.FOLLOWUP_JQL));
         return out;
     }
 

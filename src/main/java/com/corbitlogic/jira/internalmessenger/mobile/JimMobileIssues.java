@@ -36,6 +36,17 @@ public final class JimMobileIssues {
     public static final int DEFAULT_PAGE_SIZE = 20;
     public static final int MAX_PAGE_SIZE = 50;
 
+    /**
+     * Follow-up / پیگیری من: watched by me, not assigned to me, not reported
+     * by me, and not Done. Null-safe assignee/reporter so unassigned issues
+     * still match ({@code assignee != currentUser()} alone excludes EMPTY in
+     * Jira JQL). Watcher JQL must be available; do not fall back to reporter.
+     */
+    public static final String FOLLOWUP_JQL =
+            "watcher = currentUser() AND statusCategory != Done"
+                    + " AND (assignee is EMPTY OR assignee != currentUser())"
+                    + " AND (reporter is EMPTY OR reporter != currentUser())";
+
     private JimMobileIssues() {
     }
 
@@ -80,11 +91,8 @@ public final class JimMobileIssues {
                 builder.orderBy().dueDate(SortOrder.ASC).endOrderBy();
                 break;
             case "followup":
-                // Issues the user reported and that are still open — items they
-                // are likely to be chasing / following up on.
-                builder.where().reporterIsCurrentUser().and().unresolved().endWhere();
-                builder.orderBy().updatedDate(SortOrder.DESC).endOrderBy();
-                break;
+                throw new IllegalArgumentException(
+                        "followup requires SearchService (watcher JQL)");
             default:
                 throw new IllegalArgumentException("Unsupported filter: " + filter);
         }
@@ -113,6 +121,10 @@ public final class JimMobileIssues {
         if (("awaiting".equals(filter) || "rejected".equals(filter))
                 && user != null && searchService != null) {
             return buildApprovalQuery(user, searchService, filter);
+        }
+        if ("followup".equals(filter) && user != null && searchService != null) {
+            return parseOwnedJql(user, searchService, FOLLOWUP_JQL + " ORDER BY updated DESC",
+                    "Watcher follow-up JQL is not available.");
         }
         if (user != null && searchService != null
                 && ("today".equals(filter) || "overdue".equals(filter))) {
@@ -147,36 +159,46 @@ public final class JimMobileIssues {
     /**
      * Server-owned JQL for the approval filters:
      * <ul>
-     *   <li><b>awaiting</b>: status = Pending AND approver = currentUser() (manager's
-     *       inbox) — still-open items only.</li>
-     *   <li><b>rejected</b>: status = Rejected AND reporter = currentUser() (the
-     *       requester who must resubmit).</li>
+     *   <li><b>awaiting</b>: approval status Pending, not Done, and the viewer
+     *       is the approver, assignee, or reporter/submitter.</li>
+     *   <li><b>rejected</b>: approval status Rejected, not Done, and the viewer
+     *       is the assignee, reporter/submitter, or approver.</li>
      * </ul>
      * Composed only from validated custom-field clauses + fixed option values —
-     * never client input. Throws when the fields are not resolvable (the resource
-     * guards the not-configured case before calling).
+     * never client input or hardcoded user names. Throws when the status field
+     * is not resolvable (the resource guards the not-configured case).
      */
     private static Query buildApprovalQuery(ApplicationUser user, SearchService searchService, String filter) {
         String statusJql = JimScheduleApprovalConfig.statusFieldJql();
-        String approverJql = JimScheduleApprovalConfig.approverFieldJql();
-        String jql;
-        if ("awaiting".equals(filter)) {
-            if (statusJql == null || approverJql == null) {
-                throw new IllegalArgumentException("Approval fields not resolvable for 'awaiting'.");
-            }
-            jql = statusJql + " = \"" + JimScheduleApprovalConfig.STATUS_PENDING + "\""
-                    + " AND " + approverJql + " = currentUser()"
-                    + " AND resolution is EMPTY ORDER BY updated DESC";
-        } else {
-            if (statusJql == null) {
-                throw new IllegalArgumentException("Approval fields not resolvable for 'rejected'.");
-            }
-            jql = statusJql + " = \"" + JimScheduleApprovalConfig.STATUS_REJECTED + "\""
-                    + " AND reporter = currentUser() ORDER BY updated DESC";
+        if (statusJql == null) {
+            throw new IllegalArgumentException("Approval fields not resolvable for '" + filter + "'.");
         }
+        String statusValue = "awaiting".equals(filter)
+                ? JimScheduleApprovalConfig.STATUS_PENDING
+                : JimScheduleApprovalConfig.STATUS_REJECTED;
+        String jql = statusJql + " = \"" + statusValue + "\""
+                + " AND statusCategory != Done"
+                + " AND (" + relevantApprovalUserClause() + ")"
+                + " ORDER BY updated DESC";
+        return parseOwnedJql(user, searchService, jql, "Could not parse approval filter JQL.");
+    }
+
+    /** Approver (when mapped) OR assignee OR reporter. */
+    private static String relevantApprovalUserClause() {
+        String approverJql = JimScheduleApprovalConfig.approverFieldJql();
+        StringBuilder sb = new StringBuilder();
+        if (approverJql != null) {
+            sb.append(approverJql).append(" = currentUser() OR ");
+        }
+        sb.append("assignee = currentUser() OR reporter = currentUser()");
+        return sb.toString();
+    }
+
+    private static Query parseOwnedJql(ApplicationUser user, SearchService searchService,
+                                       String jql, String invalidMessage) {
         SearchService.ParseResult parsed = searchService.parseQuery(user, jql);
         if (parsed == null || !parsed.isValid()) {
-            throw new IllegalArgumentException("Could not parse approval filter JQL.");
+            throw new IllegalArgumentException(invalidMessage);
         }
         return parsed.getQuery();
     }

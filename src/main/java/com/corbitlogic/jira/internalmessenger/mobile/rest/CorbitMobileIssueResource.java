@@ -74,7 +74,7 @@ import org.slf4j.LoggerFactory;
  * {@code /rest/corbit-mobile/1.0/issues}.
  *
  * <p>The client selects a whitelisted <em>filter token</em> only
- * ({@code assigned|today|overdue|followup}); the server maps it to a bounded
+ * ({@code assigned|today|overdue|followup|awaiting|rejected}); the server maps it to a bounded
  * JQL query ({@link JimMobileIssues}) and runs it through
  * {@code SearchService.search(user, ...)}, which enforces the caller's Jira
  * Browse-Project / issue security. Raw JQL is never accepted and results are
