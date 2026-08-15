@@ -250,6 +250,16 @@ public final class JimReportConfig {
         return isFeatureEnabled() && fieldsConfigured();
     }
 
+    /**
+     * JQL clause for the follow-up level field (e.g. {@code cf[10802]}).
+     * Null when the field is missing on this instance. Server-owned — never
+     * built from client input.
+     */
+    public static String levelFieldJql() {
+        CustomField cf = resolveLevelField();
+        return cf != null ? "cf[" + cf.getIdAsLong() + "]" : null;
+    }
+
     // --- Field resolution (configurable id + type guard) ----------------------
 
     public static CustomField resolveLevelField() {

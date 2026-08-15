@@ -16,6 +16,9 @@ import com.corbitlogic.jira.internalmessenger.mobile.JimMobileIssues;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
 import com.atlassian.jira.user.util.UserManager;
 import com.corbitlogic.jira.internalmessenger.mobile.JimMobileDates;
+import com.corbitlogic.jira.internalmessenger.report.JimReportConfig;
+import com.corbitlogic.jira.internalmessenger.report.JimReportService;
+import com.corbitlogic.jira.internalmessenger.report.JimReportSummary;
 import com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
@@ -56,6 +59,8 @@ public class CorbitMobileDashboardResource {
     private static final Logger log = LoggerFactory.getLogger(CorbitMobileDashboardResource.class);
     private static final int PREVIEW_SIZE = 5;
     private static final int ACTIVITY_SIZE = 8;
+    /** Hard cap on report-engine scans so dashboard never does unbounded N+1. */
+    private static final int REPORT_SCAN_CAP = 25;
 
     private final JiraAuthenticationContext authenticationContext;
     private final SearchService searchService;
@@ -66,6 +71,7 @@ public class CorbitMobileDashboardResource {
     private final JimMobileFeatureService featureService;
     private final JimMessageService messageService;
     private final UserManager userManager;
+    private final JimReportService reportService;
 
     @Inject
     public CorbitMobileDashboardResource(JiraAuthenticationContext authenticationContext,
@@ -76,7 +82,8 @@ public class CorbitMobileDashboardResource {
                                          JimReadStateService readStateService,
                                          JimMobileFeatureService featureService,
                                          JimMessageService messageService,
-                                         UserManager userManager) {
+                                         UserManager userManager,
+                                         JimReportService reportService) {
         this.authenticationContext = authenticationContext;
         this.searchService = searchService;
         this.avatarService = avatarService;
@@ -86,6 +93,7 @@ public class CorbitMobileDashboardResource {
         this.featureService = featureService;
         this.messageService = messageService;
         this.userManager = userManager;
+        this.reportService = reportService;
     }
 
     @GET
@@ -127,6 +135,9 @@ public class CorbitMobileDashboardResource {
             // completion date awaiting their approval). Only present when the
             // workflow fields are configured on this instance.
             body.put("scheduleApprovals", scheduleApprovals(viewer));
+            // Report-engine summary for the Dashboard «گزارش‌ها» card.
+            // Additive. Older clients ignore it. Never copies task statusCounts.
+            body.put("reportSummary", reportSummary(viewer));
             return JimRestResponses.okJson(body);
         } catch (Exception ex) {
             return JimRestResponses.internalError(log,
@@ -309,15 +320,12 @@ public class CorbitMobileDashboardResource {
     }
 
     /**
-     * Period-filtered status donut counts (dashboard-final). Bounded, additive,
-     * permission-aware. Period windows are on the issue's last-updated date:
-     * <ul>
-     *   <li>{@code day} → updated {@code >= startOfDay()}</li>
-     *   <li>{@code week} → updated {@code >= startOfWeek()} (current week)</li>
-     *   <li>{@code month} → updated {@code >= startOfMonth()} (current month)</li>
-     *   <li>{@code all} → no date window</li>
-     * </ul>
-     * Segments match the donut legend: done / inProgress / overdue.
+     * Period-filtered <em>report</em> donut counts. Field names
+     * {@code done}/{@code inProgress}/{@code overdue} are kept for older
+     * clients; they now mean report COMPLETE / ON_TRACK / OVERDUE — never
+     * Jira task statusCategory. Week/month are omitted honestly
+     * ({@code available=false}) because the report engine has no precomputed
+     * week/month buckets.
      */
     @GET
     @Path("/report-status")
@@ -331,34 +339,148 @@ public class CorbitMobileDashboardResource {
             return JimRestResponses.featureDisabled(JimMobileFeatures.DASHBOARD);
         }
         String p = period == null ? "all" : period.trim().toLowerCase();
-        String window;
-        switch (p) {
-            case "day":
-                window = " AND updated >= startOfDay()";
-                break;
-            case "week":
-                window = " AND updated >= startOfWeek()";
-                break;
-            case "month":
-                window = " AND updated >= startOfMonth()";
-                break;
-            default:
-                p = "all";
-                window = "";
+        if (!"day".equals(p) && !"week".equals(p) && !"month".equals(p)) {
+            p = "all";
         }
-        int done = jqlCount(viewer,
-                "assignee = currentUser() AND statusCategory = Done" + window);
-        int inProgress = jqlCount(viewer,
-                "assignee = currentUser() AND statusCategory = \"In Progress\"" + window);
-        int overdue = jqlCount(viewer,
-                "assignee = currentUser() AND statusCategory != Done AND duedate < startOfDay()" + window);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("period", p);
+        body.put("source", "reports");
+        if ("week".equals(p) || "month".equals(p)) {
+            body.put("available", false);
+            body.put("done", 0);
+            body.put("inProgress", 0);
+            body.put("overdue", 0);
+            body.put("total", 0);
+            return JimRestResponses.okJson(body);
+        }
+        Map<String, Object> summary = reportSummary(viewer);
+        boolean available = Boolean.TRUE.equals(summary.get("available"));
+        int done;
+        int inProgress;
+        int overdue;
+        if ("day".equals(p)) {
+            done = intOrZero(summary.get("todayComplete"));
+            inProgress = intOrZero(summary.get("todayOnTrack"));
+            overdue = intOrZero(summary.get("todayOverdue"));
+        } else {
+            done = intOrZero(summary.get("complete"));
+            inProgress = intOrZero(summary.get("onTrack"));
+            overdue = intOrZero(summary.get("overdue"));
+        }
+        body.put("available", available);
         body.put("done", done);
         body.put("inProgress", inProgress);
         body.put("overdue", overdue);
         body.put("total", done + inProgress + overdue);
+        if (summary.get("capped") != null) {
+            body.put("capped", summary.get("capped"));
+        }
         return JimRestResponses.okJson(body);
+    }
+
+    /**
+     * Real report-engine snapshot for the current user's assigned,
+     * report-configured issues. Bounded ({@link #REPORT_SCAN_CAP} summaries).
+     * {@code available} is false when the feature is off or no configured
+     * issues were found — counts are then omitted, not faked as task totals.
+     */
+    private Map<String, Object> reportSummary(ApplicationUser viewer) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("source", "report-engine");
+        out.put("available", false);
+        if (!JimReportConfig.isOperational()) {
+            return out;
+        }
+        try {
+            String jql = assignedReportJql();
+            SearchService.ParseResult pr = this.searchService.parseQuery(viewer, jql);
+            if (pr == null || !pr.isValid()) {
+                return out;
+            }
+            PagerFilter<Issue> pager = new PagerFilter<>(REPORT_SCAN_CAP);
+            SearchResults<Issue> results =
+                    this.searchService.search(viewer, pr.getQuery(), pager);
+            if (results == null || results.getResults() == null) {
+                return out;
+            }
+            int complete = 0;
+            int onTrack = 0;
+            int overdue = 0;
+            int todayComplete = 0;
+            int todayOnTrack = 0;
+            int todayOverdue = 0;
+            int validSubmitted = 0;
+            int missed = 0;
+            int configured = 0;
+            for (Issue issue : results.getResults()) {
+                JimReportSummary s = this.reportService.computeSummary(issue);
+                if (s == null || !s.configured || s.levelCode == null || !s.applicable) {
+                    continue;
+                }
+                configured++;
+                validSubmitted += Math.max(0, s.validCount);
+                missed += Math.max(0, s.missedCount);
+                String code = s.statusCode == null ? "" : s.statusCode;
+                if ("COMPLETE".equals(code)) {
+                    complete++;
+                } else if ("OVERDUE".equals(code)) {
+                    overdue++;
+                } else if ("ON_TRACK".equals(code)) {
+                    onTrack++;
+                }
+                if (s.todayMissedCount > 0) {
+                    todayOverdue++;
+                } else if (s.todayRequiredCount > 0
+                        && s.todayValidCount >= s.todayRequiredCount) {
+                    todayComplete++;
+                } else if (s.reportedToday && s.todayRequiredCount <= 0) {
+                    todayComplete++;
+                } else if (s.submitActive && s.todayRequiredCount > s.todayValidCount) {
+                    todayOnTrack++;
+                }
+            }
+            int issueTotal = results.getTotal();
+            boolean capped = issueTotal > REPORT_SCAN_CAP;
+            out.put("available", configured > 0);
+            out.put("scanned", results.getResults().size());
+            out.put("configuredCount", configured);
+            out.put("issueTotal", issueTotal);
+            out.put("capped", capped);
+            if (configured > 0) {
+                out.put("complete", complete);
+                out.put("onTrack", onTrack);
+                out.put("overdue", overdue);
+                out.put("todayComplete", todayComplete);
+                out.put("todayOnTrack", todayOnTrack);
+                out.put("todayOverdue", todayOverdue);
+                out.put("validSubmitted", validSubmitted);
+                out.put("missed", missed);
+            }
+            return out;
+        } catch (Exception ex) {
+            log.warn("endpoint=GET /rest/corbit-mobile/1.0/dashboard stage=reportSummary outcome=degraded message={}",
+                    ex.getMessage());
+            return out;
+        }
+    }
+
+    /**
+     * Assigned unresolved issues that have a follow-up level when that field
+     * exists. Same permission boundary as {@code /issues/reports}.
+     */
+    private String assignedReportJql() {
+        String level = JimReportConfig.levelFieldJql();
+        StringBuilder sb = new StringBuilder(
+                "assignee = currentUser() AND resolution is EMPTY");
+        if (level != null) {
+            sb.append(" AND ").append(level).append(" is not EMPTY");
+        }
+        sb.append(" ORDER BY updated DESC");
+        return sb.toString();
+    }
+
+    private static int intOrZero(Object v) {
+        return (v instanceof Number) ? ((Number) v).intValue() : 0;
     }
 
     private int count(ApplicationUser viewer, String filter) {
