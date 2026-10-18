@@ -26,13 +26,23 @@ import com.atlassian.jira.project.Project;
 import com.atlassian.jira.user.util.UserManager;
 import com.atlassian.sal.api.lifecycle.LifecycleAware;
 import com.corbitlogic.jira.internalmessenger.event.AssignmentEventPayload;
+import com.corbitlogic.jira.internalmessenger.event.AttachmentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.CommentEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.JimEventExecutor;
+import com.corbitlogic.jira.internalmessenger.event.ScheduleApprovalEventPayload;
+import com.corbitlogic.jira.internalmessenger.event.ScheduleResultEventPayload;
 import com.corbitlogic.jira.internalmessenger.event.StatusChangeEventPayload;
 import com.corbitlogic.jira.internalmessenger.listener.JimAssignmentChangeDetector;
+import com.corbitlogic.jira.internalmessenger.listener.JimAttachmentChangeDetector;
 import com.corbitlogic.jira.internalmessenger.listener.JimStatusChangeDetector;
+import com.corbitlogic.jira.internalmessenger.report.JimReportConfig;
+import com.corbitlogic.jira.internalmessenger.report.JimReportRecalcCoordinator;
+import com.corbitlogic.jira.internalmessenger.report.JimReportService;
+import com.corbitlogic.jira.internalmessenger.report.JimReportServiceImpl;
 import com.corbitlogic.jira.internalmessenger.service.JimIssueEventHandler;
 import com.corbitlogic.jira.internalmessenger.service.JimProjectChatService;
+import java.util.List;
+import org.ofbiz.core.entity.GenericValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,14 +54,18 @@ implements LifecycleAware {
     private final JimEventExecutor eventExecutor;
     private final UserManager userManager;
     private final JimProjectChatService projectChatService;
+    private final JimReportService reportService;
+    private final JimReportRecalcCoordinator reportRecalcCoordinator;
     private volatile boolean registered;
 
-    public JimPluginBootstrap(EventPublisher eventPublisher, JimIssueEventHandler issueEventHandler, JimEventExecutor eventExecutor, UserManager userManager, JimProjectChatService projectChatService) {
+    public JimPluginBootstrap(EventPublisher eventPublisher, JimIssueEventHandler issueEventHandler, JimEventExecutor eventExecutor, UserManager userManager, JimProjectChatService projectChatService, JimReportService reportService, JimReportRecalcCoordinator reportRecalcCoordinator) {
         this.eventPublisher = eventPublisher;
         this.issueEventHandler = issueEventHandler;
         this.eventExecutor = eventExecutor;
         this.userManager = userManager;
         this.projectChatService = projectChatService;
+        this.reportService = reportService;
+        this.reportRecalcCoordinator = reportRecalcCoordinator;
         this.registerListener();
     }
 
@@ -62,6 +76,9 @@ implements LifecycleAware {
 
     public void onStop() {
         this.unregisterListener();
+        if (this.reportRecalcCoordinator != null) {
+            this.reportRecalcCoordinator.shutdown();
+        }
     }
 
     public boolean isAssignmentListenerRegistered() {
@@ -102,8 +119,17 @@ implements LifecycleAware {
                 return;
             }
             Long eventTypeId = issueEvent.getEventTypeId();
+            // A comment + attachment added in one action can surface either on
+            // the same IssueEvent or as adjacent events; detect attachment adds
+            // on ANY issue event so the Assistant can build a combined card.
+            boolean attachmentAdd = JimAttachmentChangeDetector.hasAttachmentAdd(issueEvent);
             if (EventType.ISSUE_COMMENTED_ID.equals(eventTypeId)) {
                 this.handleMentionCommentEvent(CommentEventPayload.from(issueEvent), "issue_event");
+                if (attachmentAdd) {
+                    this.handleAttachmentEvent(issueEvent);
+                }
+                // A new comment may be a report → recompute compliance counters.
+                this.handleReportRecalc(issueEvent);
                 return;
             }
             boolean explicitAssignment = EventType.ISSUE_ASSIGNED_ID.equals(eventTypeId);
@@ -113,6 +139,25 @@ implements LifecycleAware {
             }
             if (JimPluginBootstrap.isStatusChangeCandidateEvent(eventTypeId) && JimStatusChangeDetector.isStatusChange(issueEvent)) {
                 this.handleStatusChangeEvent(issueEvent);
+            }
+            if (attachmentAdd) {
+                this.handleAttachmentEvent(issueEvent);
+            }
+            // Schedule-approval workflow (proposed completion date). On create,
+            // or when the proposed date / approver changed on an update, notify
+            // the approver. No-op unless the workflow fields are configured.
+            if (EventType.ISSUE_CREATED_ID.equals(eventTypeId)) {
+                this.handleScheduleApprovalEvent(issueEvent, true);
+                this.handleReportRecalc(issueEvent);
+            } else if (EventType.ISSUE_UPDATED_ID.equals(eventTypeId)
+                    || EventType.ISSUE_GENERICEVENT_ID.equals(eventTypeId)) {
+                this.handleScheduleApprovalEvent(issueEvent, false);
+                // Approval decision (status → Approved/Rejected): notify requester.
+                this.handleScheduleResultEvent(issueEvent);
+                // Recompute report compliance (follow-up level, due date or Done
+                // status may have changed). No-op unless operational; the write
+                // is change-guarded so it cannot loop this event.
+                this.handleReportRecalc(issueEvent);
             }
         }
         catch (Exception ex) {
@@ -170,6 +215,171 @@ implements LifecycleAware {
         }
         log.info("event=status stage=detect outcome=matched issueKey={} fromStatus={} toStatus={} recipientCount={}", new Object[]{payload.getIssueKey(), payload.getFromStatus(), payload.getToStatus(), payload.getRecipientUserKeys().size()});
         this.eventExecutor.submit("status", () -> this.issueEventHandler.handleStatusChange(payload));
+    }
+
+    private void handleScheduleApprovalEvent(IssueEvent issueEvent, boolean isCreate) {
+        try {
+            ScheduleApprovalEventPayload payload = ScheduleApprovalEventPayload.from(issueEvent, isCreate);
+            if (payload == null) {
+                return;
+            }
+            // Ensure the status is Pending for a fresh/changed request (elevated,
+            // loop-safe) so the card and Dashboard pending list reflect it even
+            // when the field had no value yet.
+            try {
+                com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig
+                        .resetToPending(issueEvent.getIssue(), issueEvent.getUser());
+            } catch (Exception ignore) {
+                // best-effort; notification still proceeds
+            }
+            log.info("event=schedule stage=detect outcome=matched issueKey={} approverKey={} isCreate={}",
+                    new Object[]{payload.getIssueKey(), payload.getApproverUserKey(), isCreate});
+            this.eventExecutor.submit("schedule_approval",
+                    () -> this.issueEventHandler.handleScheduleApproval(payload));
+        } catch (Exception ex) {
+            log.debug("event=schedule stage=receive outcome=error message={}", (Object) ex.getMessage());
+        }
+    }
+
+    private void handleScheduleResultEvent(IssueEvent issueEvent) {
+        try {
+            ScheduleResultEventPayload payload = ScheduleResultEventPayload.from(issueEvent);
+            if (payload == null) {
+                return;
+            }
+            log.info("event=schedule_result stage=detect outcome=matched issueKey={} approved={}",
+                    new Object[]{payload.getIssueKey(), payload.isApproved()});
+            this.eventExecutor.submit("schedule_result",
+                    () -> this.issueEventHandler.handleScheduleResult(payload));
+        } catch (Exception ex) {
+            log.debug("event=schedule_result stage=receive outcome=error message={}", (Object) ex.getMessage());
+        }
+    }
+
+    private void handleAttachmentEvent(IssueEvent issueEvent) {
+        AttachmentEventPayload payload = AttachmentEventPayload.from(issueEvent);
+        if (payload == null) {
+            log.debug("event=attachment stage=extract outcome=skipped reason=invalid_payload");
+            return;
+        }
+        log.info("event=attachment stage=detect outcome=matched issueKey={} fileCount={} recipientCount={}",
+                new Object[]{payload.getIssueKey(), payload.getFiles().size(), payload.getRecipientUserKeys().size()});
+        this.eventExecutor.submit("attachment", () -> this.issueEventHandler.handleAttachment(payload));
+    }
+
+    /**
+     * Relevance-filtered, coalesced report recalculation. Only a comment add, an
+     * issue create, or an update whose change items touch status / due date / the
+     * report level field enqueues work; everything else is skipped (debug log).
+     * Enqueue goes through the coordinator, which coalesces bursts and submits the
+     * real work onto the maintenance lane of {@link JimEventExecutor}.
+     */
+    private void handleReportRecalc(IssueEvent issueEvent) {
+        try {
+            if (issueEvent == null || issueEvent.getIssue() == null) {
+                return;
+            }
+            // Belt-and-suspenders: ignore events that surface on the same thread
+            // that is currently writing report metrics (should not happen with
+            // DO_NOT_DISPATCH, but keeps us loop-proof).
+            if (JimReportServiceImpl.isReportWriteInProgress()) {
+                log.debug("event=report stage=filter outcome=skip reason=self_write_in_progress");
+                return;
+            }
+            String reason = reportRecalcReason(issueEvent);
+            if (reason == null) {
+                log.debug("event=report stage=filter outcome=skip issueKey={} reason=irrelevant_change",
+                        (Object) issueEvent.getIssue().getKey());
+                return;
+            }
+            this.reportRecalcCoordinator.enqueue(issueEvent.getIssue(), issueEvent.getUser(), reason);
+        } catch (Exception ex) {
+            log.debug("event=report stage=receive outcome=error message={}", (Object) ex.getMessage());
+        }
+    }
+
+    /**
+     * Trigger reason when the event is report-relevant, else null (skip). Comment
+     * adds and creates always qualify; updates/generic events qualify only when a
+     * change item touches status, due date, or the report level custom field.
+     */
+    private static String reportRecalcReason(IssueEvent issueEvent) {
+        Long typeId = issueEvent.getEventTypeId();
+        if (EventType.ISSUE_COMMENTED_ID.equals(typeId)) {
+            return "comment_add";
+        }
+        if (EventType.ISSUE_CREATED_ID.equals(typeId)) {
+            return "issue_create";
+        }
+        if (EventType.ISSUE_UPDATED_ID.equals(typeId) || EventType.ISSUE_GENERICEVENT_ID.equals(typeId)) {
+            String fields = relevantChangedFields(issueEvent);
+            return fields != null ? "field_update:" + fields : null;
+        }
+        return null;
+    }
+
+    /**
+     * Comma-joined list of report-relevant fields changed by this event
+     * (status / duedate / report level field), or null when none. On an
+     * unexpected changelog error we return {@code "unknown"} so recalc still runs
+     * (fail-open — the fingerprint gate will drop it if nothing really changed).
+     */
+    private static String relevantChangedFields(IssueEvent issueEvent) {
+        GenericValue changeLog = issueEvent.getChangeLog();
+        if (changeLog == null) {
+            return null;
+        }
+        try {
+            List<GenericValue> items = changeLog.getRelated("ChildChangeItem");
+            if (items == null || items.isEmpty()) {
+                return null;
+            }
+            String levelFieldName = reportLevelFieldName();
+            String approverFieldName = reportReceiverFieldName();
+            StringBuilder hits = new StringBuilder();
+            for (GenericValue item : items) {
+                String field = item.getString("field");
+                if (field == null) {
+                    continue;
+                }
+                boolean relevant = "status".equalsIgnoreCase(field)
+                        || "duedate".equalsIgnoreCase(field)
+                        // Assignee change → pause/resume when the report receiver is
+                        // (un)assigned; approver change → the report receiver itself
+                        // changed. Both affect the working-day/pause counter.
+                        || "assignee".equalsIgnoreCase(field)
+                        || (levelFieldName != null && levelFieldName.equalsIgnoreCase(field))
+                        || (approverFieldName != null && approverFieldName.equalsIgnoreCase(field));
+                if (relevant) {
+                    if (hits.length() > 0) {
+                        hits.append(",");
+                    }
+                    hits.append(field.toLowerCase());
+                }
+            }
+            return hits.length() > 0 ? hits.toString() : null;
+        } catch (Exception ex) {
+            log.debug("event=report stage=filter outcome=changelog_error message={}", (Object) ex.getMessage());
+            return "unknown";
+        }
+    }
+
+    private static String reportLevelFieldName() {
+        try {
+            com.atlassian.jira.issue.fields.CustomField cf = JimReportConfig.resolveLevelField();
+            return cf != null ? cf.getName() : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** Display name of the report-receiver (approver) field, so a change triggers a report recalc. */
+    private static String reportReceiverFieldName() {
+        try {
+            return com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig.approverFieldName();
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     private void handleMentionCommentEvent(CommentEventPayload payload, String source) {

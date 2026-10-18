@@ -4,10 +4,13 @@
         <description>${project.description}</description>
         <version>${project.version}</version>
         <vendor name="CorbitLogic" url="https://corbitlogic.com"/>
+        <!-- internal build: Marketplace licensing intentionally disabled. -->
+        <param name="atlassian-data-center-status">compatible</param>
+        <param name="atlassian-data-center-compatible">true</param>
     </plugin-info>
 
     <ao key="jim-active-objects" namespace="com.corbitlogic.jira.internalmessenger.ao">
-        <description>Active Objects persistence for Jira Internal Messenger</description>
+        <description>Active Objects persistence for CorbitChat</description>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimConversation</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimMessage</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimReadState</entity>
@@ -18,15 +21,31 @@
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimPushSubscription</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimAccessPolicy</entity>
         <entity>com.corbitlogic.jira.internalmessenger.ao.JimAdminAudit</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimMobilePreference</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimMobileSession</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimMobileFeatureRule</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimMobileDevice</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimMessageUserState</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimCommentReaction</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimReviewer</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimChatAudit</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimActivity</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimLastSeen</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimReportControl</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimReportWindow</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimMcpToolPolicy</entity>
+        <entity>com.corbitlogic.jira.internalmessenger.ao.JimAgentTriggerJob</entity>
     </ao>
 
     <component-import key="activeObjects" interface="com.atlassian.activeobjects.external.ActiveObjects"/>
     <component-import key="eventPublisher" interface="com.atlassian.event.api.EventPublisher"/>
     <component-import key="authenticationContext" interface="com.atlassian.jira.security.JiraAuthenticationContext"/>
     <component-import key="userManager" interface="com.atlassian.jira.user.util.UserManager"/>
+    <component-import key="crowdService" interface="com.atlassian.crowd.embedded.api.CrowdService"/>
     <component-import key="applicationProperties" interface="com.atlassian.jira.config.properties.ApplicationProperties"/>
     <component-import key="jiraHome" interface="com.atlassian.jira.config.util.JiraHome"/>
     <component-import key="userSearchService" interface="com.atlassian.jira.bc.user.search.UserSearchService"/>
+    <component-import key="searchService" interface="com.atlassian.jira.bc.issue.search.SearchService"/>
     <component-import key="avatarService" interface="com.atlassian.jira.avatar.AvatarService"/>
     <component-import key="templateRenderer" interface="com.atlassian.templaterenderer.TemplateRenderer"/>
     <component-import key="webResourceManager" interface="com.atlassian.plugin.webresource.WebResourceManager"/>
@@ -43,19 +62,24 @@
 
     <component key="jimPermissionService"
                class="com.corbitlogic.jira.internalmessenger.service.JimPermissionServiceImpl">
-        <description>Permission checks for Jira Internal Messenger</description>
+        <description>Permission checks for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimPermissionService</interface>
     </component>
 
     <component key="jimConversationService"
                class="com.corbitlogic.jira.internalmessenger.service.JimConversationServiceImpl">
-        <description>Conversation persistence for Jira Internal Messenger</description>
+        <description>Conversation persistence for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimConversationService</interface>
+    </component>
+
+    <component key="jimSharedContentService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimSharedContentService">
+        <description>Bounded shared Files/Media/Links listing for a conversation</description>
     </component>
 
     <component key="jimMessageService"
                class="com.corbitlogic.jira.internalmessenger.service.JimMessageServiceImpl">
-        <description>Message persistence for Jira Internal Messenger</description>
+        <description>Message persistence for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimMessageService</interface>
     </component>
 
@@ -69,40 +93,143 @@
         <description>Attachment metadata and upload handling for CorbitChat</description>
     </component>
 
+    <component key="jimAvatarStorageService"
+               class="com.corbitlogic.jira.internalmessenger.attachment.JimAvatarStorageService">
+        <description>Filesystem storage for CorbitChat group/project custom chat avatars</description>
+    </component>
+
     <component key="jimGroupService"
                class="com.corbitlogic.jira.internalmessenger.service.JimGroupServiceImpl">
-        <description>Group conversation management for Jira Internal Messenger</description>
+        <description>Group conversation management for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimGroupService</interface>
     </component>
 
     <component key="jimProjectChatService"
                class="com.corbitlogic.jira.internalmessenger.service.JimProjectChatServiceImpl">
-        <description>Project chat group provisioning for Jira Internal Messenger</description>
+        <description>Project chat group provisioning for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimProjectChatService</interface>
     </component>
 
     <component key="jimPresenceService"
                class="com.corbitlogic.jira.internalmessenger.service.JimPresenceServiceImpl">
-        <description>In-memory presence tracking for Jira Internal Messenger</description>
+        <description>In-memory presence tracking for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimPresenceService</interface>
     </component>
 
     <component key="jimPushService"
                class="com.corbitlogic.jira.internalmessenger.service.JimPushServiceImpl">
-        <description>Web Push (VAPID) notifications for Jira Internal Messenger</description>
+        <description>Web Push (VAPID) notifications for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimPushService</interface>
     </component>
 
-    <component key="jimAdminSettingsService"
+    <component key="jimAdminSettingsService" public="true"
                class="com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsServiceImpl">
         <description>Admin console settings for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService</interface>
+    </component>
+
+    <component key="jimMcpService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMcpServiceImpl">
+        <description>MCP Control Plane: settings, tool policy, signed policy for the Corbit Logic Gateway</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimMcpService</interface>
+    </component>
+
+    <component key="jimWorkspaceAgentService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimWorkspaceAgentServiceImpl">
+        <description>ChatGPT Workspace Agent two-way chat trigger (async queue + write-only secret)</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimWorkspaceAgentService</interface>
+    </component>
+
+    <component key="jimMcpAdminServlet"
+               class="com.corbitlogic.jira.internalmessenger.web.JimMcpAdminServlet">
+        <description>MCP Control Plane admin console page servlet</description>
+    </component>
+
+    <component key="jimWebLocaleService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimWebLocaleServiceImpl">
+        <description>Per-user web chat localization preferences (Persian UI / Jalali dates)</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimWebLocaleService</interface>
+    </component>
+
+    <component key="jimReportService"
+               class="com.corbitlogic.jira.internalmessenger.report.JimReportServiceImpl">
+        <description>Issue report-compliance computation and safe count-field persistence</description>
+        <interface>com.corbitlogic.jira.internalmessenger.report.JimReportService</interface>
+    </component>
+
+    <component key="jimReportRecalcCoordinator"
+               class="com.corbitlogic.jira.internalmessenger.report.JimReportRecalcCoordinator">
+        <description>Per-issue coalescing/debounce for report recalculation (maintenance lane)</description>
+    </component>
+
+    <component key="jimReportLedgerService"
+               class="com.corbitlogic.jira.internalmessenger.report.JimReportLedgerServiceImpl">
+        <description>Reporting-control lifecycle + bounded per-window ledger (Active Objects)</description>
+        <interface>com.corbitlogic.jira.internalmessenger.report.JimReportLedgerService</interface>
+    </component>
+
+    <component key="jimReportBackfillManager"
+               class="com.corbitlogic.jira.internalmessenger.report.JimReportBackfillManager">
+        <description>Admin-triggered, rate-limited report backfill (Phase 7)</description>
+    </component>
+
+    <component key="jimCommentReactionService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimCommentReactionServiceImpl">
+        <description>Emoji reactions on Jira issue/report comments</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimCommentReactionService</interface>
     </component>
 
     <component key="jimAccessPolicyService"
                class="com.corbitlogic.jira.internalmessenger.service.JimAccessPolicyServiceImpl">
         <description>Chat access-control policies for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimAccessPolicyService</interface>
+    </component>
+
+    <component key="jimMobileFeatureService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureServiceImpl">
+        <description>Mobile feature access-control rules for CorbitChat Mobile</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService</interface>
+    </component>
+
+    <component key="jimMobileReportMetricsService"
+               class="com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService">
+        <description>Shared report-engine metrics for Dashboard and Reports (Phase 7I)</description>
+    </component>
+
+    <component key="jimMobileDeviceService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMobileDeviceServiceImpl">
+        <description>Native mobile push device registration for CorbitHub Mobile</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimMobileDeviceService</interface>
+    </component>
+
+    <component key="jimMobileFcmClient"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMobileFcmClient">
+        <description>Firebase Cloud Messaging HTTP v1 client for CorbitHub Mobile push</description>
+    </component>
+
+    <component key="jimMobilePushService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMobilePushServiceImpl">
+        <description>Feature-aware native mobile push sender for CorbitHub Mobile</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimMobilePushService</interface>
+    </component>
+
+    <component key="jimMobileReminderScheduler"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMobileReminderScheduler"
+               public="true">
+        <description>Daily overdue/today reminder push sweep for CorbitHub Mobile</description>
+        <interface>com.atlassian.sal.api.lifecycle.LifecycleAware</interface>
+    </component>
+
+    <component key="jimMobilePreferenceService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMobilePreferenceServiceImpl">
+        <description>Per-user preferences for CorbitChat Mobile</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimMobilePreferenceService</interface>
+    </component>
+
+    <component key="jimMobileSessionService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMobileSessionServiceImpl">
+        <description>Plugin-issued mobile session tokens for CorbitChat Mobile</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimMobileSessionService</interface>
     </component>
 
     <component key="jimAdminAuditService"
@@ -116,37 +243,67 @@
         <description>Admin console page servlet for CorbitChat</description>
     </component>
 
+    <component key="jimLicenseService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimLicenseServiceImpl">
+        <description>Atlassian Marketplace license enforcement for CorbitChat</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimLicenseService</interface>
+    </component>
+
     <component key="jimReactionService"
                class="com.corbitlogic.jira.internalmessenger.service.JimReactionServiceImpl">
-        <description>Emoji reactions for Jira Internal Messenger messages</description>
+        <description>Emoji reactions for CorbitChat messages</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimReactionService</interface>
     </component>
 
     <component key="jimReadStateService"
                class="com.corbitlogic.jira.internalmessenger.service.JimReadStateServiceImpl">
-        <description>Read state tracking for Jira Internal Messenger</description>
+        <description>Read state tracking for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimReadStateService</interface>
+    </component>
+
+    <component key="jimMessageUserStateService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimMessageUserStateServiceImpl">
+        <description>Per-user message visibility overlay (delete-for-me) for CorbitChat (Sprint 12)</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimMessageUserStateService</interface>
+    </component>
+
+    <component key="jimChatAuditService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimChatAuditServiceImpl">
+        <description>Governance audit trail for CorbitChat chat actions (Sprint 12)</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimChatAuditService</interface>
+    </component>
+
+    <component key="jimReviewerService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimReviewerServiceImpl">
+        <description>Plugin-owned hidden chat-reviewer account (Sprint 12)</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimReviewerService</interface>
+    </component>
+
+    <component key="jimActivityService"
+               class="com.corbitlogic.jira.internalmessenger.service.JimActivityServiceImpl">
+        <description>Ephemeral chat activity (typing/recording/uploading) with TTL (Sprint 12 polish)</description>
+        <interface>com.corbitlogic.jira.internalmessenger.service.JimActivityService</interface>
     </component>
 
     <component key="jimUserSearchService"
                class="com.corbitlogic.jira.internalmessenger.service.JimUserSearchServiceImpl">
-        <description>Active user search for Jira Internal Messenger</description>
+        <description>Active user search for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimUserSearchService</interface>
     </component>
 
     <component key="jimDtoMapper"
                class="com.corbitlogic.jira.internalmessenger.service.JimDtoMapper">
-        <description>DTO mapping for Jira Internal Messenger</description>
+        <description>DTO mapping for CorbitChat</description>
     </component>
 
     <component key="jimRestJsonMapper"
                class="com.corbitlogic.jira.internalmessenger.rest.JimRestJsonMapper">
-        <description>Builds Map-based JSON REST responses for Jira Internal Messenger</description>
+        <description>Builds Map-based JSON REST responses for CorbitChat</description>
     </component>
 
     <component key="jimApiService"
                class="com.corbitlogic.jira.internalmessenger.service.JimApiServiceImpl">
-        <description>REST API orchestration for Jira Internal Messenger</description>
+        <description>REST API orchestration for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.JimApiService</interface>
     </component>
 
@@ -175,18 +332,18 @@
 
     <component key="messengerService"
                class="com.corbitlogic.jira.internalmessenger.service.MessengerServiceImpl">
-        <description>Core service facade for Jira Internal Messenger</description>
+        <description>Core service facade for CorbitChat</description>
         <interface>com.corbitlogic.jira.internalmessenger.service.MessengerService</interface>
     </component>
 
     <component key="jimChatServlet"
                class="com.corbitlogic.jira.internalmessenger.web.JimChatServlet">
-        <description>Chat page servlet for Jira Internal Messenger</description>
+        <description>Chat page servlet for CorbitChat</description>
     </component>
 
     <component key="jimProjectChatServlet"
                class="com.corbitlogic.jira.internalmessenger.web.JimProjectChatServlet">
-        <description>Project chat page servlet for Jira Internal Messenger</description>
+        <description>Project chat page servlet for CorbitChat</description>
     </component>
 
     <web-resource key="jim-messenger-resources" name="JIM Messenger Resources">
@@ -201,6 +358,18 @@
     <web-resource key="jim-nav-badge-resources" name="JIM Nav Unread Badge Resources">
         <resource type="download" name="jim-nav-badge.css" location="/css/jim-nav-badge.css"/>
         <resource type="download" name="jim-nav-badge.js" location="/js/jim-nav-badge.js"/>
+        <context>atl.general</context>
+    </web-resource>
+
+    <!-- Global, display-only Jalali date transformer for the Jira web UI. Loads
+         on all Jira pages (atl.general) but does nothing unless the sysadmin has
+         enabled the `jiraWideJalaliEnabled` setting (read via
+         GET /rest/jim/1.0/date-display). It rewrites only the visible text of
+         <time datetime> elements; stored values, forms, JQL, REST and exports
+         are never touched. See js/jim-jira-dates.js. -->
+    <web-resource key="jim-jira-dates-resources" name="CorbitChat Jira-wide Jalali Date Display">
+        <dependency>com.atlassian.auiplugin:ajs</dependency>
+        <resource type="download" name="jim-jira-dates.js" location="/js/jim-jira-dates.js"/>
         <context>atl.general</context>
     </web-resource>
 
@@ -223,6 +392,17 @@
         <condition class="com.atlassian.jira.plugin.webfragment.conditions.UserLoggedInCondition"/>
     </web-item>
 
+    <servlet-filter key="corbit-mobile-session-filter"
+                    name="CorbitChat Mobile Session Filter"
+                    class="com.corbitlogic.jira.internalmessenger.mobile.CorbitMobileSessionFilter"
+                    location="before-dispatch"
+                    weight="100">
+        <description>Resolves the real Jira user from a plugin-issued mobile session token</description>
+        <url-pattern>/rest/corbit-mobile/1.0/*</url-pattern>
+        <dispatcher>REQUEST</dispatcher>
+        <dispatcher>FORWARD</dispatcher>
+    </servlet-filter>
+
     <servlet-filter key="jim-mobile-menu-filter"
                     name="CorbitChat Mobile Menu Injection Filter"
                     class="com.corbitlogic.jira.internalmessenger.mobile.JimMobileMenuInjectionFilter"
@@ -236,19 +416,19 @@
     </servlet-filter>
 
     <servlet key="jim-chat-servlet"
-             name="Jira Internal Messenger Chat Page"
+             name="CorbitChat Chat Page"
              class="com.corbitlogic.jira.internalmessenger.web.JimChatServlet">
         <url-pattern>/jim/chat</url-pattern>
     </servlet>
 
     <servlet key="jim-project-chat-servlet"
-             name="Jira Internal Messenger Project Chat Page"
+             name="CorbitChat Project Chat Page"
              class="com.corbitlogic.jira.internalmessenger.web.JimProjectChatServlet">
         <url-pattern>/jim/project-chat</url-pattern>
     </servlet>
 
     <servlet key="jim-service-worker-servlet"
-             name="Jira Internal Messenger Push Service Worker"
+             name="CorbitChat Push Service Worker"
              class="com.corbitlogic.jira.internalmessenger.web.JimServiceWorkerServlet">
         <url-pattern>/jim/sw.js</url-pattern>
     </servlet>
@@ -259,10 +439,116 @@
         <url-pattern>/jim/admin</url-pattern>
     </servlet>
 
+    <servlet key="jim-mcp-admin-servlet"
+             name="MCP Control Plane"
+             class="com.corbitlogic.jira.internalmessenger.web.JimMcpAdminServlet">
+        <url-pattern>/jim/mcp-admin</url-pattern>
+    </servlet>
+
+    <component key="jimBoardGalleryServlet"
+               class="com.corbitlogic.jira.internalmessenger.web.JimBoardGalleryServlet">
+        <description>Board gallery page servlet (visual directory of Jira boards)</description>
+    </component>
+
+    <servlet key="jim-board-gallery-servlet"
+             name="CorbitChat Board Gallery"
+             class="com.corbitlogic.jira.internalmessenger.web.JimBoardGalleryServlet">
+        <url-pattern>/jim/boards</url-pattern>
+    </servlet>
+
+    <web-resource key="jim-board-gallery-resources" name="CorbitChat Board Gallery Resources">
+        <dependency>com.atlassian.auiplugin:ajs</dependency>
+        <resource type="download" name="jim-board-gallery.css" location="/css/jim-board-gallery.css"/>
+        <resource type="download" name="jim-board-gallery.js" location="/js/jim-board-gallery.js"/>
+    </web-resource>
+
+    <!-- Top-navigation entry for the board gallery, sitting next to the
+         existing Chat link. We deliberately keep this as a top-level entry
+         rather than nesting it inside Jira's "Boards" dropdown to avoid
+         clashing with native Jira board navigation. -->
+    <web-item key="jim-nav-board-gallery"
+              name="Board Gallery"
+              section="system.top.navigation.bar"
+              weight="65">
+        <label>Board Gallery</label>
+        <link linkId="jim-board-gallery">/plugins/servlet/jim/boards</link>
+        <condition class="com.atlassian.jira.plugin.webfragment.conditions.UserLoggedInCondition"/>
+    </web-item>
+
+    <!-- Issue-view "Reply to comment" enhancement. Injects a Reply
+         link into each comment's action toolbar and, on click,
+         pre-fills Jira's native add-comment editor with a real Jira
+         [~username] mention plus a {quote}...{quote} excerpt of the
+         parent comment. The resulting comment is a regular Jira
+         comment, so:
+           * Jira's native mention notification fires automatically
+             for the mentioned user.
+           * CorbitChat's existing CommentCreatedEvent listener picks
+             up the mention and posts a Jira Assistant entry for the
+             mentioned user.
+         No new REST endpoint, AO column or backend listener is needed. -->
+    <web-resource key="jim-comment-reply-resources" name="CorbitChat Comment Reply Resources">
+        <dependency>com.atlassian.auiplugin:ajs</dependency>
+        <context>jira.view.issue</context>
+        <resource type="download" name="jim-comment-reply.css" location="/css/jim-comment-reply.css"/>
+        <resource type="download" name="jim-comment-reply.js" location="/js/jim-comment-reply.js"/>
+    </web-resource>
+
+    <!-- Issue Report-compliance tab (Sprint 12 — Phase C). A native issue tab
+         alongside Comments/Work Log/History; the JS renders the compliance
+         summary + report list + Submit/Reply against /rest/jim/1.0/report/*. -->
+    <web-resource key="jim-report-resources" name="CorbitChat Report Tab Resources">
+        <dependency>com.atlassian.auiplugin:ajs</dependency>
+        <!-- The Report tab is an ajax-loaded issue-tabpanel: requireResource at
+             tab-render time cannot inject JS into the AJAX fragment, so the JS
+             must already be present on the page. Bind to the View Issue context
+             (normal /browse + project issue list) AND the Issue Navigator
+             context (search detail view + issue switching), mirroring the
+             jim-comment-reply resource. -->
+        <context>jira.view.issue</context>
+        <context>jira.navigator</context>
+        <resource type="download" name="jim-report.css" location="/css/jim-report.css"/>
+        <resource type="download" name="jim-report.js" location="/js/jim-report.js"/>
+    </web-resource>
+
+    <issue-tabpanel key="jim-report-tabpanel" name="CorbitChat Report Tab"
+                    class="com.corbitlogic.jira.internalmessenger.web.JimReportTabPanel">
+        <description>Issue report-compliance tab (Report / گزارش)</description>
+        <label key="jim.report.tab.label">Report</label>
+        <order>60</order>
+        <supports-ajax-load>true</supports-ajax-load>
+    </issue-tabpanel>
+
+    <!-- Phase 8D — custom read-only Workflow Viewer tab (فرآیند / Workflow). Mirrors the
+         Report tab: JS must be present on the View Issue + Navigator contexts because the
+         AJAX tab fragment cannot requireResource. Client-rendered against
+         /rest/jim/1.0/issues/{key}/workflow-view. No native Workflow Designer / Raphael. -->
+    <web-resource key="jim-workflow-resources" name="CorbitChat Workflow Viewer Resources">
+        <dependency>com.atlassian.auiplugin:ajs</dependency>
+        <context>jira.view.issue</context>
+        <context>jira.navigator</context>
+        <resource type="download" name="jim-workflow.css" location="/css/jim-workflow.css"/>
+        <resource type="download" name="jim-workflow.js" location="/js/jim-workflow.js"/>
+    </web-resource>
+
+    <issue-tabpanel key="jim-workflow-tabpanel" name="CorbitChat Workflow Tab"
+                    class="com.corbitlogic.jira.internalmessenger.web.JimWorkflowTabPanel">
+        <description>Issue workflow viewer tab (فرآیند / Workflow)</description>
+        <label key="jim.workflow.tab.label">Workflow</label>
+        <order>62</order>
+        <supports-ajax-load>true</supports-ajax-load>
+    </issue-tabpanel>
+
     <web-resource key="jim-admin-resources" name="CorbitChat Admin Console Resources">
         <dependency>com.atlassian.auiplugin:ajs</dependency>
         <resource type="download" name="jim-admin.css" location="/css/jim-admin.css"/>
         <resource type="download" name="jim-admin.js" location="/js/jim-admin.js"/>
+    </web-resource>
+
+    <web-resource key="jim-mcp-resources" name="MCP Control Plane Resources">
+        <dependency>com.atlassian.auiplugin:ajs</dependency>
+        <resource type="download" name="jim-mcp.css" location="/css/jim-mcp.css"/>
+        <resource type="download" name="jim-mcp.js" location="/js/jim-mcp.js"/>
     </web-resource>
 
     <web-section key="jim-admin-section"
@@ -282,19 +568,28 @@
         <condition class="com.atlassian.jira.plugin.webfragment.conditions.UserIsSysAdminCondition"/>
     </web-item>
 
+    <web-item key="jim-mcp-admin-link"
+              name="MCP Control Plane"
+              section="admin_plugins_menu/jim-admin-section"
+              weight="20">
+        <label key="jim.mcp.admin.link.label"/>
+        <link linkId="jim-mcp-admin">/plugins/servlet/jim/mcp-admin</link>
+        <condition class="com.atlassian.jira.plugin.webfragment.conditions.UserIsSysAdminCondition"/>
+    </web-item>
+
     <web-item key="jim-project-chat-link"
               name="Project Chat"
               section="jira.project.sidebar.plugins.navigation"
               weight="200">
         <label key="jim.project.chat.label"/>
-        <link linkId="jim-project-chat">/projects/$pathEncodedProjectKey?selectedItem=com.corbitlogic.jira.internalmessenger.jira-internal-messenger:jim-project-chat-link</link>
+        <link linkId="jim-project-chat">/projects/$pathEncodedProjectKey?selectedItem=${atlassian.plugin.key}:jim-project-chat-link</link>
         <param name="iconClass" value="aui-icon-large aui-iconfont-comment"/>
         <condition class="com.atlassian.jira.plugin.webfragment.conditions.UserLoggedInCondition"/>
     </web-item>
 
     <web-panel key="jim-project-chat-panel"
                name="Project Chat Panel"
-               location="com.corbitlogic.jira.internalmessenger.jira-internal-messenger:jim-project-chat-link"
+               location="${atlassian.plugin.key}:jim-project-chat-link"
                weight="10">
         <description>Renders the project chat inside the project-centric page content area</description>
         <context-provider class="com.corbitlogic.jira.internalmessenger.web.JimProjectChatPanelContextProvider"/>
@@ -302,7 +597,16 @@
     </web-panel>
 
     <rest key="jim-rest" path="/jim" version="1.0">
-        <description>REST API for Jira Internal Messenger</description>
+        <description>REST API for CorbitChat</description>
+        <package>com.corbitlogic.jira.internalmessenger.rest</package>
+    </rest>
+
+    <!-- Mobile BFF REST module for the CorbitChat Mobile app (see
+         docs/mobile-roadmap/). Additive and package-scoped so it evolves
+         independently from the web surface at /rest/jim/1.0/*. -->
+    <rest key="corbit-mobile-rest" path="/corbit-mobile" version="1.0">
+        <description>Mobile BFF REST API for CorbitChat Mobile</description>
+        <package>com.corbitlogic.jira.internalmessenger.mobile.rest</package>
     </rest>
 
     <resource type="i18n" name="jim-i18n" location="jim/i18n"/>

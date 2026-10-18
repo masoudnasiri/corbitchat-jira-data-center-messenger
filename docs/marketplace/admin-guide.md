@@ -98,6 +98,28 @@ Plugin version, REST/AO health, Jira base URL vs. request base URL, HTTPS
 detection, VAPID/push status, push subscription count and failed push count —
 the first place to look when push notifications misbehave.
 
+### License
+
+CorbitChat is licensed through Atlassian Marketplace; purchase, trial, billing
+and user-tier matching are handled entirely by Atlassian UPM/Marketplace.
+
+- The **License** tab shows: status (Valid / Missing / Expired / Invalid),
+  plugin key, Data Center license yes/no, evaluation flag, expiry date and the
+  license error reported by UPM, if any. The raw license key is never shown,
+  returned over REST, or logged.
+- To install or update a license: **Administration → Manage apps**, expand
+  **CorbitChat**, paste the key into the **License key** field.
+- While the license is missing or expired the app enforces a read-only state:
+  sending messages, creating conversations/groups, user search, attachment
+  uploads, push subscriptions and admin configuration changes are all blocked
+  server-side (HTTP 402, `LICENSE_INVALID`). Existing conversations stay
+  readable and the chat page shows a warning banner. The admin console stays
+  accessible to system administrators so the license status can always be
+  inspected.
+- Regular users can only see `licensed: true/false`
+  (`GET /rest/jim/1.0/license/status`); full details require Jira System
+  Administrator permission (`GET /rest/jim/1.0/admin/license`).
+
 ## Push notifications
 
 ### How it works

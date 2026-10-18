@@ -65,13 +65,34 @@ public class JimAttachmentService {
         this.adminSettingsService = adminSettingsService;
     }
 
-    private void enforceAdminAttachmentSettings(File uploadedFile, String originalFilename) {
+    private void enforceAdminAttachmentSettings(File uploadedFile, String contentType, String originalFilename) {
         if (!this.adminSettingsService.isAttachmentsEnabled()) {
             throw JimMessengerException.forbidden("Attachments have been disabled by the administrator");
         }
         long maxBytes = (long)this.adminSettingsService.getMaxAttachmentSizeMb() * 1024L * 1024L;
         if (uploadedFile != null && uploadedFile.length() > maxBytes) {
             throw JimMessengerException.badRequest("File exceeds the maximum allowed size of " + this.adminSettingsService.getMaxAttachmentSizeMb() + " MB");
+        }
+        // Voice messages are recorded by the browser's MediaRecorder, not
+        // user-uploaded files. They have known browser-generated extensions
+        // (webm/ogg/mp4/etc.) that admins won't typically include in the
+        // extension allowlist, so we skip the allowlist for audio content
+        // types. The hardcoded BLOCKED_EXTENSIONS in JimAttachmentPolicy
+        // and the audio MIME safe list still apply.
+        String kind = JimAttachmentPolicy.resolveFileKind(contentType);
+        if ("AUDIO".equals(kind)) {
+            return;
+        }
+        // Sprint 07 Fix-3: camera-captured videos likewise have device-generated
+        // extensions (mp4/3gp) that admins won't typically allowlist. The video
+        // MIME safe list and BLOCKED_EXTENSIONS still apply.
+        if ("VIDEO".equals(kind)) {
+            return;
+        }
+        // Sprint 07 Fix-3: app-generated single-contact vCards (.vcf) are a
+        // built-in share feature, not user file uploads — skip the allowlist.
+        if (JimAttachmentPolicy.isContactCardType(contentType)) {
+            return;
         }
         String allowedExtensions = this.adminSettingsService.getAllowedExtensions();
         if (allowedExtensions != null && !allowedExtensions.isEmpty()) {
@@ -91,6 +112,19 @@ public class JimAttachmentService {
     }
 
     public UploadResult uploadAttachment(int conversationId, String senderUserKey, String optionalBody, File uploadedFile, String contentType, String originalFilename) throws IOException {
+        // Legacy call path (web + older mobile clients): no voice hint. Audio is
+        // treated as a voice note, matching all behavior before Sprint 07 Fix-2
+        // (the web only produces audio via its MediaRecorder voice composer).
+        return this.uploadAttachment(conversationId, senderUserKey, optionalBody, uploadedFile, contentType, originalFilename, null);
+    }
+
+    /**
+     * Sprint 07 Fix-2: {@code voiceHint} distinguishes a recorded voice note
+     * (TRUE) from a picked/shared audio file (FALSE). Null means the client
+     * did not say — treated as voice for AUDIO to preserve legacy behavior.
+     * The hint is only meaningful for AUDIO content; other kinds store FALSE.
+     */
+    public UploadResult uploadAttachment(int conversationId, String senderUserKey, String optionalBody, File uploadedFile, String contentType, String originalFilename, Boolean voiceHint) throws IOException {
         JimValidation.requirePositiveId(conversationId, "conversationId");
         JimValidation.requireNonBlank(senderUserKey, "senderUserKey");
         String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
@@ -100,10 +134,12 @@ public class JimAttachmentService {
         if (normalizedBody.isEmpty() && (uploadedFile == null || !uploadedFile.exists())) {
             throw JimMessengerException.badRequest("A file is required");
         }
-        this.enforceAdminAttachmentSettings(uploadedFile, originalFilename);
+        this.enforceAdminAttachmentSettings(uploadedFile, contentType, originalFilename);
         this.storageService.ensureStorageRootExists();
-        JimAttachmentStorageService.StoredAttachmentFile storedFile = this.storageService.storeUploadedFile(uploadedFile, contentType, originalFilename);
-        String preview = JimAttachmentPolicy.buildPreviewText(normalizedBody, storedFile.getFileKind(), storedFile.getOriginalFilename());
+        JimAttachmentStorageService.StoredAttachmentFile storedFile = this.storageService.storeUploadedFile(uploadedFile, contentType, originalFilename, this.adminSettingsService.getAllowedExtensions());
+        boolean voice = "AUDIO".equals(storedFile.getFileKind())
+                && (voiceHint == null || voiceHint.booleanValue());
+        String preview = JimAttachmentPolicy.buildPreviewText(normalizedBody, storedFile.getFileKind(), storedFile.getOriginalFilename(), voice);
         long now = System.currentTimeMillis();
         UploadResult result = (UploadResult)this.activeObjects.executeInTransaction(() -> {
             JimMessage message = (JimMessage)this.activeObjects.create(JimMessage.class, new DBParam[0]);
@@ -127,10 +163,11 @@ public class JimAttachmentService {
             attachment.setContentType(storedFile.getContentType());
             attachment.setFileSize(storedFile.getFileSize());
             attachment.setFileKind(storedFile.getFileKind());
+            attachment.setVoice(voice ? Boolean.TRUE : Boolean.FALSE);
             attachment.setCreatedAt(now);
             attachment.setDeleted(0);
             attachment.save();
-            this.conversationService.touchConversation(conversationId, preview);
+            this.conversationService.touchConversation(conversationId, preview, senderUserKey);
             log.info("event=attachment stage=create outcome=success conversationId={} messageId={} attachmentId={} fileKind={}", new Object[]{conversationId, message.getID(), attachment.getID(), storedFile.getFileKind()});
             return new UploadResult(message, attachment);
         });
@@ -152,11 +189,69 @@ public class JimAttachmentService {
             ApplicationUser sender = ComponentAccessor.getUserManager().getUserByKey(senderUserKey);
             String senderName = sender != null ? sender.getDisplayName() : "New message";
             String body = preview != null && !preview.trim().isEmpty() ? preview.trim() : "Sent an attachment";
-            this.pushService.pushToUserAsync(recipient, senderName, body, "jim-conv-" + conversationId);
+            java.util.LinkedHashMap<String, String> attachmentPayload = new java.util.LinkedHashMap<String, String>();
+            attachmentPayload.put("title", senderName);
+            attachmentPayload.put("body", body);
+            attachmentPayload.put("tag", "jim-conv-" + conversationId);
+            attachmentPayload.put("type", "chat_message");
+            attachmentPayload.put("url", "/plugins/servlet/jim/chat");
+            attachmentPayload.put("conversationId", String.valueOf(conversationId));
+            this.pushService.pushToUserAsync(recipient, attachmentPayload);
         }
         catch (RuntimeException runtimeException) {
             // empty catch block
         }
+    }
+
+    /**
+     * Sprint 08 Fix-2 (attachment forwarding): clone every live attachment of
+     * [sourceMessageId] onto [targetMessage]. Each clone gets its OWN copy of
+     * the stored file plus a fresh AO row carrying the same metadata
+     * (filename, content type, kind, voice flag, dimensions), so the
+     * forwarded message renders/opens/saves identically — voice notes stay
+     * voice notes, videos stay videos, vCards stay contact cards. Access
+     * control is untouched: forwarded attachments belong to the TARGET
+     * conversation and are served only to its participants.
+     *
+     * <p>Callers verify read permission on the source message BEFORE calling
+     * (the forward flow does). Per-attachment failures are logged and
+     * skipped so one broken file cannot kill the whole forward.</p>
+     */
+    public List<JimAttachment> cloneAttachmentsForForward(int sourceMessageId, JimMessage targetMessage) {
+        List<JimAttachment> cloned = new ArrayList<JimAttachment>();
+        for (JimAttachment source : this.listAttachmentsForMessage(sourceMessageId)) {
+            try {
+                JimAttachmentStorageService.StoredAttachmentFile copy =
+                        this.storageService.copyStoredAttachment(source);
+                long now = System.currentTimeMillis();
+                JimAttachment row = (JimAttachment)this.activeObjects.executeInTransaction(() -> {
+                    JimAttachment attachment = (JimAttachment)this.activeObjects.create(JimAttachment.class, new DBParam[0]);
+                    attachment.setMessageId(targetMessage.getID());
+                    attachment.setConversationId(targetMessage.getConversationId());
+                    attachment.setUploaderUserKey(targetMessage.getSenderUserKey());
+                    attachment.setOriginalFilename(copy.getOriginalFilename());
+                    attachment.setStoredFilename(copy.getStoredFilename());
+                    attachment.setStoragePath(copy.getStoragePath());
+                    attachment.setContentType(copy.getContentType());
+                    attachment.setFileSize(copy.getFileSize());
+                    attachment.setFileKind(copy.getFileKind());
+                    attachment.setVoice(source.getVoice());
+                    attachment.setWidth(source.getWidth());
+                    attachment.setHeight(source.getHeight());
+                    attachment.setCreatedAt(now);
+                    attachment.setDeleted(0);
+                    attachment.save();
+                    return attachment;
+                });
+                cloned.add(row);
+                log.info("event=attachment stage=forward outcome=success sourceAttachmentId={} newAttachmentId={} targetMessageId={}",
+                        new Object[]{source.getID(), row.getID(), targetMessage.getID()});
+            } catch (Exception ex) {
+                log.warn("event=attachment stage=forward outcome=error sourceAttachmentId={} message={}",
+                        new Object[]{source.getID(), ex.getMessage()});
+            }
+        }
+        return cloned;
     }
 
     public JimAttachment getAttachmentForUser(int attachmentId, String userKey) {

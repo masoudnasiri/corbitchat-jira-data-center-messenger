@@ -24,6 +24,7 @@ import com.atlassian.plugin.PluginParseException;
 import com.atlassian.plugin.web.ContextProvider;
 import com.atlassian.plugin.webresource.WebResourceManager;
 import com.corbitlogic.jira.internalmessenger.ao.JimConversation;
+import com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService;
 import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
 import com.corbitlogic.jira.internalmessenger.service.JimProjectChatService;
 import java.net.URI;
@@ -35,19 +36,23 @@ import org.slf4j.LoggerFactory;
 public class JimProjectChatPanelContextProvider
 implements ContextProvider {
     private static final Logger log = LoggerFactory.getLogger(JimProjectChatPanelContextProvider.class);
-    private static final String WEB_RESOURCE_KEY = "com.corbitlogic.jira.internalmessenger.jira-internal-messenger:jim-messenger-resources";
+    private static final String WEB_RESOURCE_KEY = "com.corbitlogic.corbitchat.jira.dc:jim-messenger-resources";
     private final JiraAuthenticationContext authenticationContext;
     private final AvatarService avatarService;
     private final WebResourceManager webResourceManager;
     private final JimProjectChatService projectChatService;
     private final JimPermissionService permissionService;
+    private final JimAdminSettingsService adminSettingsService;
+    private final com.corbitlogic.jira.internalmessenger.service.JimWebLocaleService webLocaleService;
 
-    public JimProjectChatPanelContextProvider(JiraAuthenticationContext authenticationContext, AvatarService avatarService, WebResourceManager webResourceManager, JimProjectChatService projectChatService, JimPermissionService permissionService) {
+    public JimProjectChatPanelContextProvider(JiraAuthenticationContext authenticationContext, AvatarService avatarService, WebResourceManager webResourceManager, JimProjectChatService projectChatService, JimPermissionService permissionService, JimAdminSettingsService adminSettingsService, com.corbitlogic.jira.internalmessenger.service.JimWebLocaleService webLocaleService) {
         this.authenticationContext = authenticationContext;
         this.avatarService = avatarService;
         this.webResourceManager = webResourceManager;
         this.projectChatService = projectChatService;
         this.permissionService = permissionService;
+        this.adminSettingsService = adminSettingsService;
+        this.webLocaleService = webLocaleService;
     }
 
     public void init(Map<String, String> params) throws PluginParseException {
@@ -62,6 +67,25 @@ implements ContextProvider {
             ctx.put("currentUserKey", user.getKey());
             ctx.put("currentUserDisplayName", user.getDisplayName());
             ctx.put("currentUserAvatarUrl", this.resolveAvatarUrl(user));
+            try {
+                ctx.put("effectiveLanguage", this.webLocaleService.effectiveLanguage(user.getKey()));
+                ctx.put("effectiveCalendar", this.webLocaleService.effectiveCalendar(user.getKey()));
+                ctx.put("userLanguagePref", this.webLocaleService.getUserLanguage(user.getKey()));
+                ctx.put("userCalendarPref", this.webLocaleService.getUserCalendar(user.getKey()));
+            } catch (RuntimeException ex) {
+                // best-effort; falls back to English/Gregorian
+            }
+        }
+        try {
+            String title = this.adminSettingsService.getBrandingTitle();
+            ctx.put("brandTitle", title != null && !title.isEmpty() ? title : "CorbitChat");
+            String logoUrl = this.adminSettingsService.getBrandingLogoUrl();
+            if (logoUrl != null && !logoUrl.isEmpty()) {
+                ctx.put("brandLogoUrl", logoUrl);
+            }
+        }
+        catch (RuntimeException ex) {
+            ctx.put("brandTitle", "CorbitChat");
         }
         if ((project = this.resolveProject(context)) != null) {
             ctx.put("projectChatMode", true);

@@ -12,18 +12,17 @@ Center** listing.
 
 ## 2. Productize the build
 
-- [ ] **Version**: change `1.0.0-SNAPSHOT` → `1.0.0` in `pom.xml`
-      (Marketplace rejects SNAPSHOT versions).
-- [ ] **Plugin metadata** in `atlassian-plugin.xml` `<plugin-info>`:
-  - [ ] `<vendor name="CorbitLogic" url="https://corbitlogic.com"/>` (present)
-  - [ ] Add `<param name="atlassian-data-center-status">compatible</param>`
+- [x] **Version**: `1.0.0` in `pom.xml` (no SNAPSHOT — Marketplace rejects
+      SNAPSHOT versions).
+- [x] **Plugin metadata** in `atlassian-plugin.xml` `<plugin-info>`:
+  - [x] `<vendor name="CorbitLogic" url="https://corbitlogic.com"/>`
+  - [x] `<param name="atlassian-data-center-status">compatible</param>`
         and `<param name="atlassian-data-center-compatible">true</param>`
         (required for DC listings).
-- [ ] **License checks (required for paid-via-Atlassian)**: integrate the
-      Atlassian licensing API (`atlassian-plugin-license-storage-lib` /
-      `upm-api`) — read the license state and degrade gracefully when
-      missing/expired. *This is the only outstanding engineering task before a
-      paid listing; without it the app can only be listed as free.*
+- [x] **License checks (required for paid-via-Atlassian)**: implemented via
+      `PluginLicenseManager` + central `JimLicenseService`; backend REST
+      endpoints return HTTP 402 `LICENSE_INVALID` when the license is
+      missing/expired, and the chat UI degrades to read-only with a banner.
 - [ ] Confirm compatibility range (e.g. Jira 9.12 – 9.17) by testing against
       the lowest version you want to declare.
 - [ ] Final QA pass of the regression checklist in `AGENTS.md`.
@@ -64,7 +63,7 @@ Atlassian reviews all Data Center listings. Prepare:
 
 - [ ] Marketplace → "Create app listing" → upload the release JAR.
 - [ ] App key must match the plugin key:
-      `com.corbitlogic.jira.internalmessenger.jira-internal-messenger`
+      `com.corbitlogic.corbitchat.jira.dc`
       (never change it between versions).
 - [ ] Paste copy from `marketplace-listing.md` (name, tagline, highlights,
       description, keywords).

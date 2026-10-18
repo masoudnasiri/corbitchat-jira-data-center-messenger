@@ -17,6 +17,9 @@
             var xhr = new XMLHttpRequest();
             xhr.open(method, contextPath() + BASE + path, true);
             xhr.setRequestHeader('Accept', 'application/json');
+            // Jira's XSRF filter rejects same-origin PUT/POST without this
+            // header; without it every admin save returns 403 Forbidden.
+            xhr.setRequestHeader('X-Atlassian-Token', 'no-check');
             if (body !== undefined) {
                 xhr.setRequestHeader('Content-Type', 'application/json');
             }
@@ -117,7 +120,8 @@
     // ===== Settings =====
 
     var SETTINGS_CHECKBOXES = ['enableWebPush', 'aggregateNotifications', 'mentionNotifications',
-        'assignmentNotifications', 'attachmentsEnabled', 'imagePreviewEnabled'];
+        'assignmentNotifications', 'attachmentsEnabled', 'imagePreviewEnabled',
+        'webPersianUiDefault', 'webJalaliDatesDefault'];
 
     function applySettingsToForm(settings) {
         for (var i = 0; i < SETTINGS_CHECKBOXES.length; i++) {
@@ -139,10 +143,261 @@
         if (ext) {
             ext.value = settings.allowedExtensions || '';
         }
+        var jiraCal = el('jim-set-jiraWideCalendar');
+        if (jiraCal) {
+            jiraCal.value = settings.jiraWideJalaliEnabled === true ? 'jalali' : 'gregorian';
+        }
         var radios = document.querySelectorAll('input[name="jim-chat-mode"]');
         for (var r = 0; r < radios.length; r++) {
             radios[r].checked = radios[r].value === settings.chatMode;
         }
+        var brandTitle = el('jim-set-brandingTitle');
+        if (brandTitle) {
+            brandTitle.value = settings.brandingTitle && settings.brandingTitle !== 'CorbitChat'
+                ? settings.brandingTitle
+                : (settings.brandingTitle || '');
+        }
+        var brandLogo = el('jim-set-brandingLogoUrl');
+        if (brandLogo) {
+            brandLogo.value = settings.brandingLogoUrl || '';
+        }
+        renderBrandingPreview();
+        applyReportSettingsToForm(settings);
+    }
+
+    var REPORT_LEVEL_CODES = ['normal', 'high', 'special', 'managerial'];
+
+    // Generated metrics (key, English, Persian, expected type, Persian description).
+    // Single source of truth for the mapping table; mirrors JimReportMetrics on the server.
+    var REPORT_METRICS = [
+        ['validReportCount', 'Valid report count', 'تعداد گزارش معتبر', 'Number', 'تعداد گزارش‌های معتبر ثبت‌شده'],
+        ['requiredReportCount', 'Required report count', 'تعداد گزارش موردنیاز', 'Number', 'تعداد گزارش موردنیاز طبق زمان‌بندی'],
+        ['totalRawReportCount', 'Total raw reports', 'تعداد کل گزارش‌ها', 'Number', 'تعداد کل کامنت‌های گزارش (بدون فیلتر)'],
+        ['duplicateReportCount', 'Duplicate reports', 'گزارش‌های تکراری', 'Number', 'گزارش‌های تکراری در یک بازه'],
+        ['outOfWindowReportCount', 'Out-of-window reports', 'گزارش‌های خارج از بازه', 'Number', 'گزارش‌های خارج از ساعت مجاز'],
+        ['missedReportCount', 'Missed intervals', 'بازه‌های ازدست‌رفته', 'Number', 'بازه‌هایی که گزارش ثبت نشده'],
+        ['requiredReportCountSoFar', 'Required so far', 'موردنیاز تاکنون', 'Number', 'تعداد موردنیاز تا این لحظه'],
+        ['validReportCountSoFar', 'Valid so far', 'معتبر تاکنون', 'Number', 'تعداد معتبر تا این لحظه'],
+        ['reportCoveragePercent', 'Coverage %', 'درصد پوشش', 'Number', 'درصد پوشش گزارش‌ها'],
+        ['firstReportAt', 'First report at', 'زمان اولین گزارش', 'Date', 'زمان اولین گزارش ثبت‌شده'],
+        ['lastReportAt', 'Last report at', 'زمان آخرین گزارش', 'Date', 'زمان آخرین گزارش'],
+        ['lastValidReportAt', 'Last valid report at', 'زمان آخرین گزارش معتبر', 'Date', 'زمان آخرین گزارش معتبر'],
+        ['nextExpectedReportAt', 'Next expected at', 'زمان گزارش بعدی', 'Date', 'زمان مورد انتظار گزارش بعدی'],
+        ['reportingEndsAt', 'Reporting ends at', 'پایان مهلت گزارش', 'Date', 'زمان پایان مهلت گزارش‌دهی'],
+        ['reportMetricsUpdatedAt', 'Metrics updated at', 'زمان بروزرسانی متریک', 'Date', 'آخرین زمان بروزرسانی متریک‌ها'],
+        ['reportComplianceStatus', 'Compliance status', 'وضعیت انطباق', 'Text/Select', 'وضعیت کلی انطباق گزارش‌دهی'],
+        ['reportingActiveState', 'Active state', 'وضعیت فعال بودن', 'Text/Select', 'فعال/غیرفعال بودن گزارش‌دهی'],
+        ['reportingInactiveReason', 'Inactive reason', 'دلیل غیرفعال بودن', 'Text', 'علت غیرفعال شدن گزارش‌دهی'],
+        ['effectiveFollowUpLevel', 'Effective level', 'سطح پیگیری مؤثر', 'Text/Select', 'سطح پیگیری اعمال‌شده'],
+        ['effectiveReportInterval', 'Effective interval', 'فاصله مؤثر', 'Text', 'فاصله زمانی مؤثر گزارش‌دهی'],
+        ['effectiveReportingWindow', 'Effective window', 'بازه مؤثر', 'Text', 'بازه ساعتی مؤثر گزارش‌دهی'],
+        ['reportCountMode', 'Count mode', 'حالت شمارش', 'Text/Select', 'حالت شمارش موردنیاز'],
+        ['reportLifecycleMode', 'Lifecycle mode', 'حالت چرخه', 'Text/Select', 'شرط پایان چرخه گزارش‌دهی'],
+        ['lastReportCommentId', 'Last comment id', 'شناسه آخرین کامنت', 'Text', 'شناسه کامنت آخرین گزارش'],
+        ['lastReportSummary', 'Last report summary', 'خلاصه آخرین گزارش', 'Text', 'خلاصه متن آخرین گزارش'],
+        ['lastReporter', 'Last reporter', 'آخرین گزارش‌دهنده', 'User/Text', 'کاربر آخرین گزارش‌دهنده'],
+        ['lastValidReporter', 'Last valid reporter', 'آخرین گزارش‌دهنده معتبر', 'User/Text', 'کاربر آخرین گزارش معتبر'],
+        ['reportingControlState', 'Control state', 'وضعیت کنترل', 'Text/Select', 'وضعیت چرخه: فعال/بسته/…'],
+        ['reportingActive', 'Reporting active', 'گزارش‌دهی فعال', 'Text', 'آیا گزارش‌دهی فعال است'],
+        ['reportingCloseCondition', 'Close condition', 'شرط بسته‌شدن', 'Text', 'شرطی که گزارش‌دهی را بست'],
+        ['reportingCloseReason', 'Close reason', 'دلیل بسته‌شدن', 'Text', 'توضیح دلیل بسته‌شدن'],
+        ['reportingClosedAt', 'Closed at', 'زمان بسته‌شدن', 'Date', 'زمان بسته‌شدن گزارش‌دهی'],
+        ['reportingStartAt', 'Reporting start at', 'زمان شروع', 'Date', 'زمان شروع گزارش‌دهی'],
+        ['reportingEndAt', 'Reporting end at', 'زمان پایان', 'Date', 'زمان پایان مؤثر گزارش‌دهی'],
+        ['nextReportDueAt', 'Next due at', 'موعد بعدی', 'Date', 'موعد گزارش بعدی'],
+        ['currentWindowStartAt', 'Current window start', 'شروع بازه جاری', 'Date', 'زمان شروع بازه جاری'],
+        ['currentWindowStatus', 'Current window status', 'وضعیت بازه جاری', 'Text/Select', 'وضعیت بازه فعلی'],
+        ['reportCompliancePercent', 'Compliance %', 'درصد انطباق', 'Number', 'درصد انطباق (معتبر/موردنیاز تاکنون)'],
+        ['satisfiedWindowCount', 'Satisfied windows', 'بازه‌های موفق', 'Number', 'تعداد بازه‌های دارای گزارش معتبر'],
+        ['missedWindowCount', 'Missed windows', 'بازه‌های ازدست‌رفته', 'Number', 'تعداد بازه‌های بدون گزارش'],
+        ['lateWindowCount', 'Late windows', 'بازه‌های با تأخیر', 'Number', 'تعداد بازه‌های دارای تأخیر'],
+        ['openWindowCount', 'Open windows', 'بازه‌های باز', 'Number', 'تعداد بازه‌های باز فعلی'],
+        ['futureWindowCount', 'Future windows', 'بازه‌های آینده', 'Number', 'تعداد بازه‌های آینده'],
+        ['overdueOpenCount', 'Overdue open', 'باز و معوق', 'Number', 'بازه‌های باز و عقب‌افتاده'],
+        ['maxLateMinutes', 'Max late minutes', 'بیشترین تأخیر (دقیقه)', 'Number', 'بیشترین تأخیر بر حسب دقیقه'],
+        ['avgLateMinutes', 'Avg late minutes', 'میانگین تأخیر (دقیقه)', 'Number', 'میانگین تأخیر بر حسب دقیقه'],
+        ['minutesSinceLastValidReport', 'Minutes since last valid', 'دقیقه از آخرین معتبر', 'Number', 'دقایق گذشته از آخرین گزارش معتبر'],
+        ['currentlyOverdueMinutes', 'Currently overdue minutes', 'دقایق معوق فعلی', 'Number', 'دقایق عقب‌افتادگی بازه جاری'],
+        ['totalRequiredReportsUntilEnd', 'Total required until end', 'تعداد کل گزارش‌های مورد نیاز تا پایان', 'Number', 'مجموع گزارش‌های موردنیاز تا پایان دوره کنترل'],
+        ['currentMissedReportStreak', 'Current missed streak', 'تعداد گزارش‌های عقب‌افتاده از آخرین گزارش معتبر', 'Number', 'تعداد گزارش‌های پشت‌سرهم ازدست‌رفته از آخرین گزارش معتبر'],
+        ['maxMissedReportStreak', 'Max missed streak', 'بیشترین زنجیره گزارش‌های عقب‌افتاده', 'Number', 'بیشترین تعداد گزارش‌های پشت‌سرهم ازدست‌رفته'],
+        ['todayRequiredCount', 'Today required', 'موردنیاز امروز', 'Number', 'تعداد موردنیاز امروز'],
+        ['todayValidCount', 'Today valid', 'معتبر امروز', 'Number', 'تعداد معتبر امروز'],
+        ['todayMissedCount', 'Today missed', 'ازدست‌رفته امروز', 'Number', 'تعداد ازدست‌رفته امروز'],
+        ['reportedToday', 'Reported today', 'گزارش امروز', 'Text', 'آیا امروز گزارش ثبت شده'],
+        ['responsibleUser', 'Responsible user', 'کاربر مسئول', 'User/Text', 'کاربر مسئول (assignee)'],
+        ['reportLevelMissing', 'Level missing', 'نبود سطح', 'Text', 'سطح پیگیری تنظیم نشده'],
+        ['reportConfigError', 'Config error', 'خطای تنظیمات', 'Text', 'خطای پیکربندی گزارش'],
+        ['calcDurationMs', 'Calc duration (ms)', 'مدت محاسبه (ms)', 'Number', 'مدت‌زمان آخرین محاسبه'],
+        ['calculationVersion', 'Calc version', 'نسخه محاسبه', 'Number', 'نسخه الگوریتم محاسبه']
+    ];
+
+    function buildReportMetricRows() {
+        var tbody = el('jim-report-metric-rows');
+        if (!tbody || tbody.getAttribute('data-built') === '1') { return; }
+        tbody.setAttribute('data-built', '1');
+        var rows = '';
+        for (var i = 0; i < REPORT_METRICS.length; i++) {
+            var m = REPORT_METRICS[i];
+            rows += '<tr><td><code>' + m[0] + '</code></td><td dir="rtl">' + m[2] + '</td><td>' + m[3]
+                + '</td><td dir="rtl" style="font-size:12px;color:#626f86;">' + (m[4] || '')
+                + '</td><td><input type="text" id="jim-set-reportMap_' + m[0]
+                + '" class="text" style="max-width:200px;" placeholder="Disabled"/></td></tr>';
+        }
+        tbody.innerHTML = rows;
+    }
+
+    function applyReportSettingsToForm(settings) {
+        var enabled = el('jim-set-reportComplianceEnabled');
+        if (!enabled) {
+            return; // Report Schedule tab not present in this build
+        }
+        buildReportMetricRows();
+        enabled.checked = settings.reportComplianceEnabled === true;
+        var allowWithout = el('jim-set-reportAllowWithoutConfig');
+        if (allowWithout) { allowWithout.checked = settings.reportAllowWithoutConfig === true; }
+        var reopen = el('jim-set-reportReopenReactivation');
+        if (reopen) { reopen.checked = settings.reportReopenReactivation === true; }
+        var applEnabled = el('jim-set-reportApplicabilityEnabled');
+        if (applEnabled) { applEnabled.checked = settings.reportApplicabilityEnabled === true; }
+        var applNonDone = el('jim-set-reportApplicabilityNonDoneOnly');
+        if (applNonDone) { applNonDone.checked = settings.reportApplicabilityNonDoneOnly !== false; }
+        setVal('jim-set-reportEffectiveFromDate', settings.reportEffectiveFromDate || '');
+        setVal('jim-set-reportApplicabilityDateMode', settings.reportApplicabilityDateMode || 'created_on_or_after');
+        setVal('jim-set-reportApplicabilityMissingDuePolicy', settings.reportApplicabilityMissingDuePolicy || 'exclude_missing_due');
+        // Working calendar (board vs plugin)
+        setVal('jim-set-reportWorkingCalendarSource', settings.reportWorkingCalendarSource || 'time_tracking_fallback');
+        setVal('jim-set-reportDefaultBoardId', (settings.reportDefaultBoardId && settings.reportDefaultBoardId > 0) ? settings.reportDefaultBoardId : '');
+        setVal('jim-set-reportProjectBoardMapping', settings.reportProjectBoardMapping || '');
+        setVal('jim-set-reportWorkingDaysCsv', settings.reportWorkingDaysCsv || '');
+        setVal('jim-set-reportHolidaysCsv', settings.reportHolidaysCsv || '');
+        var wdEnabled = el('jim-set-reportWorkingDaysEnabled');
+        if (wdEnabled) { wdEnabled.checked = settings.reportWorkingDaysEnabled !== false; }
+        for (var mi = 0; mi < REPORT_METRICS.length; mi++) {
+            var mk = REPORT_METRICS[mi][0];
+            setVal('jim-set-reportMap_' + mk, settings['reportMap_' + mk] || '');
+        }
+        setVal('jim-set-reportMarker', settings.reportMarker || '');
+        setVal('jim-set-reportWindowStart', settings.reportWindowStart || '08:00');
+        setVal('jim-set-reportWindowEnd', settings.reportWindowEnd || '21:00');
+        setVal('jim-set-reportTimezone', settings.reportTimezone || '');
+        setVal('jim-set-reportLevelFieldId', settings.reportLevelFieldId || '');
+        setVal('jim-set-reportValidCountFieldId', settings.reportValidCountFieldId || '');
+        setVal('jim-set-reportRequiredCountFieldId', settings.reportRequiredCountFieldId || '');
+        // Follow-up levels are now dynamic (Phase 8A): fetch options from the
+        // configured Jira custom field and render an editable row per option.
+        loadReportLevels();
+    }
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+        });
+    }
+
+    function levelRowHtml(row, isOrphan) {
+        var key = row.key;
+        var label = esc(row.value != null ? row.value : key);
+        var badges = '';
+        if (isOrphan) {
+            badges += ' <span class="jim-admin-hint" style="color:#a54;">(orphan / یتیم: ' + esc(row.reason || '') + ')</span>';
+        } else {
+            if (!row.configured) { badges += ' <span class="jim-admin-hint">(not configured / تنظیم‌نشده)</span>'; }
+            if (row.legacyFallbackUsed) { badges += ' <span class="jim-admin-hint" style="color:#586;">(legacy fallback)</span>'; }
+            if (row.disabled) { badges += ' <span class="jim-admin-hint" style="color:#a54;">(disabled option)</span>'; }
+            if (row.duplicateLabel && row.contextName) { badges += ' <span class="jim-admin-hint">[' + esc(row.contextName) + ']</span>'; }
+        }
+        var au = row.activeUntil || 'earlier';
+        var cm = row.countMode || 'daily';
+        var unit = row.unit || 'hours';
+        function opt(v, t, sel) { return '<option value="' + v + '"' + (sel === v ? ' selected' : '') + '>' + t + '</option>'; }
+        return '<tr data-levelkey="' + esc(key) + '">'
+            + '<td>' + label + ' <span class="jim-admin-hint" title="stable option key">(' + esc(key) + ')</span>' + badges + '</td>'
+            + '<td><input type="number" min="0" id="jim-set-reportInterval_' + esc(key) + '" class="text" style="max-width:70px;" value="' + esc(row.interval != null ? row.interval : 0) + '"/></td>'
+            + '<td><select id="jim-set-reportIntervalUnit_' + esc(key) + '" class="select" title="Days = working days (Jira working-day settings) / روز = روز کاری">' + opt('hours', 'hours', unit) + opt('minutes', 'minutes', unit) + opt('days', 'days / روز', unit) + '</select></td>'
+            + '<td><input type="text" id="jim-set-reportStart_' + esc(key) + '" class="text" style="max-width:64px;" placeholder="08:00" value="' + esc(row.start || '') + '"/></td>'
+            + '<td><input type="text" id="jim-set-reportEnd_' + esc(key) + '" class="text" style="max-width:64px;" placeholder="21:00" value="' + esc(row.end || '') + '"/></td>'
+            + '<td><select id="jim-set-reportActiveUntil_' + esc(key) + '" class="select">' + opt('earlier', 'Earlier / زودتر', au) + opt('due', 'Due / تا Due', au) + opt('done', 'Done / تا Done', au) + '</select></td>'
+            + '<td><select id="jim-set-reportCountMode_' + esc(key) + '" class="select">'
+                + opt('daily', 'Daily / روزانه', cm) + opt('cumulative_due', 'Cumulative Due', cm)
+                + opt('cumulative_done', 'Cumulative Done', cm) + opt('cumulative_earlier', 'Cumulative earlier', cm)
+                + opt('fixed_minimum', 'Fixed minimum', cm) + '</select></td>'
+            + '<td><input type="number" min="1" max="1000" id="jim-set-reportMinCount_' + esc(key) + '" class="text" style="max-width:64px;" value="' + esc(row.minCount != null ? row.minCount : 1) + '"/></td>'
+            + '</tr>';
+    }
+
+    function loadReportLevels() {
+        var body = el('jim-report-levels-body');
+        var warn = el('jim-report-levels-warning');
+        var orphansEl = el('jim-report-levels-orphans');
+        if (!body) { return; }
+        request('GET', '/reporting/levels').then(function (model) {
+            var rows = (model && model.options) || [];
+            var html = '';
+            for (var i = 0; i < rows.length; i++) { html += levelRowHtml(rows[i], false); }
+            var orphans = (model && model.orphans) || [];
+            for (var j = 0; j < orphans.length; j++) { html += levelRowHtml(orphans[j], true); }
+            if (!html) {
+                html = '<tr><td colspan="8" class="jim-admin-hint" dir="rtl" lang="fa">هیچ گزینه‌ای برای فیلد سطح پیگیری یافت نشد.</td></tr>';
+            }
+            body.innerHTML = html;
+            if (warn) {
+                var w = (model && model.warnings) || [];
+                var msgs = [];
+                if (model && model.fieldConfigured === false) { msgs.push('فیلد «سطح پیگیری» پیدا نشد — سطوح پویا غیرفعال است.'); }
+                else if (model && model.isSelect === false) { msgs.push('فیلد «سطح پیگیری» از نوع select/list نیست.'); }
+                for (var k = 0; k < w.length; k++) { if (w[k].indexOf('duplicate_option_label') === 0) { msgs.push('برچسب گزینهٔ تکراری در چند کانتکست: ' + w[k].split(':')[1]); } }
+                warn.style.display = msgs.length ? '' : 'none';
+                warn.textContent = msgs.join('  |  ');
+            }
+            if (orphansEl) {
+                orphansEl.style.display = orphans.length ? '' : 'none';
+                orphansEl.textContent = orphans.length ? ('تنظیمات یتیم (گزینهٔ حذف/تغییر یافته): ' + orphans.length + ' — برای پاک‌سازی، بازه را ۰ کنید و ذخیره نمایید.') : '';
+            }
+        }).catch(function (err) {
+            body.innerHTML = '<tr><td colspan="8" class="jim-admin-hint" style="color:#a54;">خطا در بارگذاری سطوح / error: ' + esc(err && err.message ? err.message : err) + '</td></tr>';
+        });
+    }
+
+    function setVal(id, value) {
+        var e = el(id);
+        if (e) {
+            e.value = value;
+        }
+    }
+
+    function renderBrandingPreview() {
+        var titleInput = el('jim-set-brandingTitle');
+        var logoInput = el('jim-set-brandingLogoUrl');
+        var titleEl = el('jim-branding-preview-title');
+        var logoEl = el('jim-branding-preview-logo');
+        var fallbackEl = el('jim-branding-preview-logo-fallback');
+        if (!titleEl || !logoEl || !fallbackEl) {
+            return;
+        }
+        var titleValue = (titleInput && titleInput.value || '').trim();
+        titleEl.textContent = titleValue || 'CorbitChat';
+        var logoValue = (logoInput && logoInput.value || '').trim();
+        if (logoValue) {
+            var lower = logoValue.toLowerCase();
+            var safeScheme = logoValue.charAt(0) === '/'
+                || lower.indexOf('http://') === 0
+                || lower.indexOf('https://') === 0
+                || lower.indexOf('data:image/') === 0;
+            if (safeScheme) {
+                logoEl.src = logoValue;
+                logoEl.hidden = false;
+                fallbackEl.hidden = true;
+                logoEl.onerror = function () {
+                    logoEl.hidden = true;
+                    fallbackEl.hidden = false;
+                };
+                return;
+            }
+        }
+        logoEl.removeAttribute('src');
+        logoEl.hidden = true;
+        fallbackEl.hidden = false;
     }
 
     function loadSettings() {
@@ -181,6 +436,231 @@
             }, 'Notification settings saved.');
         });
 
+        var saveLoc = el('jim-save-localization');
+        if (saveLoc) {
+            saveLoc.addEventListener('click', function () {
+                saveSettings({
+                    webPersianUiDefault: el('jim-set-webPersianUiDefault').checked,
+                    webJalaliDatesDefault: el('jim-set-webJalaliDatesDefault').checked
+                }, 'Localization settings saved.');
+            });
+        }
+
+        var saveReport = el('jim-save-report-schedule');
+        if (saveReport) {
+            saveReport.addEventListener('click', function () {
+                var changes = {
+                    reportComplianceEnabled: el('jim-set-reportComplianceEnabled').checked,
+                    reportMarker: (el('jim-set-reportMarker').value || '').trim(),
+                    reportWindowStart: (el('jim-set-reportWindowStart').value || '').trim(),
+                    reportWindowEnd: (el('jim-set-reportWindowEnd').value || '').trim(),
+                    reportTimezone: (el('jim-set-reportTimezone').value || '').trim(),
+                    reportLevelFieldId: (el('jim-set-reportLevelFieldId').value || '').trim(),
+                    reportValidCountFieldId: (el('jim-set-reportValidCountFieldId').value || '').trim(),
+                    reportRequiredCountFieldId: (el('jim-set-reportRequiredCountFieldId').value || '').trim()
+                };
+                // Collect per-level config from the DYNAMIC rows (Phase 8A): one row
+                // per Jira follow-up-level option (stable key o<optionId>) + any orphan rows.
+                var levelRows = document.querySelectorAll('#jim-report-levels-body tr[data-levelkey]');
+                for (var i = 0; i < levelRows.length; i++) {
+                    var c = levelRows[i].getAttribute('data-levelkey');
+                    if (!c) { continue; }
+                    var ivEl = el('jim-set-reportInterval_' + c);
+                    if (!ivEl) { continue; }
+                    changes['reportInterval_' + c] = (ivEl.value || '0').trim();
+                    changes['reportIntervalUnit_' + c] = el('jim-set-reportIntervalUnit_' + c).value;
+                    changes['reportStart_' + c] = (el('jim-set-reportStart_' + c).value || '').trim();
+                    changes['reportEnd_' + c] = (el('jim-set-reportEnd_' + c).value || '').trim();
+                    changes['reportActiveUntil_' + c] = el('jim-set-reportActiveUntil_' + c).value;
+                    changes['reportCountMode_' + c] = el('jim-set-reportCountMode_' + c).value;
+                    changes['reportMinCount_' + c] = (el('jim-set-reportMinCount_' + c).value || '1').trim();
+                }
+                var allowWithout = el('jim-set-reportAllowWithoutConfig');
+                if (allowWithout) { changes.reportAllowWithoutConfig = allowWithout.checked; }
+                var reopen = el('jim-set-reportReopenReactivation');
+                if (reopen) { changes.reportReopenReactivation = reopen.checked; }
+                var applEnabled = el('jim-set-reportApplicabilityEnabled');
+                if (applEnabled) {
+                    changes.reportApplicabilityEnabled = applEnabled.checked;
+                    changes.reportEffectiveFromDate = (el('jim-set-reportEffectiveFromDate').value || '').trim();
+                    changes.reportApplicabilityDateMode = el('jim-set-reportApplicabilityDateMode').value;
+                    changes.reportApplicabilityNonDoneOnly = el('jim-set-reportApplicabilityNonDoneOnly').checked;
+                    changes.reportApplicabilityMissingDuePolicy = el('jim-set-reportApplicabilityMissingDuePolicy').value;
+                }
+                for (var mi = 0; mi < REPORT_METRICS.length; mi++) {
+                    var mk = REPORT_METRICS[mi][0];
+                    var inp = el('jim-set-reportMap_' + mk);
+                    if (inp) { changes['reportMap_' + mk] = (inp.value || '').trim(); }
+                }
+                // Working calendar settings
+                var calSrc = el('jim-set-reportWorkingCalendarSource');
+                if (calSrc) { changes.reportWorkingCalendarSource = calSrc.value; }
+                var defBoard = el('jim-set-reportDefaultBoardId');
+                if (defBoard) { changes.reportDefaultBoardId = (defBoard.value || '').trim(); }
+                var projMap = el('jim-set-reportProjectBoardMapping');
+                if (projMap) { changes.reportProjectBoardMapping = (projMap.value || '').trim(); }
+                var wdCsv = el('jim-set-reportWorkingDaysCsv');
+                if (wdCsv) { changes.reportWorkingDaysCsv = (wdCsv.value || '').trim(); }
+                var holCsv = el('jim-set-reportHolidaysCsv');
+                if (holCsv) { changes.reportHolidaysCsv = (holCsv.value || '').trim(); }
+                var wdEn = el('jim-set-reportWorkingDaysEnabled');
+                if (wdEn) { changes.reportWorkingDaysEnabled = wdEn.checked; }
+                saveSettings(changes, 'Report schedule saved.');
+            });
+        }
+
+        var calDiag = el('jim-report-calendar-diag');
+        if (calDiag) {
+            calDiag.addEventListener('click', function () {
+                var out = el('jim-report-calendar-diag-out');
+                if (out) { out.textContent = 'در حال خواندن… / reading…'; }
+                request('GET', '/reporting/diagnostics').then(function (res) {
+                    if (!out) { return; }
+                    var w = (res && res.workingDays) || {};
+                    var lines = [];
+                    lines.push('فعال / enabled: ' + w.enabled);
+                    lines.push('منبع انتخابی / selected source: ' + w.selectedSource);
+                    lines.push('منبع مؤثر / resolved source: ' + w.resolvedSource);
+                    lines.push('روزهای کاری (1=یکشنبه..7=شنبه): ' + JSON.stringify(w.workingDaysOfWeek));
+                    lines.push('تعداد تعطیلات / holidays: ' + w.holidayCount);
+                    lines.push('برد / board: ' + (w.boardId != null ? w.boardId : '-') + (w.boardName ? ' (' + w.boardName + ')' : ''));
+                    lines.push('منطقه زمانی برد / board tz: ' + (w.boardTimezone || '-'));
+                    lines.push('دلیل fallback: ' + (w.fallbackReason || '-'));
+                    lines.push('قابلیت خواندن برد / board readable: ' + w.boardCalendarReadable);
+                    out.textContent = lines.join('\n');
+                }).catch(function (err) {
+                    if (out) { out.textContent = 'خطا / error: ' + (err && err.message ? err.message : err); }
+                });
+            });
+        }
+
+        var applPreview = el('jim-report-applicability-preview');
+        if (applPreview) {
+            applPreview.addEventListener('click', function () {
+                var out = el('jim-report-applicability-impact');
+                var q = '?effectiveFrom=' + encodeURIComponent((el('jim-set-reportEffectiveFromDate').value || '').trim())
+                    + '&mode=' + encodeURIComponent(el('jim-set-reportApplicabilityDateMode').value)
+                    + '&nonDoneOnly=' + (el('jim-set-reportApplicabilityNonDoneOnly').checked ? 'true' : 'false')
+                    + '&missingDuePolicy=' + encodeURIComponent(el('jim-set-reportApplicabilityMissingDuePolicy').value);
+                if (out) { out.textContent = 'در حال محاسبه… / computing…'; }
+                request('GET', '/report-applicability/impact' + q).then(function (res) {
+                    if (!out) { return; }
+                    var c = res.counts || {};
+                    var l = res.ledger || {};
+                    var lines = [];
+                    lines.push('کل تسک‌های کاندید / total candidate: ' + c.totalCandidate);
+                    lines.push('مشمول / in scope: ' + c.inScope + '   |   خارج از محدوده / out of scope: ' + c.outOfScope);
+                    if (c.excludedDone != null) { lines.push('خارج (Done): ' + c.excludedDone); }
+                    if (c.excludedByCreatedDate != null) { lines.push('خارج (تاریخ ایجاد): ' + c.excludedByCreatedDate); }
+                    if (c.excludedByDueDate != null) { lines.push('خارج (تاریخ سررسید): ' + c.excludedByDueDate); }
+                    if (c.excludedMissingDue != null) { lines.push('خارج (بدون سررسید): ' + c.excludedMissingDue); }
+                    lines.push('لجر ACTIVE که خارج از محدوده می‌شود: ' + (l.activeWouldBecomeOutOfScope != null ? l.activeWouldBecomeOutOfScope : '-')
+                        + ' (اسکن‌شده: ' + (l.activeScanned != null ? l.activeScanned : '-') + ')');
+                    lines.push('لجر CLOSED (همه سطوح): ' + (l.closedLedgerCountAllLevels != null ? l.closedLedgerCountAllLevels : '-'));
+                    if (c.note) { lines.push('note: ' + c.note); }
+                    out.textContent = lines.join('\n');
+                }).catch(function (err) {
+                    if (out) { out.textContent = 'خطا / error: ' + (err && err.message ? err.message : err); }
+                });
+            });
+        }
+
+        // ---- ChatGPT Workspace Agent integration ----
+        (function wireWorkspaceAgent() {
+            function waReq(method, path, body) {
+                return new Promise(function (resolve, reject) {
+                    var xhr = new XMLHttpRequest();
+                    xhr.open(method, contextPath() + '/rest/jim/1.0/workspace-agent' + path, true);
+                    xhr.setRequestHeader('Accept', 'application/json');
+                    xhr.setRequestHeader('X-Atlassian-Token', 'no-check');
+                    if (body !== undefined) { xhr.setRequestHeader('Content-Type', 'application/json'); }
+                    xhr.onreadystatechange = function () {
+                        if (xhr.readyState !== 4) { return; }
+                        var parsed = null;
+                        try { parsed = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch (e) { parsed = null; }
+                        if (xhr.status >= 200 && xhr.status < 300) { resolve(parsed); }
+                        else { reject(new Error(parsed && parsed.message ? parsed.message : 'Request failed (' + xhr.status + ')')); }
+                    };
+                    xhr.send(body !== undefined ? JSON.stringify(body) : null);
+                });
+            }
+            var statusBox = el('jim-workspace-agent-status');
+            function applyStatus(s) {
+                if (!s) { return; }
+                if (el('jim-set-workspaceAgentEnabled')) { el('jim-set-workspaceAgentEnabled').checked = s.enabled === true; }
+                if (el('jim-set-workspaceAgentChannelId')) { el('jim-set-workspaceAgentChannelId').value = s.agentChannelConfigured ? (el('jim-set-workspaceAgentChannelId').value || '') : (el('jim-set-workspaceAgentChannelId').value || ''); }
+                if (el('jim-set-workspaceAgentTenantId')) { el('jim-set-workspaceAgentTenantId').value = s.tenantId || 'default'; }
+                if (el('jim-set-workspaceAgentGroupMention')) { el('jim-set-workspaceAgentGroupMention').checked = s.groupMentionMode === true; }
+                if (el('jim-set-workspaceAgentProjectAllowlist')) { el('jim-set-workspaceAgentProjectAllowlist').value = s.projectAllowlist || ''; }
+                if (statusBox) {
+                    statusBox.textContent =
+                        'enabled=' + s.enabled + ' | effective=' + s.effectiveEnabled
+                        + '\ntokenConfigured=' + s.tokenConfigured + ' | channel=' + s.agentChannelConfigured + ' | triggerUrl=' + s.triggerUrlConfigured
+                        + '\nassistantUser=' + s.assistantUser + ' valid=' + s.assistantUserValid
+                        + '\nqueueDepth=' + s.queueDepth + ' pending=' + s.pendingCount + ' running=' + s.runningCount
+                        + ' failed=' + s.failedCount + ' deadLetter=' + s.deadLetterCount + ' succeeded=' + s.succeededCount
+                        + '\nlastSuccessAt=' + s.lastTriggerSuccessAt + ' lastFailureAt=' + s.lastTriggerFailureAt
+                        + (s.lastFailureSummary ? '\nlastFailure=' + s.lastFailureSummary : '');
+                }
+            }
+            function refresh() { waReq('GET', '/status').then(applyStatus).catch(function () {}); }
+            if (el('jim-workspace-agent-save')) {
+                el('jim-workspace-agent-save').addEventListener('click', function () {
+                    waReq('PUT', '/config', {
+                        enabled: el('jim-set-workspaceAgentEnabled').checked,
+                        channelId: (el('jim-set-workspaceAgentChannelId').value || '').trim(),
+                        triggerUrl: (el('jim-set-workspaceAgentTriggerUrl').value || '').trim(),
+                        tenantId: (el('jim-set-workspaceAgentTenantId').value || '').trim(),
+                        groupMentionMode: el('jim-set-workspaceAgentGroupMention').checked,
+                        projectAllowlist: (el('jim-set-workspaceAgentProjectAllowlist').value || '').trim()
+                    }).then(function (s) { applyStatus(s); showMessage('Workspace Agent settings saved.'); })
+                      .catch(function (err) { showMessage('Error: ' + err.message, true); });
+                });
+            }
+            if (el('jim-workspace-agent-token-save')) {
+                el('jim-workspace-agent-token-save').addEventListener('click', function () {
+                    var t = (el('jim-workspace-agent-token').value || '').trim();
+                    if (!t) { showMessage('Enter a token first.', true); return; }
+                    waReq('POST', '/token', { token: t }).then(function () {
+                        el('jim-workspace-agent-token').value = '';
+                        showMessage('Token saved (write-only).'); refresh();
+                    }).catch(function (err) { showMessage('Error: ' + err.message, true); });
+                });
+            }
+            if (el('jim-workspace-agent-token-revoke')) {
+                el('jim-workspace-agent-token-revoke').addEventListener('click', function () {
+                    waReq('DELETE', '/token').then(function () { showMessage('Token revoked.'); refresh(); })
+                      .catch(function (err) { showMessage('Error: ' + err.message, true); });
+                });
+            }
+            if (el('jim-workspace-agent-test')) {
+                el('jim-workspace-agent-test').addEventListener('click', function () {
+                    waReq('POST', '/test', {}).then(function (r) {
+                        showMessage(r && r.ok ? 'Test trigger OK' + (r.runId ? ' (run ' + r.runId + ')' : '') : 'Test failed: ' + (r && r.error ? r.error : 'unknown'), !(r && r.ok));
+                        refresh();
+                    }).catch(function (err) { showMessage('Error: ' + err.message, true); });
+                });
+            }
+            if (el('jim-workspace-agent-scan')) {
+                el('jim-workspace-agent-scan').addEventListener('click', function () {
+                    waReq('POST', '/scan').then(function (r) { showMessage('Fallback scan enqueued: ' + (r ? r.enqueued : '?')); refresh(); })
+                      .catch(function (err) { showMessage('Error: ' + err.message, true); });
+                });
+            }
+            refresh();
+        })();
+
+        var saveJiraDates = el('jim-save-jira-dates');
+        if (saveJiraDates) {
+            saveJiraDates.addEventListener('click', function () {
+                var sel = el('jim-set-jiraWideCalendar');
+                var jalali = !!sel && sel.value === 'jalali';
+                saveSettings({
+                    jiraWideJalaliEnabled: jalali
+                }, 'Jira date display saved. Reload Jira pages to apply the change.');
+            });
+        }
+
         el('jim-save-attachments').addEventListener('click', function () {
             saveSettings({
                 attachmentsEnabled: el('jim-set-attachmentsEnabled').checked,
@@ -189,6 +669,78 @@
                 imagePreviewEnabled: el('jim-set-imagePreviewEnabled').checked
             }, 'Attachment settings saved.');
         });
+
+        var brandTitle = el('jim-set-brandingTitle');
+        var brandLogo = el('jim-set-brandingLogoUrl');
+        var brandLogoFile = el('jim-branding-logo-file');
+        var brandLogoClear = el('jim-branding-logo-clear');
+        if (brandTitle) {
+            brandTitle.addEventListener('input', renderBrandingPreview);
+        }
+        if (brandLogo) {
+            brandLogo.addEventListener('input', renderBrandingPreview);
+        }
+        if (brandLogoFile) {
+            brandLogoFile.addEventListener('change', function () {
+                var file = brandLogoFile.files && brandLogoFile.files[0];
+                if (!file) {
+                    return;
+                }
+                if (!/^image\//.test(file.type)) {
+                    showMessage('Please choose an image file (PNG, JPG, GIF, or WebP).', true);
+                    brandLogoFile.value = '';
+                    return;
+                }
+                var MAX_BYTES = 300 * 1024;
+                if (file.size > MAX_BYTES) {
+                    showMessage('Image is too large (max 300 KB).', true);
+                    brandLogoFile.value = '';
+                    return;
+                }
+                var reader = new FileReader();
+                reader.onload = function () {
+                    var dataUrl = String(reader.result || '');
+                    if (dataUrl.indexOf('data:image/') !== 0) {
+                        showMessage('Could not read this image file.', true);
+                        return;
+                    }
+                    if (brandLogo) {
+                        brandLogo.value = dataUrl;
+                    }
+                    renderBrandingPreview();
+                    showMessage('Logo loaded. Click "Save branding" to apply.');
+                };
+                reader.onerror = function () {
+                    showMessage('Could not read this image file.', true);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+        if (brandLogoClear) {
+            brandLogoClear.addEventListener('click', function () {
+                if (brandLogoFile) { brandLogoFile.value = ''; }
+                if (brandLogo) { brandLogo.value = ''; }
+                renderBrandingPreview();
+            });
+        }
+        var brandSave = el('jim-save-branding');
+        if (brandSave) {
+            brandSave.addEventListener('click', function () {
+                saveSettings({
+                    brandingTitle: (brandTitle ? brandTitle.value : '').trim(),
+                    brandingLogoUrl: (brandLogo ? brandLogo.value : '').trim()
+                }, 'Branding saved. Reload the chat page to see it applied.');
+            });
+        }
+        var brandReset = el('jim-reset-branding');
+        if (brandReset) {
+            brandReset.addEventListener('click', function () {
+                if (brandTitle) { brandTitle.value = ''; }
+                if (brandLogo) { brandLogo.value = ''; }
+                renderBrandingPreview();
+                saveSettings({ brandingTitle: '', brandingLogoUrl: '' }, 'Branding reset to defaults.');
+            });
+        }
 
         el('jim-test-notification').addEventListener('click', function () {
             request('POST', '/test-notification').then(function (result) {
@@ -531,6 +1083,195 @@
         });
     }
 
+    // ===== Mobile feature access rules (Sprint 04G) =====
+
+    var cachedMobileRules = [];
+    var editingMobileRuleId = null;
+
+    function mobileFeatureCheckboxes() {
+        return document.querySelectorAll('.jim-mob-feature');
+    }
+
+    function readSelectedFeatures() {
+        var boxes = mobileFeatureCheckboxes();
+        var out = [];
+        for (var i = 0; i < boxes.length; i++) {
+            if (boxes[i].checked) {
+                out.push(boxes[i].value);
+            }
+        }
+        return out;
+    }
+
+    function setSelectedFeatures(features) {
+        var set = {};
+        (features || []).forEach(function (f) { set[f] = true; });
+        var boxes = mobileFeatureCheckboxes();
+        for (var i = 0; i < boxes.length; i++) {
+            boxes[i].checked = !!set[boxes[i].value];
+        }
+    }
+
+    function renderMobileRuleRows(rules) {
+        var tbody = el('jim-mobile-rule-rows');
+        if (!tbody) {
+            return;
+        }
+        if (!rules.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="jim-admin-empty">No rules. Every user currently has all mobile features.</td></tr>';
+            return;
+        }
+        var html = [];
+        for (var i = 0; i < rules.length; i++) {
+            var r = rules[i];
+            var rowClasses = (r.enabled ? '' : 'jim-policy-disabled') +
+                (editingMobileRuleId === r.id ? ' jim-policy-editing' : '');
+            var featureText = (r.features && r.features.length)
+                ? escapeHtml(r.features.join(', '))
+                : '<em>none (no features)</em>';
+            html.push('<tr class="' + rowClasses + '">' +
+                '<td>' + escapeHtml(r.subjectType) + ': <strong>' + escapeHtml(r.subjectValue) + '</strong></td>' +
+                '<td>' + featureText + '</td>' +
+                '<td>' + (r.enabled ? 'Yes' : 'No') + '</td>' +
+                '<td>' + escapeHtml(r.priority) + '</td>' +
+                '<td>' +
+                '<button type="button" class="aui-button aui-button-link" data-mob-edit="' + r.id + '">Edit</button> ' +
+                '<button type="button" class="aui-button aui-button-link" data-mob-toggle="' + r.id + '">' + (r.enabled ? 'Disable' : 'Enable') + '</button> ' +
+                '<button type="button" class="aui-button aui-button-link jim-policy-delete" data-mob-delete="' + r.id + '">Delete</button>' +
+                '</td>' +
+                '</tr>');
+        }
+        tbody.innerHTML = html.join('');
+    }
+
+    function loadMobileRules() {
+        return request('GET', '/mobile-feature-rules').then(function (response) {
+            cachedMobileRules = response.rules || [];
+            renderMobileRuleRows(cachedMobileRules);
+        }).catch(function (error) {
+            var tbody = el('jim-mobile-rule-rows');
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="5">' + escapeHtml(error.message) + '</td></tr>';
+            }
+        });
+    }
+
+    function findMobileRule(id) {
+        for (var i = 0; i < cachedMobileRules.length; i++) {
+            if (cachedMobileRules[i].id === id) {
+                return cachedMobileRules[i];
+            }
+        }
+        return null;
+    }
+
+    function enterMobileEditMode(rule) {
+        editingMobileRuleId = rule.id;
+        setTypeAndValue('jim-mob-subject-type', 'jim-mob-subject-value', rule.subjectType, rule.subjectValue);
+        el('jim-mob-priority').value = rule.priority;
+        setSelectedFeatures(rule.features);
+        el('jim-mobile-form-title').textContent = 'Edit mobile access rule';
+        el('jim-mob-add').textContent = 'Save changes';
+        el('jim-mob-cancel-edit').hidden = false;
+        renderMobileRuleRows(cachedMobileRules);
+        el('jim-mobile-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el('jim-mob-subject-value').focus();
+    }
+
+    function exitMobileEditMode() {
+        editingMobileRuleId = null;
+        setTypeAndValue('jim-mob-subject-type', 'jim-mob-subject-value', 'USER', '');
+        el('jim-mob-priority').value = 0;
+        setSelectedFeatures(['dashboard', 'chat', 'boards', 'projects', 'tasks', 'issueDetail']);
+        el('jim-mobile-form-title').textContent = 'Add mobile access rule';
+        el('jim-mob-add').textContent = 'Add rule';
+        el('jim-mob-cancel-edit').hidden = true;
+        renderMobileRuleRows(cachedMobileRules);
+    }
+
+    function bindMobileRuleActions() {
+        if (!el('jim-mob-add')) {
+            return;
+        }
+        attachPicker(el('jim-mob-subject-value'), el('jim-mob-subject-type'));
+
+        el('jim-mob-add').addEventListener('click', function () {
+            var editing = editingMobileRuleId !== null ? findMobileRule(editingMobileRuleId) : null;
+            var payload = {
+                subjectType: el('jim-mob-subject-type').value,
+                subjectValue: el('jim-mob-subject-value').value,
+                features: readSelectedFeatures(),
+                enabled: editing ? editing.enabled : true,
+                priority: parseInt(el('jim-mob-priority').value, 10) || 0
+            };
+            var call = editing
+                ? request('PUT', '/mobile-feature-rules/' + editing.id, payload)
+                : request('POST', '/mobile-feature-rules', payload);
+            call.then(function () {
+                showMessage(editing ? 'Mobile access rule updated.' : 'Mobile access rule added.');
+                return loadMobileRules();
+            }).then(function () {
+                exitMobileEditMode();
+                loadOverview();
+            }).catch(function (error) {
+                showMessage(error.message, true);
+            });
+        });
+
+        el('jim-mob-cancel-edit').addEventListener('click', function () {
+            exitMobileEditMode();
+        });
+
+        el('jim-mobile-rule-rows').addEventListener('click', function (event) {
+            var target = event.target;
+            var editId = target.getAttribute && target.getAttribute('data-mob-edit');
+            var deleteId = target.getAttribute && target.getAttribute('data-mob-delete');
+            var toggleId = target.getAttribute && target.getAttribute('data-mob-toggle');
+            if (editId) {
+                var editRule = findMobileRule(parseInt(editId, 10));
+                if (editRule) {
+                    enterMobileEditMode(editRule);
+                }
+                return;
+            }
+            if (deleteId) {
+                if (!window.confirm('Delete this mobile access rule?')) {
+                    return;
+                }
+                request('DELETE', '/mobile-feature-rules/' + deleteId).then(function () {
+                    if (editingMobileRuleId === parseInt(deleteId, 10)) {
+                        exitMobileEditMode();
+                    }
+                    showMessage('Mobile access rule deleted.');
+                    loadMobileRules();
+                    loadOverview();
+                }).catch(function (error) {
+                    showMessage(error.message, true);
+                });
+                return;
+            }
+            if (toggleId) {
+                var rule = findMobileRule(parseInt(toggleId, 10));
+                if (!rule) {
+                    return;
+                }
+                var update = {
+                    subjectType: rule.subjectType,
+                    subjectValue: rule.subjectValue,
+                    features: rule.features || [],
+                    enabled: !rule.enabled,
+                    priority: rule.priority
+                };
+                request('PUT', '/mobile-feature-rules/' + toggleId, update).then(function () {
+                    showMessage('Mobile access rule updated.');
+                    loadMobileRules();
+                }).catch(function (error) {
+                    showMessage(error.message, true);
+                });
+            }
+        });
+    }
+
     // ===== Diagnostics + overview =====
 
     var DIAG_LABELS = {
@@ -601,8 +1342,77 @@
         });
     }
 
+    // ===== License =====
+
+    var LICENSE_LABELS = {
+        state: 'Status',
+        licensed: 'Licensed',
+        present: 'License installed',
+        valid: 'License valid',
+        dataCenter: 'Data Center license',
+        evaluation: 'Evaluation license',
+        errorKey: 'Error code',
+        errorMessage: 'Error',
+        pluginKey: 'Plugin key',
+        expiryDate: 'Expiry date'
+    };
+
+    function renderLicense(license) {
+        var rows = [];
+        for (var key in LICENSE_LABELS) {
+            if (!Object.prototype.hasOwnProperty.call(license, key)) {
+                continue;
+            }
+            var value = license[key];
+            var display;
+            if (value === null || value === undefined) {
+                display = '<span class="jim-diag-muted">' + (key === 'dataCenter' ? 'Unknown' : '&#8211;') + '</span>';
+            } else if (value === true) {
+                display = '<span class="jim-diag-ok">Yes</span>';
+            } else if (value === false) {
+                display = '<span class="jim-diag-bad">No</span>';
+            } else {
+                display = escapeHtml(value);
+            }
+            rows.push('<tr><td class="jim-diag-label">' + escapeHtml(LICENSE_LABELS[key]) + '</td><td>' + display + '</td></tr>');
+        }
+        el('jim-license-rows').innerHTML = rows.join('');
+
+        var banner = el('jim-license-state-banner');
+        if (banner) {
+            if (license.licensed) {
+                banner.className = 'jim-admin-license-banner jim-admin-license-ok';
+                banner.textContent = 'CorbitChat is licensed and fully functional.';
+            } else {
+                banner.className = 'jim-admin-license-banner jim-admin-license-bad';
+                banner.textContent = 'CorbitChat is not licensed (' + (license.state || 'INVALID') +
+                    '). Messaging is blocked for all users. Install a valid license under Manage apps \u2192 CorbitChat.';
+            }
+            banner.hidden = false;
+        }
+
+        var card = el('jim-overview-license');
+        if (card) {
+            card.textContent = license.licensed ? 'Valid' : (license.state || 'Invalid');
+            card.style.color = license.licensed ? '' : '#bf2600';
+        }
+    }
+
+    function loadLicense() {
+        return request('GET', '/license').then(function (license) {
+            renderLicense(license);
+        }).catch(function (error) {
+            el('jim-license-rows').innerHTML = '<tr><td colspan="2">' + escapeHtml(error.message) + '</td></tr>';
+            var card = el('jim-overview-license');
+            if (card) {
+                card.textContent = 'Unknown';
+            }
+        });
+    }
+
     function loadOverview() {
         loadDiagnostics();
+        loadLicense();
         request('GET', '/audit').then(function (response) {
             var entries = response.entries || [];
             if (!entries.length) {
@@ -625,6 +1435,132 @@
         });
     }
 
+    // ===== Schedule-approval fields (mapping + provisioning) =====
+
+    function approvalBadge(ok, naText) {
+        if (ok === null || ok === undefined) {
+            return '<span class="jim-diag-muted">' + escapeHtml(naText || '\u2013') + '</span>';
+        }
+        return ok
+            ? '<span class="jim-diag-ok">\u2713</span>'
+            : '<span class="jim-diag-bad">\u2717</span>';
+    }
+
+    function renderApprovalDiag(data) {
+        var tbody = el('jim-approval-diag-rows');
+        if (!tbody) { return; }
+        var fields = (data && data.fields) || [];
+        if (!fields.length) {
+            tbody.innerHTML = '<tr><td colspan="11">No approval fields defined.</td></tr>';
+        } else {
+            var rows = [];
+            for (var i = 0; i < fields.length; i++) {
+                var f = fields[i];
+                var nameCell = escapeHtml(f.nameEn) + ' <span class="jim-admin-hint" dir="rtl">' + escapeHtml(f.nameFa) + '</span>'
+                    + '<br><span class="jim-admin-hint">expects: ' + escapeHtml(f.expectedType) + '</span>';
+                var optionsCell = f.optionsRequired ? approvalBadge(f.optionsOk) : approvalBadge(null, 'n/a');
+                var fallbackCell = f.notConfigured
+                    ? '<span class="jim-diag-bad">not configured</span>'
+                    : (f.usingFallback ? '<span class="jim-diag-warn">fallback</span>' : '<span class="jim-diag-ok">configured</span>');
+                rows.push('<tr>'
+                    + '<td>' + nameCell + '</td>'
+                    + '<td><code>' + escapeHtml(f.logicalKey) + '</code></td>'
+                    + '<td><input type="text" class="text" style="max-width:170px;" id="jim-approval-map-' + escapeHtml(f.logicalKey)
+                        + '" value="' + escapeHtml(f.configuredFieldId || '') + '" placeholder="' + escapeHtml(f.fallbackFieldId || 'customfield_') + '"/></td>'
+                    + '<td>' + (f.effectiveFieldId ? '<code>' + escapeHtml(f.effectiveFieldId) + '</code>' : '<span class="jim-diag-muted">\u2013</span>') + '</td>'
+                    + '<td>' + approvalBadge(f.exists) + '</td>'
+                    + '<td>' + approvalBadge(f.typeOk) + '</td>'
+                    + '<td>' + optionsCell + '</td>'
+                    + '<td>' + approvalBadge(f.contextOk) + '</td>'
+                    + '<td>' + approvalBadge(f.screenOk) + '</td>'
+                    + '<td>' + fallbackCell + '</td>'
+                    + '<td><button type="button" class="aui-button aui-button-link" data-approval-map="' + escapeHtml(f.logicalKey) + '">Save</button></td>'
+                    + '</tr>');
+            }
+            tbody.innerHTML = rows.join('');
+        }
+        var status = el('jim-approval-status');
+        if (status) {
+            status.innerHTML = data && data.minimallyConfigured
+                ? '<span class="jim-diag-ok">\u2713 Approval workflow is configured on this instance (status + approver + proposed date all resolve).</span>'
+                : '<span class="jim-diag-bad">\u2717 Approval workflow is NOT fully configured \u2014 map existing fields or provision the missing ones below.</span>';
+        }
+    }
+
+    function loadApprovalFields() {
+        if (!el('jim-approval-diag-rows')) {
+            return; // tab not present in this build
+        }
+        return request('GET', '/approval-fields/diagnostics').then(renderApprovalDiag).catch(function (error) {
+            el('jim-approval-diag-rows').innerHTML = '<tr><td colspan="11">' + escapeHtml(error.message) + '</td></tr>';
+        });
+    }
+
+    function saveApprovalMapping(logicalKey) {
+        var input = el('jim-approval-map-' + logicalKey);
+        var value = input ? input.value.trim() : '';
+        request('PUT', '/approval-fields/mapping', { logicalKey: logicalKey, fieldId: value }).then(function (data) {
+            renderApprovalDiag(data);
+            showMessage(value ? ('Mapped ' + logicalKey + ' \u2192 ' + value) : ('Cleared mapping for ' + logicalKey + ' (using production fallback).'));
+        }).catch(function (error) {
+            showMessage(error.message, true);
+        });
+    }
+
+    function bindApprovalActions() {
+        var refresh = el('jim-approval-refresh');
+        if (!refresh) {
+            return; // tab not present
+        }
+        refresh.addEventListener('click', loadApprovalFields);
+
+        var tbody = el('jim-approval-diag-rows');
+        if (tbody) {
+            tbody.addEventListener('click', function (event) {
+                var btn = event.target && event.target.closest ? event.target.closest('[data-approval-map]') : null;
+                if (btn) {
+                    saveApprovalMapping(btn.getAttribute('data-approval-map'));
+                }
+            });
+        }
+
+        el('jim-approval-provision').addEventListener('click', function () {
+            var addToScreens = el('jim-approval-add-screens') && el('jim-approval-add-screens').checked;
+            var screenIds = [];
+            var raw = el('jim-approval-screen-ids') ? el('jim-approval-screen-ids').value : '';
+            var parts = String(raw || '').split(',');
+            for (var i = 0; i < parts.length; i++) {
+                var t = parts[i].trim();
+                if (t && /^\d+$/.test(t)) {
+                    screenIds.push(Number(t));
+                }
+            }
+            if (!window.confirm('Provision missing schedule-approval fields on this instance? This creates Jira custom fields and is safe to re-run.')) {
+                return;
+            }
+            var provisionBtn = this;
+            provisionBtn.setAttribute('disabled', 'disabled');
+            request('POST', '/approval-fields/provision', { addToScreens: !!addToScreens, screenIds: screenIds }).then(function (result) {
+                if (result && result.diagnostics) {
+                    renderApprovalDiag({ fields: result.diagnostics, minimallyConfigured: result.minimallyConfigured });
+                } else {
+                    loadApprovalFields();
+                }
+                var s = result && result.summary ? result.summary : {};
+                if (result && result.locked === false) {
+                    showMessage('Provisioning is already running on another node. Try again shortly.', true);
+                } else {
+                    showMessage('Provisioning done \u2014 created ' + (s.created || 0) + ', mapped ' + (s.mapped || 0)
+                        + ', already present ' + (s.exists || 0) + ', failed ' + (s.failed || 0) + '.', (s.failed || 0) > 0);
+                }
+            }).catch(function (error) {
+                showMessage(error.message, true);
+            }).then(function () {
+                provisionBtn.removeAttribute('disabled');
+            });
+        });
+    }
+
     function init() {
         if (!el('jim-admin-page') && !document.getElementById('jim-admin-message')) {
             return;
@@ -632,9 +1568,14 @@
         bindTabs();
         bindSettingsActions();
         bindPolicyActions();
+        bindMobileRuleActions();
+        bindApprovalActions();
         el('jim-diag-refresh').addEventListener('click', loadDiagnostics);
+        el('jim-license-refresh').addEventListener('click', loadLicense);
         loadSettings();
         loadPolicies();
+        loadMobileRules();
+        loadApprovalFields();
         loadOverview();
     }
 

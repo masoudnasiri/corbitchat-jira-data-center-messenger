@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>CorbitChat Design System — Preview</title>
+  <link rel="stylesheet" href="../css/corbitchat.css" />
+  <link rel="stylesheet" href="../css/components.css" />
+  <link rel="stylesheet" href="../css/task-view.css" />
+  <link rel="stylesheet" href="../css/modules.css" />
+  <style>
+    .preview-controls {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 500;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      max-width: calc(100% - 24px);
+    }
+    .preview-controls button {
+      padding: 8px 14px;
+      border: 1px solid var(--cc-color-border);
+      border-radius: var(--cc-radius-md);
+      background: var(--cc-color-bg-elevated);
+      color: var(--cc-color-text);
+      cursor: pointer;
+      font: inherit;
+      font-size: var(--cc-text-sm);
+    }
+    .preview-controls button.active {
+      background: var(--cc-color-primary);
+      color: var(--cc-color-primary-on);
+      border-color: var(--cc-color-primary);
+    }
+    .preview-controls .sep {
+      width: 1px;
+      background: var(--cc-color-border);
+      margin: 0 2px;
+    }
+    .preview-page { display: none; }
+    .preview-page.active { display: block; }
+    .demo-section { margin-bottom: 24px; }
+    .demo-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px; align-items: center; }
+    .chat-demo {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px;
+      background: var(--cc-color-bg-subtle);
+    }
+    .colleagues-scroll {
+      display: flex;
+      gap: 16px;
+      padding: 0 16px 16px;
+      overflow-x: auto;
+    }
+    .colleague-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      min-width: 56px;
+      font-size: var(--cc-text-xs);
+      color: var(--cc-color-text-secondary);
+    }
+    .nav-icon {
+      width: 24px;
+      height: 24px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .greeting {
+      padding: 16px;
+    }
+    .greeting h1 {
+      margin: 0;
+      font-size: var(--cc-text-lg);
+      font-weight: var(--cc-weight-semibold);
+    }
+    .greeting p {
+      margin: 4px 0 0;
+      font-size: var(--cc-text-sm);
+      color: var(--cc-color-text-secondary);
+    }
+    .composer {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      background: var(--cc-color-bg-elevated);
+      border-top: 1px solid var(--cc-color-divider);
+    }
+    .composer input { flex: 1; }
+  </style>
+</head>
+<body>
+
+<div class="preview-controls">
+  <button id="btn-fa" class="active" onclick="setLocale('fa')">فارسی RTL</button>
+  <button id="btn-en" onclick="setLocale('en')">English LTR</button>
+  <span class="sep"></span>
+  <button id="btn-theme" onclick="toggleTheme()">🌙 Dark</button>
+  <span class="sep"></span>
+  <button onclick="showPage('dashboard')">Dashboard</button>
+  <button onclick="showPage('components')">Components</button>
+  <button onclick="showPage('chats')">Chats</button>
+  <button onclick="showPage('chat')">Chat</button>
+  <button onclick="showPage('group')">Group</button>
+  <button onclick="showPage('assistant')">Assistant</button>
+  <button onclick="showPage('projects')">Projects</button>
+  <button onclick="showPage('project')">Project</button>
+  <button onclick="showPage('gallery')">Gallery</button>
+  <button onclick="showPage('task')">Task View</button>
+  <button onclick="showPage('board')">Board</button>
+</div>
+
+<!-- Dashboard -->
+<div id="page-dashboard" class="preview-page active">
+  <div class="cc-screen">
+    <header class="cc-top-bar">
+      <div class="cc-top-bar__title" data-fa="داشبورد" data-en="Dashboard">داشبورد</div>
+      <button class="cc-btn cc-btn--icon cc-btn--ghost" aria-label="Notifications">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      </button>
+    </header>
+
+    <div class="greeting">
+      <h1 data-fa="سلام، مسعود" data-en="Hello, Masoud">سلام، مسعود</h1>
+      <p data-fa="آخرین همگام‌سازی: ۲ دقیقه پیش" data-en="Last sync: 2 min ago">آخرین همگام‌سازی: ۲ دقیقه پیش</p>
+    </div>
+
+    <div class="cc-section-title" data-fa="خلاصه امروز" data-en="Today's summary">خلاصه امروز</div>
+    <div class="cc-grid-2">
+      <div class="cc-dashboard-card cc-dashboard-card--messages cc-card--interactive">
+        <div class="cc-dashboard-card__count">5</div>
+        <div class="cc-dashboard-card__label" data-fa="پیام جدید" data-en="New messages">پیام جدید</div>
+      </div>
+      <div class="cc-dashboard-card cc-dashboard-card--today cc-card--interactive">
+        <div class="cc-dashboard-card__count">8</div>
+        <div class="cc-dashboard-card__label" data-fa="کارهای امروز" data-en="Today's tasks">کارهای امروز</div>
+      </div>
+      <div class="cc-dashboard-card cc-dashboard-card--overdue cc-card--interactive">
+        <div class="cc-dashboard-card__count">3</div>
+        <div class="cc-dashboard-card__label" data-fa="معوق" data-en="Overdue">معوق</div>
+      </div>
+      <div class="cc-dashboard-card cc-dashboard-card--followup cc-card--interactive">
+        <div class="cc-dashboard-card__count">12</div>
+        <div class="cc-dashboard-card__label" data-fa="پیگیری" data-en="Follow-up">پیگیری</div>
+      </div>
+    </div>
+
+    <div class="cc-section-title" data-fa="همکاران فعال" data-en="Active colleagues">همکاران فعال</div>
+    <div class="colleagues-scroll">
+      <div class="colleague-item">
+        <div class="cc-avatar cc-avatar--sm">سا<span class="cc-avatar__presence cc-avatar__presence--online"></span></div>
+        <span>سارا</span>
+      </div>
+      <div class="colleague-item">
+        <div class="cc-avatar cc-avatar--sm">رض<span class="cc-avatar__presence cc-avatar__presence--online"></span></div>
+        <span>رضا</span>
+      </div>
+      <div class="colleague-item">
+        <div class="cc-avatar cc-avatar--sm">نی<span class="cc-avatar__presence cc-avatar__presence--away"></span></div>
+        <span>نیلوفر</span>
+      </div>
+      <div class="colleague-item">
+        <div class="cc-avatar cc-avatar--sm">AM<span class="cc-avatar__presence cc-avatar__presence--offline"></span></div>
+        <span>Ali</span>
+      </div>
+    </div>
+
+    <div class="cc-section-title" data-fa="فعالیت اخیر" data-en="Recent activity">فعالیت اخیر</div>
+    <a class="cc-list-item" href="#">
+      <div class="cc-avatar cc-avatar--sm" style="background:#FFF4E8;color:#E07A2F;">JA</div>
+      <div class="cc-list-item__content">
+        <div class="cc-list-item__title" data-fa="پاسخ جدید در MOB-42" data-en="New reply on MOB-42">پاسخ جدید در MOB-42</div>
+        <div class="cc-list-item__subtitle" data-fa="سارا به نظر شما پاسخ داد" data-en="Sara replied to your comment">سارا به نظر شما پاسخ داد</div>
+      </div>
+      <span class="cc-caption">۱۰ دقیقه</span>
+    </a>
+
+    <nav class="cc-bottom-nav">
+      <button class="cc-bottom-nav__item cc-bottom-nav__item--active">
+        <svg class="nav-icon cc-bottom-nav__icon" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        <span data-fa="داشبورد" data-en="Dashboard">داشبورد</span>
+      </button>
+      <button class="cc-bottom-nav__item">
+        <svg class="nav-icon cc-bottom-nav__icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span data-fa="گفتگو" data-en="Chat">گفتگو</span>
+        <span class="cc-count-badge" style="position:absolute;top:6px;inset-inline-end:calc(50% - 22px);">5</span>
+      </button>
+      <button class="cc-bottom-nav__item">
+        <svg class="nav-icon cc-bottom-nav__icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span data-fa="پروژه‌ها" data-en="Projects">پروژه‌ها</span>
+      </button>
+      <button class="cc-bottom-nav__item">
+        <svg class="nav-icon cc-bottom-nav__icon" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <span data-fa="کارها" data-en="Tasks">کارها</span>
+      </button>
+      <button class="cc-bottom-nav__item">
+        <svg class="nav-icon cc-bottom-nav__icon" viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <span data-fa="بیشتر" data-en="More">بیشتر</span>
+      </button>
+    </nav>
+  </div>
+</div>
+
+<!-- Components -->
+<div id="page-components" class="preview-page">
+  <div class="cc-screen">
+    <header class="cc-top-bar">
+      <div class="cc-top-bar__title" data-fa="اجزا" data-en="Components">اجزا</div>
+    </header>
+
+    <div class="demo-section">
+      <div class="cc-section-title">Buttons</div>
+      <div class="demo-row">
+        <button class="cc-btn cc-btn--primary" data-fa="اتصال" data-en="Connect">اتصال</button>
+        <button class="cc-btn cc-btn--secondary" data-fa="لغو" data-en="Cancel">لغو</button>
+        <button class="cc-btn cc-btn--ghost" data-fa="بیشتر" data-en="More">بیشتر</button>
+        <button class="cc-btn cc-btn--danger" data-fa="خروج" data-en="Logout">خروج</button>
+      </div>
+      <div class="demo-row">
+        <button class="cc-btn cc-btn--primary cc-btn--loading" data-fa="اتصال" data-en="Connect">اتصال</button>
+        <button class="cc-btn cc-btn--primary" disabled data-fa="غیرفعال" data-en="Disabled">غیرفعال</button>
+        <button class="cc-btn cc-btn--sm cc-btn--secondary" data-fa="کوچک" data-en="Small">کوچک</button>
+        <span class="cc-spinner" aria-label="Loading"></span>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <div class="cc-section-title">Badges</div>
+      <div class="demo-row">
+        <span class="cc-badge cc-badge--todo">To Do</span>
+        <span class="cc-badge cc-badge--in-progress" data-fa="در حال انجام" data-en="In Progress">در حال انجام</span>
+        <span class="cc-badge cc-badge--done" data-fa="انجام‌شده" data-en="Done">انجام‌شده</span>
+        <span class="cc-badge cc-badge--overdue" data-fa="معوق" data-en="Overdue">معوق</span>
+        <span class="cc-badge cc-badge--highest">Highest</span>
+        <span class="cc-badge cc-badge--high">High</span>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <div class="cc-section-title">Inputs</div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+        <input class="cc-input" placeholder="https://jira.company.com" dir="ltr" />
+        <textarea class="cc-input cc-textarea" placeholder="نظر خود را بنویسید…" data-placeholder-fa="نظر خود را بنویسید…" data-placeholder-en="Write a comment…"></textarea>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <div class="cc-section-title" data-fa="نوع تسک (طبق دستورالعمل)" data-en="Task Type (per instructions)">نوع تسک (طبق دستورالعمل)</div>
+      <div class="demo-row">
+        <span class="cc-field-pill cc-field-pill--critical"><span class="cc-field-pill__dot"></span><span data-fa="بحرانی" data-en="Critical">بحرانی</span></span>
+        <span class="cc-field-pill cc-field-pill--urgent"><span class="cc-field-pill__dot"></span><span data-fa="فوری" data-en="Urgent">فوری</span></span>
+        <span class="cc-field-pill cc-field-pill--committed"><span class="cc-field-pill__dot"></span><span data-fa="تعهدی" data-en="Committed">تعهدی</span></span>
+        <span class="cc-field-pill cc-field-pill--current"><span class="cc-field-pill__dot"></span><span data-fa="جاری" data-en="Current">جاری</span></span>
+        <span class="cc-field-pill cc-field-pill--project"><span class="cc-field-pill__dot"></span><span data-fa="پروژه‌ای" data-en="Project-Based">پروژه‌ای</span></span>
+        <span class="cc-field-pill cc-field-pill--development"><span class="cc-field-pill__dot"></span><span data-fa="توسعه‌ای" data-en="Development">توسعه‌ای</span></span>
+        <span class="cc-field-pill cc-field-pill--strategic"><span class="cc-field-pill__dot"></span><span data-fa="راهبردی" data-en="Strategic">راهبردی</span></span>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <div class="cc-section-title">States</div>
+      <div class="cc-state">
+        <div class="cc-state__icon">📭</div>
+        <div class="cc-state__title" data-fa="گفتگویی وجود ندارد" data-en="No conversations">گفتگویی وجود ندارد</div>
+        <div class="cc-state__message" data-fa="اولین گفتگو را شروع کنید" data-en="Start your first conversation">اولین گفتگو را شروع کنید</div>
+        <button class="cc-btn cc-btn--primary" data-fa="گفتگوی جدید" data-en="New chat">گفتگوی جدید</button>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <div class="cc-section-title">Skeleton</div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:8px;">
+        <div class="cc-skeleton" style="height:20px;width:60%;"></div>
+        <div class="cc-skeleton" style="height:16px;width:90%;"></div>
+        <div class="cc-skeleton" style="height:16px;width:75%;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Chat -->
+<div id="page-chat" class="preview-page">
+  <div class="cc-screen">
+    <header class="cc-top-bar">
+      <button class="cc-btn cc-btn--icon cc-btn--ghost" aria-label="Back">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="cc-avatar cc-avatar--sm">سا<span class="cc-avatar__presence cc-avatar__presence--online"></span></div>
+      <div class="cc-top-bar__title">سارا احمدی</div>
+    </header>
+
+    <div class="chat-demo" style="flex:1;min-height:400px;">
+      <div class="cc-chat-bubble cc-chat-bubble--incoming">
+        <span data-fa="سلام! وضعیت تسک MOB-42 چطوره؟" data-en="Hi! How's task MOB-42 going?">سلام! وضعیت تسک <span dir="ltr">MOB-42</span> چطوره؟</span>
+        <div class="cc-chat-bubble__meta">۱۰:۱۵</div>
+      </div>
+      <div class="cc-chat-bubble cc-chat-bubble--outgoing">
+        <span data-fa="تقریباً تمومه، فقط تست RTL مونده" data-en="Almost done, just RTL testing left">تقریباً تمومه، فقط تست RTL مونده</span>
+        <div class="cc-chat-bubble__meta">۱۰:۱۸ ✓✓</div>
+      </div>
+      <div class="cc-chat-bubble cc-chat-bubble--incoming">
+        <span data-fa="عالی! " data-en="Great! ">عالی! </span><span class="cc-mention">@مسعود</span><span data-fa=" می‌تونی بررسی کنی؟" data-en=" can you review?"> می‌تونی بررسی کنی؟</span>
+        <div class="cc-chat-bubble__meta">۱۰:۲۰</div>
+      </div>
+    </div>
+
+    <div class="composer">
+      <input class="cc-input" data-placeholder-fa="پیام…" data-placeholder-en="Message…" placeholder="پیام…" />
+      <button class="cc-btn cc-btn--primary cc-btn--icon" aria-label="Send">
+        <svg class="nav-icon" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Chat List -->
+<div id="page-chats" class="preview-page">
+  <div class="cc-screen">
+    <header class="cc-top-bar">
+      <div class="cc-top-bar__title" data-fa="گفتگوها" data-en="Chats">گفتگوها</div>
+      <button class="cc-btn cc-btn--icon cc-btn--ghost" aria-label="New chat">
+        <svg class="nav-icon" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+    </header>
+    <div class="cc-tabs">
+      <button class="cc-tab cc-tab--active" data-fa="همه" data-en="All">همه</button>
+      <button class="cc-tab" data-fa="شخصی" data-en="Personal">شخصی</button>
+      <button class="cc-tab" data-fa="گروه‌ها" data-en="Groups">گروه‌ها</button>
+      <button class="cc-tab" data-fa="پروژه‌ها" data-en="Projects">پروژه‌ها</button>
+      <button class="cc-tab" data-fa="دستیار" data-en="Assistant">دستیار</button>
+    </div>
+
+    <a class="cc-conv-row cc-conv-row--unread" href="#" onclick="showPage('assistant');return false;">
+      <div class="cc-avatar cc-avatar--bot">🤖</div>
+      <div class="cc-conv-row__body">
+        <div class="cc-conv-row__top">
+          <span class="cc-conv-row__name" data-fa="دستیار جیرا" data-en="Jira Assistant">دستیار جیرا</span>
+          <span class="cc-conv-row__time">۱۰:۲۴</span>
+        </div>
+        <div class="cc-conv-row__preview">
+          <span class="cc-conv-row__snippet" data-fa="شما در TEC-34 منشن شدید" data-en="You were mentioned in TEC-34">شما در <span dir="ltr">TEC-34</span> منشن شدید</span>
+          <span class="cc-count-badge">3</span>
+        </div>
+      </div>
+    </a>
+
+    <a class="cc-conv-row cc-conv-row--unread" href="#" onclick="showPage('group');return false;">
+      <div class="cc-avatar-group">
+        <div class="cc-avatar">سا</div>
+        <div class="cc-avatar" style="background:#EAE6FF;color:#6554C0;">رض</div>
+      </div>
+      <div class="cc-conv-row__body">
+        <div class="cc-conv-row__top">
+          <span class="cc-conv-row__name" data-fa="تیم موبایل" data-en="Mobile Team">تیم موبایل</span>
+          <span class="cc-conv-row__time">۱۰:۱۸</span>
+        </div>
+        <div class="cc-conv-row__preview">
+          <span class="cc-conv-row__snippet" data-fa="رضا: دیزاین سیستم آماده شد" data-en="Reza: Design system is ready">رضا: دیزاین سیستم آماده شد</span>
+          <span class="cc-count-badge">5</span>
+        </div>
+      </div>
+    </a>
+
+    <a class="cc-conv-row" href="#">
+      <div class="cc-avatar cc-avatar--project">COR</div>
+      <div class="cc-conv-row__body">
+        <div class="cc-conv-row__top">
+          <span class="cc-conv-row__name" data-fa="گفتگوی پروژه CorBit" data-en="CorBit Project Chat">گفتگوی پروژه CorBit</span>
+          <span class="cc-conv-row__time" data-fa="دیروز" data-en="Yesterday">دیروز</span>
+        </div>
+        <div class="cc-conv-row__preview">
+          <span class="cc-conv-row__snippet" data-fa="جلسه با وزارت ارتباطات هماهنگ شد" data-en="Meeting with the Ministry arranged">جلسه با وزارت ارتباطات هماهنگ شد</span>
+        </div>
+      </div>
+    </a>
+
+    <a class="cc-conv-row" href="#" onclick="showPage('chat');return false;">
+      <div class="cc-avatar cc-avatar--sm" style="width:40px;height:40px;">سا<span class="cc-avatar__presence cc-avatar__presence--online"></span></div>
+      <div class="cc-conv-row__body">
+        <div class="cc-conv-row__top">
+          <span class="cc-conv-row__name" data-fa="سارا احمدی" data-en="Sara Ahmadi">سارا احمدی</span>
+          <span class="cc-conv-row__time">۰۹:۴۰</span>
+        </div>
+        <div class="cc-conv-row__preview">
+          <span class="cc-conv-row__snippet" data-fa="ممنون! بررسی می‌کنم" data-en="Thanks! I'll check">ممنون! بررسی می‌کنم</span>
+        </div>
+      </div>
+    </a>
+  </div>
+</div>
+
+<!-- Jira Assistant -->
+<div id="page-assistant" class="preview-page">
+  <div class="cc-screen">
+    <header class="cc-top-bar">
+      <button class="cc-btn cc-btn--icon cc-btn--ghost" aria-label="Back" onclick="showPage('chats')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="cc-top-bar__title" data-fa="دستیار جیرا" data-en="Jira Assistant">دستیار جیرا</div>
+      <button class="cc-assistant-action" data-fa="همه دیده شد" data-en="Mark all seen">همه دیده شد</button>
+    </header>
+    <div class="cc-assistant-header">
+      <div class="cc-avatar cc-avatar--bot">🤖</div>
+      <div class="cc-assistant-header__title">
+        <div class="cc-assistant-header__name">
+          <span data-fa="دستیار جیرا" data-en="Jira Assistant">دستیار جیرا</span>
+          <span class="cc-assistant-badge" data-fa="بات" data-en="BOT">بات</span>
+        </div>
+        <div class="cc-assistant-header__sub" data-fa="۳ رویداد جدید" data-en="3 new events">۳ رویداد جدید</div>
+      </div>
+    </div>
+    <div class="cc-assistant-feed">
+      <span class="cc-assistant-day" data-fa="امروز" data-en="Today">امروز</span>
+
+      <div class="cc-assistant-event cc-assistant-event--unseen">
+        <div class="cc-assistant-event__icon cc-assistant-event__icon--mention">@</div>
+        <div class="cc-assistant-event__body">
+          <div class="cc-assistant-event__title">
+            <span data-fa="سارا شما را منشن کرد در" data-en="Sara mentioned you in">سارا شما را منشن کرد در</span>
+            <span class="cc-issue-key" dir="ltr">TEC-34</span>
+          </div>
+          <div class="cc-assistant-event__text" data-fa="«می‌تونی RTL رو بررسی کنی؟»" data-en="&quot;Can you review RTL?&quot;">«می‌تونی RTL رو بررسی کنی؟»</div>
+          <div class="cc-assistant-event__foot">
+            <span class="cc-assistant-event__time">۱۰:۲۴</span>
+            <button class="cc-assistant-action" data-fa="باز کردن" data-en="Open">باز کردن</button>
+            <button class="cc-assistant-action" data-fa="دیده شد" data-en="Mark seen">دیده شد</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cc-assistant-event cc-assistant-event--unseen">
+        <div class="cc-assistant-event__icon cc-assistant-event__icon--assign">👤</div>
+        <div class="cc-assistant-event__body">
+          <div class="cc-assistant-event__title">
+            <span data-fa="کار جدیدی به شما واگذار شد:" data-en="A task was assigned to you:">کار جدیدی به شما واگذار شد:</span>
+            <span class="cc-issue-key" dir="ltr">MOB-42</span>
+          </div>
+          <div class="cc-assistant-event__foot">
+            <span class="cc-assistant-event__time">۰۹:۵۰</span>
+            <button class="cc-assistant-action" data-fa="باز کردن" data-en="Open">باز کردن</button>
+            <button class="cc-assistant-action" data-fa="دیده شد" data-en="Mark seen">دیده شد</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cc-assistant-event cc-assistant-event--unseen">
+        <div class="cc-assistant-event__icon cc-assistant-event__icon--overdue">⏰</div>
+        <div class="cc-assistant-event__body">
+          <div class="cc-assistant-event__title">
+            <span data-fa="کار معوق دارید:" data-en="You have an overdue task:">کار معوق دارید:</span>
+            <span class="cc-issue-key" dir="ltr">COR-8</span>
+          </div>
+          <div class="cc-assistant-event__foot">
+            <span class="cc-assistant-event__time" data-fa="دیروز" data-en="Yesterday">دیروز</span>
+            <button class="cc-assistant-action" data-fa="مشاهده معوق‌ها" data-en="View overdue">مشاهده معوق‌ها</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cc-assistant-event">
+        <div class="cc-assistant-event__icon cc-assistant-event__icon--status">✓</div>
+        <div class="cc-assistant-event__body">
+          <div class="cc-assistant-event__title">
+            <span class="cc-issue-key" dir="ltr">MOB-38</span>
+            <span data-fa="به «انجام‌شده» تغییر یافت" data-en="moved to Done">به «انجام‌شده» تغییر یافت</span>
+          </div>
+          <div class="cc-assistant-event__foot">
+            <span class="cc-assistant-event__time" data-fa="دیروز" data-en="Yesterday">دیروز</span>
+            <button class="cc-assistant-action" data-fa="باز کردن" data-en="Open">باز کردن</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Group Chat -->
+<div id="page-group" class="preview-page">
+  <div class="cc-screen">
+    <header class="cc-top-bar">
+      <button class="cc-btn cc-btn--icon cc-btn--ghost" aria-label="Back" onclick="showPage('chats')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="cc-avatar-group">
+        <div class="cc-avatar">سا</div>
+        <div class="cc-avatar" style="background:#EAE6FF;color:#6554C0;">رض</div>
+      </div>
+      <div class="cc-top-bar__title" style="line-height:1.2;">
+        <div data-fa="تیم موبایل" data-en="Mobile Team">تیم موبایل</div>
+        <div class="cc-assistant-header__sub" data-fa="۴ عضو" data-en="4 members">۴ عضو</div>
+      </div>
+      <button class="cc-btn cc-btn--icon cc-btn--ghost" aria-label="Members">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </button>
+    </header>
+
+    <div class="chat-demo" style="flex:1;min-height:400px;">
+      <div class="cc-chat-system" data-fa="رضا، سارا را به گروه اضافه کرد" data-en="Reza added Sara to the group">رضا، سارا را به گروه اضافه کرد</div>
+
+      <div class="cc-chat-bubble cc-chat-bubble--incoming">
+        <span class="cc-chat-bubble__sender cc-chat-bubble__sender--b">رضا</span>
+        <span data-fa="دیزاین سیستم آماده شد ✅" data-en="Design system is ready ✅">دیزاین سیستم آماده شد ✅</span>
+        <div class="cc-chat-bubble__meta">۱۰:۱۸</div>
+      </div>
+      <div class="cc-chat-bubble cc-chat-bubble--incoming">
+        <span class="cc-chat-bubble__sender cc-chat-bubble__sender--c">سارا</span>
+        <span data-fa="عالیه! " data-en="Awesome! ">عالیه! </span><span class="cc-mention">@مسعود</span><span data-fa=" لطفاً merge کن" data-en=" please merge"> لطفاً merge کن</span>
+        <div class="cc-chat-bubble__meta">۱۰:۱۹</div>
+      </div>
+      <div class="cc-chat-bubble cc-chat-bubble--outgoing">
+        <span data-fa="حتماً، الان انجام میدم" data-en="Sure, doing it now">حتماً، الان انجام میدم</span>
+        <div class="cc-chat-bubble__meta">۱۰:۲۰ ✓✓</div>
+      </div>
+      <div class="cc-typing">
+        <span class="cc-typing__dot"></span><span class="cc-typing__dot"></span><span class="cc-typing__dot"></span>
+      </div>
+    </div>
+
+    <div class="composer">
+      <input class="cc-input" data-placeholder-fa="پیام به گروه…" data-placeholder-en="Message the group…" placeholder="پیام به گروه…" />
+      <button class="cc-btn cc-btn--primary cc-btn--icon" aria-label="Send">
+        <svg class="nav-icon" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Projects list -->
+<div id="page-projects" class="preview-page">
+  <div class="cc-screen">
+    <header class="cc-top-bar">
+      <div class="cc-top-bar__title" data-fa="پروژه‌ها" data-en="Projects">پروژه‌ها</div>
+      <button class="cc-btn cc-btn--icon cc-btn--ghost" aria-label="Search">
+        <svg class="nav-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </button>
+    </header>
+
+    <a class="cc-project-row" href="#" onclick="showPage('project');return false;">
+      <div class="cc-avatar cc-avatar--project">COR</div>
+      <div class="cc-project-row__body">
+        <div class="cc-project-row__name" data-fa="CorBit With CEO" data-en="CorBit With CEO">CorBit With CEO</div>
+        <div class="cc-project-row__meta">
+          <span class="cc-project-row__key" dir="ltr">COR</span>
+          <span data-fa="· راهبر: مسعود" data-en="· Lead: Masoud">· راهبر: مسعود</span>
+        </div>
+      </div>
+      <div class="cc-project-row__stats">
+        <div class="cc-project-stat"><span class="cc-project-stat__num">12</span><span class="cc-project-stat__lbl" data-fa="باز" data-en="open">باز</span></div>
+        <div class="cc-project-stat"><span class="cc-project-stat__num" style="color:var(--cc-color-accent)">5</span><span class="cc-project-stat__lbl" data-fa="پیام" data-en="chat">پیام</span></div>
+      </div>
+    </a>
+
+    <a class="cc-project-row" href="#" onclick="showPage('project');return false;">
+      <div class="cc-avatar cc-avatar--project" style="background:#EAE6FF;color:#6554C0;">TEC</div>
+      <div class="cc-project-row__body">
+        <div class="cc-project-row__name" data-fa="Technical" data-en="Technical">Technical</div>
+        <div class="cc-project-row__meta">
+          <span class="cc-project-row__key" dir="ltr">TEC</span>
+          <span data-fa="· راهبر: سارا" data-en="· Lead: Sara">· راهبر: سارا</span>
+        </div>
+      </div>
+      <div class="cc-project-row__stats">
+        <div class="cc-project-stat"><span class="cc-project-stat__num">7</span><span class="cc-project-stat__lbl" data-fa="باز" data-en="open">باز</span></div>
+      </div>
+    </a>
+
+    <a class="cc-project-row" href="#" onclick="showPage('project');return false;">
+      <div class="cc-avatar cc-avatar--project" style="background:#E3FCEF;color:#00875A;">MOB</div>
+      <div class="cc-project-row__body">
+        <div class="cc-project-row__name" data-fa="Mobile App" data-en="Mobile App">Mobile App</div>
+        <div class="cc-project-row__meta">
+          <span class="cc-project-row__key" dir="ltr">MOB</span>
+          <span data-fa="· راهبر: رضا" data-en="· Lead: Reza">· راهبر: رضا</span>
+        </div>
+      </div>
+      <div class="cc-project-row__stats">
+        <div class="cc-project-stat"><span class="cc-project-stat__num">23</span><span class="cc-project-stat__lbl" data-fa="باز" data-en="open">باز</span></div>
+        <div class="cc-project-stat"><span class="cc-project-stat__num" style="color:var(--cc-color-accent)">2</span><span class="cc-project-stat__lbl" data-fa="پیام" data-en="chat">پیام</span></div>
+      </div>
+    </a>
+  </div>
+</div>
+
+<!-- Project detail -->
+<div id="page-project" class="preview-page">
+  <div class="cc-screen">
+    <header class="cc-top-bar">
+      <button class="cc-btn cc-btn--icon cc-btn--ghost" aria-label="Back" onclick="showPage('projects')">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="cc-top-bar__title" data-fa="CorBit With CEO" data-en="CorBit With CEO">CorBit With CEO</div>
+    </header>
+
+    <div class="cc-project-header">
+      <div class="cc-project-header__avatar">COR</div>
+      <div class="cc-project-header__info">
+        <div class="cc-project-header__name" data-fa="CorBit With CEO" data-en="CorBit With CEO">CorBit With CEO</div>
+        <div class="cc-project-row__meta"><span class="cc-project-row__key" dir="ltr">COR</span> · <span data-fa="نرم‌افزار" data-en="Software">نرم‌افزار</span></div>
+        <div class="cc-project-header__lead">
+          <div class="cc-avatar cc-avatar--sm" style="width:20px;height:20px;font-size:9px;">مس</div>
+          <span data-fa="راهبر: مسعود نصیری‌نژاد" data-en="Lead: Masoud Nasirinezhad">راهبر: مسعود نصیری‌نژاد</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cc-tabs">
+      <button class="cc-tab cc-tab--active" data-fa="نمای کلی" data-en="Overview">نمای کلی</button>
+      <button class="cc-tab" data-fa="برد" data-en="Board" onclick="showPage('board')">برد</button>
+      <button class="cc-tab" data-fa="کارها" data-en="Issues">کارها</button>
+      <button class="cc-tab" data-fa="گفتگو" data-en="Chat">گفتگو</button>
+      <button class="cc-tab" data-fa="اعضا" data-en="Members">اعضا</button>
+      <button class="cc-tab" data-fa="فعالیت" data-en="Activity">فعالیت</button>
+    </div>
+
+    <div class="cc-stat-grid">
+      <div class="cc-stat"><div class="cc-stat__num">12</div><div class="cc-stat__lbl" data-fa="کار باز" data-en="Open">کار باز</div></div>
+      <div class="cc-stat cc-stat--warn"><div class="cc-stat__num">3</div><div class="cc-stat__lbl" data-fa="معوق" data-en="Overdue">معوق</div></div>
+      <div class="cc-stat cc-stat--info"><div class="cc-stat__num">5</div><div class="cc-stat__lbl" data-fa="به من" data-en="To me">به من</div></div>
+    </div>
+
+    <div class="cc-section-title" data-fa="اعضای پروژه" data-en="Project members">اعضای پروژه</div>
+    <div class="cc-list-item">
+      <div class="cc-avatar cc-avatar--sm">مس<span class="cc-avatar__presence cc-avatar__presence--online"></span></div>
+      <div class="cc-list-item__content">
+        <div class="cc-list-item__title" data-fa="مسعود نصیری‌نژاد" data-en="Masoud Nasirinezhad">مسعود نصیری‌نژاد</div>
+      </div>
+      <span class="cc-role-badge cc-role-badge--admin" data-fa="راهبر" data-en="Lead">راهبر</span>
+    </div>
+    <div class="cc-list-item">
+      <div class="cc-avatar cc-avatar--sm" style="background:#E3FCEF;color:#00875A;">سا<span class="cc-avatar__presence cc-avatar__presence--away"></span></div>
+      <div class="cc-list-item__content">
+        <div class="cc-list-item__title" data-fa="سارا احمدی" data-en="Sara Ahmadi">سارا احمدی</div>
+      </div>
+      <span class="cc-role-badge" data-fa="عضو" data-en="Member">عضو</span>
+    </div>
+  </div>
+</div>
+
+<!-- Board Gallery -->
+<div id="page-gallery" class="preview-page">
+  <div class="cc-screen">
+    <header class="cc-top-bar">
+      <div class="cc-top-bar__title" data-fa="گالری بردها" data-en="Board Gallery">گالری بردها</div>
+    </header>
+    <div class="cc-gallery-toolbar">
+      <input class="cc-input" data-placeholder-fa="جستجوی برد…" data-placeholder-en="Search boards…" placeholder="جستجوی برد…" style="min-height:36px;" />
+    </div>
+    <div class="cc-gallery-toolbar" style="border-bottom:1px solid var(--cc-color-divider);gap:8px;">
+      <button class="cc-filter-chip cc-filter-chip--active" data-fa="همه" data-en="All">همه</button>
+      <button class="cc-filter-chip">Scrum</button>
+      <button class="cc-filter-chip">Kanban</button>
+    </div>
+
+    <div class="cc-gallery">
+      <div class="cc-board-tile" onclick="showPage('board')">
+        <div class="cc-board-tile__preview">
+          <div class="cc-board-tile__col"><span class="cc-board-tile__chip"></span><span class="cc-board-tile__chip"></span></div>
+          <div class="cc-board-tile__col"><span class="cc-board-tile__chip"></span></div>
+          <div class="cc-board-tile__col"><span class="cc-board-tile__chip"></span><span class="cc-board-tile__chip"></span></div>
+        </div>
+        <div class="cc-board-tile__info">
+          <div class="cc-board-tile__name" data-fa="برد اصلی CorBit" data-en="CorBit Main Board">برد اصلی CorBit</div>
+          <div class="cc-board-tile__meta">
+            <span class="cc-board-tile__project" data-fa="CorBit With CEO" data-en="CorBit With CEO">CorBit With CEO</span>
+            <span class="cc-board-type cc-board-type--scrum">Scrum</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="cc-board-tile" onclick="showPage('board')">
+        <div class="cc-board-tile__preview">
+          <div class="cc-board-tile__col"><span class="cc-board-tile__chip"></span></div>
+          <div class="cc-board-tile__col"><span class="cc-board-tile__chip"></span><span class="cc-board-tile__chip"></span></div>
+          <div class="cc-board-tile__col"><span class="cc-board-tile__chip"></span></div>
+        </div>
+        <div class="cc-board-tile__info">
+          <div class="cc-board-tile__name" data-fa="برد فنی" data-en="Technical Board">برد فنی</div>
+          <div class="cc-board-tile__meta">
+            <span class="cc-board-tile__project">Technical</span>
+            <span class="cc-board-type cc-board-type--kanban">Kanban</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="cc-board-tile" onclick="showPage('board')">
+        <div class="cc-board-tile__preview">
+          <div class="cc-board-tile__col"><span class="cc-board-tile__chip"></span><span class="cc-board-tile__chip"></span></div>
+          <div class="cc-board-tile__col"><span class="cc-board-tile__chip"></span></div>
+          <div class="cc-board-tile__col"><span class="cc-board-tile__chip"></span></div>
+        </div>
+        <div class="cc-board-tile__info">
+          <div class="cc-board-tile__name" data-fa="اسپرینت موبایل" data-en="Mobile Sprint">اسپرینت موبایل</div>
+          <div class="cc-board-tile__meta">
+            <span class="cc-board-tile__project">Mobile App</span>
+            <span class="cc-board-type cc-board-type--scrum">Scrum</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Task View - see full HTML in repo; abbreviated marker for page-task and page-board -->
+<div id="page-task" class="preview-page">
+  <div class="cc-screen" style="padding-bottom:0;">
+    <header class="cc-top-bar">
+      <button class="cc-btn cc-btn--icon cc-btn--ghost" aria-label="Back">
+        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div class="cc-top-bar__title"><span dir="ltr">TEC-34</span></div>
+    </header>
+    <div class="cc-task-header">
+      <div class="cc-task-header__breadcrumb">
+        <div class="cc-task-header__project-icon">🛸</div>
+        <span class="cc-task-header__project-key">Technical</span>
+        <span class="cc-task-header__issue-key">/</span>
+        <span class="cc-task-header__issue-key" dir="ltr">TEC-34</span>
+      </div>
+      <h1 class="cc-task-header__title" data-fa="آیا RTL درست است؟" data-en="Is RTL correct?">آیا RTL درست است؟</h1>
+    </div>
+    <div class="cc-task-toolbar">
+      <button class="cc-task-toolbar__btn"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg><span data-fa="ویرایش" data-en="Edit">ویرایش</span></button>
+      <button class="cc-task-toolbar__btn"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span data-fa="افزودن نظر" data-en="Add comment">افزودن نظر</span></button>
+      <button class="cc-task-toolbar__btn"><span data-fa="واگذاری" data-en="Assign">واگذاری</span></button>
+      <button class="cc-task-toolbar__btn"><span data-fa="بیشتر" data-en="More">بیشتر</span><svg viewBox="0 0 24 24" style="width:12px;height:12px;"><polyline points="6 9 12 15 18 9"/></svg></button>
+      <button class="cc-task-toolbar__status"><span data-fa="فورس ماژور" data-en="Force Majeure">فورس ماژور</span><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></button>
+    </div>
+    <div class="cc-task-section">
+      <button class="cc-task-section__header" onclick="toggleSection(this)"><svg class="cc-task-section__chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg><span data-fa="جزئیات" data-en="Details">جزئیات</span></button>
+      <div class="cc-task-section__body">
+        <div class="cc-field-grid">
+          <div class="cc-field-row"><div class="cc-field-row__label" data-fa="نوع" data-en="Type">نوع</div><div class="cc-field-row__value"><span class="cc-field-type"><span class="cc-field-type__icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span>Task</span></div></div>
+          <div class="cc-field-row"><div class="cc-field-row__label" data-fa="اولویت" data-en="Priority">اولویت</div><div class="cc-field-row__value"><span class="cc-field-type"><span class="cc-field-priority__icon"><span></span><span></span><span></span></span>Medium</span></div></div>
+          <div class="cc-field-row"><div class="cc-field-row__label" data-fa="برچسب‌ها" data-en="Labels">برچسب‌ها</div><div class="cc-field-row__value cc-field-row__value--empty">None</div></div>
+          <div class="cc-field-row" data-field-id="customfield_10903"><div class="cc-field-row__label" data-fa="نوع تسک (طبق دستورالعمل)" data-en="Task Type (per instructions)">نوع تسک (طبق دستورالعمل)</div><div class="cc-field-row__value"><span class="cc-field-pill cc-field-pill--critical"><span class="cc-field-pill__dot"></span><span data-fa="بحرانی" data-en="Critical">بحرانی</span></span></div></div>
+          <div class="cc-field-row"><div class="cc-field-row__label" data-fa="سطح پیگیری" data-en="Follow-up Level">سطح پیگیری</div><div class="cc-field-row__value" data-fa="عادی" data-en="Normal">عادی</div></div>
+          <div class="cc-field-row"><div class="cc-field-row__label" data-fa="کارفرما" data-en="Employer">کارفرما</div><div class="cc-field-row__value" data-fa="سازمان بنادر و دریانوردی بوشهر" data-en="Bushehr Ports and Maritime Organization">سازمان بنادر و دریانوردی بوشهر</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="cc-task-section">
+      <button class="cc-task-section__header" onclick="toggleSection(this)"><svg class="cc-task-section__chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg><span data-fa="افراد" data-en="People">افراد</span></button>
+      <div class="cc-task-section__body">
+        <div class="cc-field-row"><div class="cc-field-row__label" data-fa="مسئول" data-en="Assignee">مسئول</div><div class="cc-field-row__value"><span class="cc-user-field"><div class="cc-avatar cc-avatar--sm">MN</div><span>Masoud Nasirinezhad</span><span class="cc-user-field__info">i</span></span></div></div>
+        <div class="cc-field-row"><div class="cc-field-row__label" data-fa="گزارش‌دهنده" data-en="Reporter">گزارش‌دهنده</div><div class="cc-field-row__value"><span class="cc-user-field"><div class="cc-avatar cc-avatar--sm">MN</div><span>Masoud Nasirinezhad</span><span class="cc-user-field__info">i</span></span></div></div>
+      </div>
+    </div>
+    <div class="cc-task-section">
+      <button class="cc-task-section__header" onclick="toggleSection(this)"><svg class="cc-task-section__chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg><span data-fa="توضیحات" data-en="Description">توضیحات</span></button>
+      <div class="cc-task-section__body"><div class="cc-task-description" data-fa="برای افزودن توضیحات کلیک کنید" data-en="Click to add description">برای افزودن توضیحات کلیک کنید</div></div>
+    </div>
+    <div class="cc-task-section">
+      <button class="cc-task-section__header" onclick="toggleSection(this)"><svg class="cc-task-section__chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg><span data-fa="پیوست‌ها" data-en="Attachments">پیوست‌ها</span></button>
+      <div class="cc-task-section__body"><div class="cc-attachments-zone"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span data-fa="فایل را اینجا رها کنید" data-en="Drop files here">فایل را اینجا رها کنید</span></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="page-board" class="preview-page">
+  <div style="max-width:100%;">
+    <header class="cc-top-bar">
+      <button class="cc-btn cc-btn--icon cc-btn--ghost" aria-label="Back"><svg class="nav-icon" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
+      <div class="cc-top-bar__title" data-fa="بورد CorBit With CEO" data-en="CorBit With CEO Board">بورد CorBit With CEO</div>
+      <button class="cc-btn cc-btn--sm cc-btn--secondary" data-fa="لیست" data-en="List">لیست</button>
+    </header>
+    <div class="cc-board">
+      <div class="cc-board-column">
+        <div class="cc-board-column__header"><span class="cc-board-column__title" data-fa="برای انجام" data-en="To Do">برای انجام</span><span class="cc-board-column__count">2</span></div>
+        <div class="cc-board-column__cards">
+          <div class="cc-board-card">
+            <div class="cc-board-card__labels"><span class="cc-board-card__label-bar" style="background:#00875A"></span></div>
+            <div class="cc-board-card__summary" data-fa="پیگیری اقدامات فناوری پس از جلسه با وزارت ارتباطات" data-en="Follow-up on technology actions">پیگیری اقدامات فناوری پس از جلسه با وزارت ارتباطات</div>
+            <div class="cc-board-card__footer"><span class="cc-board-card__key">COR-5</span><div class="cc-board-card__meta"><span class="cc-field-pill cc-field-pill--development" style="font-size:10px;padding:1px 6px;"><span class="cc-field-pill__dot" style="width:6px;height:6px;"></span><span data-fa="توسعه‌ای" data-en="Dev">توسعه‌ای</span></span><div class="cc-avatar cc-board-card__avatar">MN</div></div></div>
+          </div>
+        </div>
+        <button class="cc-board-add-card" data-fa="+ افزودن کارت" data-en="+ Add a card">+ افزودن کارت</button>
+      </div>
+      <div class="cc-board-column">
+        <div class="cc-board-column__header"><span class="cc-board-column__title" data-fa="در حال انجام" data-en="In Progress">در حال انجام</span><span class="cc-board-column__count">1</span></div>
+        <div class="cc-board-column__cards">
+          <div class="cc-board-card">
+            <div class="cc-board-card__labels"><span class="cc-board-card__label-bar" style="background:#DE350B"></span></div>
+            <div class="cc-board-card__summary" data-fa="آیا RTL درست است؟" data-en="Is RTL correct?">آیا RTL درست است؟</div>
+            <div class="cc-board-card__footer"><span class="cc-board-card__key">TEC-34</span><div class="cc-board-card__meta"><span class="cc-field-pill cc-field-pill--critical" style="font-size:10px;padding:1px 6px;"><span class="cc-field-pill__dot" style="width:6px;height:6px;"></span><span data-fa="بحرانی" data-en="Critical">بحرانی</span></span><span class="cc-board-card__due" data-fa="معوق" data-en="Overdue">معوق</span><div class="cc-avatar cc-board-card__avatar">MN</div></div></div>
+          </div>
+        </div>
+        <button class="cc-board-add-card" data-fa="+ افزودن کارت" data-en="+ Add a card">+ افزودن کارت</button>
+      </div>
+      <div class="cc-board-column">
+        <div class="cc-board-column__header"><span class="cc-board-column__title" data-fa="انجام‌شده" data-en="Done">انجام‌شده</span><span class="cc-board-column__count">3</span></div>
+        <div class="cc-board-column__cards">
+          <div class="cc-board-card"><div class="cc-board-card__summary" data-fa="اتصال به Mobile API" data-en="Connect to Mobile API">اتصال به Mobile API</div><div class="cc-board-card__footer"><span class="cc-board-card__key">MOB-38</span><div class="cc-board-card__meta"><div class="cc-avatar cc-board-card__avatar">سا</div></div></div></div>
+        </div>
+        <button class="cc-board-add-card" data-fa="+ افزودن کارت" data-en="+ Add a card">+ افزودن کارت</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let locale = 'fa';
+
+  function setLocale(loc) {
+    locale = loc;
+    const html = document.documentElement;
+    html.lang = loc === 'fa' ? 'fa' : 'en';
+    html.dir = loc === 'fa' ? 'rtl' : 'ltr';
+    document.getElementById('btn-fa').classList.toggle('active', loc === 'fa');
+    document.getElementById('btn-en').classList.toggle('active', loc === 'en');
+
+    document.querySelectorAll('[data-fa]').forEach(el => {
+      el.textContent = el.getAttribute(loc === 'fa' ? 'data-fa' : 'data-en');
+    });
+    document.querySelectorAll('[data-placeholder-fa]').forEach(el => {
+      el.placeholder = el.getAttribute(loc === 'fa' ? 'data-placeholder-fa' : 'data-placeholder-en');
+    });
+  }
+
+  function showPage(name) {
+    document.querySelectorAll('.preview-page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+  }
+
+  function toggleSection(headerBtn) {
+    headerBtn.closest('.cc-task-section').classList.toggle('cc-task-section--collapsed');
+  }
+
+  function toggleTheme() {
+    const html = document.documentElement;
+    const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    const btn = document.getElementById('btn-theme');
+    btn.textContent = next === 'dark' ? '☀️ Light' : '🌙 Dark';
+  }
+</script>
+</body>
+</html>

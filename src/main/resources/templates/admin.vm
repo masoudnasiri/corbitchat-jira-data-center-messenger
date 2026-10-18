@@ -15,9 +15,16 @@
     <nav class="jim-admin-tabs" role="tablist" aria-label="Admin sections">
         <button type="button" class="jim-admin-tab is-active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
         <button type="button" class="jim-admin-tab" data-tab="access" role="tab" aria-selected="false">Access Control</button>
+        <button type="button" class="jim-admin-tab" data-tab="mobile" role="tab" aria-selected="false">Mobile Access</button>
         <button type="button" class="jim-admin-tab" data-tab="notifications" role="tab" aria-selected="false">Notifications</button>
+        <button type="button" class="jim-admin-tab" data-tab="localization" role="tab" aria-selected="false">Localization</button>
+        <button type="button" class="jim-admin-tab" data-tab="reportschedule" role="tab" aria-selected="false">Report Schedule</button>
+        <button type="button" class="jim-admin-tab" data-tab="approvalfields" role="tab" aria-selected="false">Approval Fields</button>
         <button type="button" class="jim-admin-tab" data-tab="attachments" role="tab" aria-selected="false">Attachments</button>
+        <button type="button" class="jim-admin-tab" data-tab="branding" role="tab" aria-selected="false">Branding</button>
+        <button type="button" class="jim-admin-tab" data-tab="workspaceagent" role="tab" aria-selected="false">Workspace Agent</button>
         <button type="button" class="jim-admin-tab" data-tab="diagnostics" role="tab" aria-selected="false">Diagnostics</button>
+        <button type="button" class="jim-admin-tab" data-tab="license" role="tab" aria-selected="false">License</button>
         <button type="button" class="jim-admin-tab" data-tab="help" role="tab" aria-selected="false">Help</button>
     </nav>
 
@@ -32,6 +39,7 @@
             <div class="jim-admin-card"><div class="jim-admin-card-label">Access policies</div><div class="jim-admin-card-value" data-overview="policyCount">...</div></div>
             <div class="jim-admin-card"><div class="jim-admin-card-label">Push subscriptions</div><div class="jim-admin-card-value" data-overview="pushSubscriptionCount">...</div></div>
             <div class="jim-admin-card"><div class="jim-admin-card-label">Plugin version</div><div class="jim-admin-card-value" data-overview="pluginVersion">...</div></div>
+            <div class="jim-admin-card"><div class="jim-admin-card-label">License</div><div class="jim-admin-card-value" id="jim-overview-license">...</div></div>
         </div>
         <h3>Recent admin changes</h3>
         <div id="jim-admin-audit-list" class="jim-admin-audit-list">Loading...</div>
@@ -79,6 +87,58 @@
         </div>
     </section>
 
+    <!-- ===== Mobile Access (Sprint 04G) ===== -->
+    <section class="jim-admin-panel" data-panel="mobile">
+        <h3>CorbitHub mobile feature access</h3>
+        <p class="jim-admin-hint">
+            Restrict which sections of the <strong>CorbitHub mobile app</strong> a Jira user or group can use.
+            This is a product-level gate layered on top of Jira permissions &mdash; it never grants access to
+            Jira data a user could not otherwise see. <strong>With no rules, every user gets all mobile
+            features</strong> (fully backward compatible). Jira username/password &amp; PAT login, and the web
+            chat, are unaffected.
+        </p>
+        <p class="jim-admin-hint">
+            <strong>Precedence:</strong> only enabled rules count. A <code>USER</code> rule always wins over a
+            <code>GROUP</code> rule. Among rules of the same type the highest priority wins; ties are broken by
+            the oldest rule. Exactly one rule ever applies to a user &mdash; feature sets are never merged.
+        </p>
+
+        <table class="aui jim-admin-policy-table" id="jim-mobile-rule-table">
+            <thead>
+            <tr>
+                <th>Subject</th><th>Allowed mobile features</th>
+                <th>Enabled</th><th>Priority</th><th></th>
+            </tr>
+            </thead>
+            <tbody id="jim-mobile-rule-rows">
+            <tr><td colspan="5">Loading...</td></tr>
+            </tbody>
+        </table>
+
+        <h4 id="jim-mobile-form-title">Add mobile access rule</h4>
+        <div class="jim-admin-policy-form" id="jim-mobile-form">
+            <select id="jim-mob-subject-type"><option value="USER">USER</option><option value="GROUP">GROUP</option></select>
+            <input id="jim-mob-subject-value" type="text" placeholder="username or group name"/>
+            <input id="jim-mob-priority" type="number" value="0" title="Priority"/>
+            <button id="jim-mob-add" type="button" class="aui-button">Add rule</button>
+            <button id="jim-mob-cancel-edit" type="button" class="aui-button aui-button-link" hidden>Cancel</button>
+        </div>
+        <div class="jim-admin-mobile-features" id="jim-mob-features">
+            <span class="jim-admin-mobile-features-label">Allowed features:</span>
+            <label><input type="checkbox" class="jim-mob-feature" value="dashboard" checked/> Dashboard</label>
+            <label><input type="checkbox" class="jim-mob-feature" value="chat" checked/> Chat</label>
+            <label><input type="checkbox" class="jim-mob-feature" value="boards" checked/> Boards</label>
+            <label><input type="checkbox" class="jim-mob-feature" value="projects" checked/> Projects</label>
+            <label><input type="checkbox" class="jim-mob-feature" value="tasks" checked/> Tasks</label>
+            <label><input type="checkbox" class="jim-mob-feature" value="issueDetail" checked/> Issue detail</label>
+        </div>
+        <p class="jim-admin-hint">
+            Tip: to give a group <em>Chat only</em>, choose <code>GROUP</code>, pick the group, tick only
+            <strong>Chat</strong>, and add the rule. Profile / Settings / About / Logout always stay available in
+            the app so restricted users can still change settings or sign out.
+        </p>
+    </section>
+
     <!-- ===== Notifications ===== -->
     <section class="jim-admin-panel" data-panel="notifications">
         <h3>Notification settings</h3>
@@ -100,19 +160,442 @@
         </div>
     </section>
 
+    <!-- ===== Localization ===== -->
+    <section class="jim-admin-panel" data-panel="localization">
+        <h3>Jira Chat Localization</h3>
+        <p class="jim-admin-hint">
+            Global defaults for the Jira web chat only. Individual users can override these in
+            their own chat Settings. This does not change Jira's system language or any stored dates.
+        </p>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check"><input type="checkbox" id="jim-set-webPersianUiDefault"/> Enable Persian UI for Jira Chat by default</label>
+            <label class="jim-admin-check"><input type="checkbox" id="jim-set-webJalaliDatesDefault"/> Enable Jalali/Shamsi dates in Jira Chat by default</label>
+            <div class="jim-admin-actions">
+                <button id="jim-save-localization" type="button" class="aui-button aui-button-primary">Save localization settings</button>
+            </div>
+        </div>
+
+        <h3 style="margin-top:24px;">Jira Date Display / نمایش تاریخ‌های Jira</h3>
+        <p class="jim-admin-hint">
+            Controls how dates are <strong>displayed</strong> across the Jira web UI (issue view,
+            issue navigator, boards, dashboards). This is display-only:
+        </p>
+        <ul class="jim-admin-hint" style="margin-top:0;">
+            <li>It does <strong>not</strong> change any stored Jira date, issue field or custom field value.</li>
+            <li>It does <strong>not</strong> affect JQL, the REST API, exports (CSV/Excel/PDF) or emails.</li>
+            <li>It does <strong>not</strong> change date pickers or what you type into date fields.</li>
+            <li>It can be turned off instantly (a page reload applies the change).</li>
+        </ul>
+        <p class="jim-admin-hint" dir="rtl" lang="fa">
+            نمایش تاریخ‌های Jira به صورت شمسی فقط در محیط وب انجام می‌شود و مقدار واقعی تاریخ‌ها در Jira تغییر نمی‌کند.
+        </p>
+        <div class="jim-admin-field">
+            <label for="jim-set-jiraWideCalendar">Jira-wide date display</label>
+            <select id="jim-set-jiraWideCalendar" class="select">
+                <option value="gregorian">Gregorian / میلادی</option>
+                <option value="jalali">Jalali / Shamsi / شمسی</option>
+            </select>
+            <div class="jim-admin-actions">
+                <button id="jim-save-jira-dates" type="button" class="aui-button aui-button-primary">Save Jira date display</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== Report Schedule / تنظیمات گزارش‌دهی ===== -->
+    <section class="jim-admin-panel" data-panel="reportschedule">
+        <h3>Report Schedule / تنظیمات گزارش‌دهی</h3>
+        <p class="jim-admin-hint">
+            Configure the issue report-compliance workflow. Reports are ordinary Jira comments
+            that contain the report marker; the plugin computes how many valid scheduled reports
+            were submitted per issue based on the issue's follow-up level and the schedule below.
+        </p>
+        <div id="jim-report-status" class="jim-admin-hint"></div>
+
+        <div class="jim-admin-field">
+            <label class="jim-admin-check"><input type="checkbox" id="jim-set-reportComplianceEnabled"/> Enable report compliance feature</label>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportMarker">Report marker / hashtag</label>
+            <input type="text" id="jim-set-reportMarker" class="text" style="max-width:220px;" placeholder="#گزارش" dir="auto"/>
+        </div>
+        <div class="jim-admin-field">
+            <label>Global reporting window (HH:mm)</label>
+            <span style="display:inline-flex; gap:8px; align-items:center;">
+                <input type="text" id="jim-set-reportWindowStart" class="text" style="max-width:90px;" placeholder="08:00"/>
+                <span>&rarr;</span>
+                <input type="text" id="jim-set-reportWindowEnd" class="text" style="max-width:90px;" placeholder="21:00"/>
+            </span>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportTimezone">Reporting timezone override</label>
+            <input type="text" id="jim-set-reportTimezone" class="text" style="max-width:160px;" placeholder="GMT+03:30"/>
+            <p class="jim-admin-hint">
+                Leave blank to use each user's Jira timezone. Set a fixed offset (e.g. <code>GMT+03:30</code>)
+                if the server's timezone data is stale (e.g. abolished Iran DST), so a report's window
+                validity matches the local time shown to the user.
+            </p>
+        </div>
+
+        <h3 style="margin-top:20px;">Follow-up level intervals</h3>
+        <p class="jim-admin-hint">
+            Levels are read dynamically from the configured Follow-up level Jira custom field options below.
+            Add a new option to that Jira field and it appears here after reload. Leave a level's interval at 0
+            to treat that option as "not configured" (no required/missed reports). Per-level start/end are
+            optional overrides; leave blank to use the global window above.
+            <span dir="rtl" lang="fa">سطوح به‌صورت پویا از گزینه‌های فیلد «سطح پیگیری» خوانده می‌شوند. افزودن گزینهٔ جدید در Jira پس از بارگذاری مجدد این جدول را به‌روز می‌کند. مقدار بازه ۰ یعنی «تنظیم‌نشده».</span>
+        </p>
+        <p class="jim-admin-hint" dir="rtl" lang="fa">
+            واحد «روز» یعنی «روز کاری» بر اساس تنظیمات روزهای کاری Jira (تعطیلات و روزهای غیرکاری شمرده نمی‌شوند)؛ نه ۲۴ ساعت و نه روز تقویمی. مثال: بازه ۷ روز یعنی یک گزارش در هر ۷ روز کاری.
+            <span dir="ltr" lang="en">Days = working days per Jira working-day settings (holidays/non-working days are skipped), not 24h/calendar days. e.g. interval 7 days = one report per 7 working days.</span>
+        </p>
+        <div id="jim-report-levels-warning" class="jim-admin-hint" dir="rtl" lang="fa" style="display:none;color:#a54;margin-bottom:8px;"></div>
+        <table class="aui" style="max-width:960px;">
+            <thead>
+                <tr>
+                    <th>Level / سطح</th>
+                    <th>Interval</th>
+                    <th>Unit</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Active until / فعال تا</th>
+                    <th>Count mode / محاسبه تعداد</th>
+                    <th>Min (fixed) / حداقل</th>
+                </tr>
+            </thead>
+            <tbody id="jim-report-levels-body">
+                <tr><td colspan="8" class="jim-admin-hint">در حال بارگذاری سطوح… / loading levels…</td></tr>
+            </tbody>
+        </table>
+        <p class="jim-admin-hint" id="jim-report-levels-orphans" dir="rtl" lang="fa" style="display:none;"></p>
+
+        <h3 style="margin-top:20px;">Custom field mapping</h3>
+        <p class="jim-admin-hint">
+            Jira field ids for the report workflow. Defaults are the production field ids;
+            override them on environments where the ids differ. The feature disables gracefully
+            if any field is missing on this instance.
+        </p>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportLevelFieldId">Follow-up level field (select)</label>
+            <input type="text" id="jim-set-reportLevelFieldId" class="text" style="max-width:200px;" placeholder="customfield_10802"/>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportValidCountFieldId">Valid submitted-count field (number)</label>
+            <input type="text" id="jim-set-reportValidCountFieldId" class="text" style="max-width:200px;" placeholder="customfield_11801"/>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportRequiredCountFieldId">Required-count field (number)</label>
+            <input type="text" id="jim-set-reportRequiredCountFieldId" class="text" style="max-width:200px;" placeholder="customfield_11900"/>
+        </div>
+
+        <h3 style="margin-top:20px;">Submission policy</h3>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check">
+                <input type="checkbox" id="jim-set-reportAllowWithoutConfig"/>
+                Allow report submission when follow-up level/report fields are not configured
+            </label>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">
+                اجازه ثبت گزارش حتی در صورت نبود سطح پیگیری یا تنظیم نبودن فیلدها. گزارش به‌صورت کامنت با
+                #گزارش ثبت می‌شود ولی به‌عنوان گزارش معتبر زمان‌بندی‌شده شمرده نمی‌شود.
+            </p>
+        </div>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check">
+                <input type="checkbox" id="jim-set-reportReopenReactivation"/>
+                Reactivate reporting when a closed issue is reopened (due date extended / status reopened)
+            </label>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">
+                در حالت پیش‌فرض (خاموش)، تسکی که گزارش‌دهی آن بسته شده باشد بسته می‌ماند. با فعال‌کردن این گزینه،
+                در صورت بازگشایی تسک یا تمدید مهلت، گزارش‌دهی دوباره فعال می‌شود.
+            </p>
+        </div>
+
+        <h3 style="margin-top:20px;" dir="rtl" lang="fa">دامنهٔ اعمال شمارندهٔ گزارش‌ها / Report Enforcement Scope</h3>
+        <p class="jim-admin-hint" dir="rtl" lang="fa">
+            این سیاست فقط دامنهٔ محاسبهٔ شمارنده‌ها، گزارش‌های ازدست‌رفته و وضعیت تأخیر را محدود می‌کند.
+            ثبت گزارش و نمایش گزارش‌های قبلی برای تسک‌های خارج از دامنه همچنان مجاز است. گزارش‌های خارج از دامنه
+            در امتیازدهی و محاسبهٔ گزارش‌های ازدست‌رفته لحاظ نمی‌شوند. در حالت پیش‌فرض (غیرفعال) رفتار موتور گزارش
+            تغییری نمی‌کند و این سیاست مقادیر ذخیره‌شده، JQL یا فیلدهای Jira را تغییر نمی‌دهد.
+        </p>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check" dir="rtl" lang="fa">
+                <input type="checkbox" id="jim-set-reportApplicabilityEnabled"/>
+                فعال‌سازی سیاست محدوده اعمال گزارش‌دهی
+            </label>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportEffectiveFromDate" dir="rtl" lang="fa">تاریخ شروع اعمال شمارندهٔ گزارش‌ها (میلادی، YYYY-MM-DD)</label>
+            <input type="date" id="jim-set-reportEffectiveFromDate" class="text" style="max-width:200px;"/>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">در منطقهٔ زمانی گزارش تفسیر می‌شود. خالی = بدون محدودیت تاریخ برای شمارنده‌ها. شمارش گزارش‌های لازم/ازدست‌رفته فقط از این تاریخ آغاز می‌شود؛ گزارش‌های قبل از این تاریخ به‌عنوان تاریخچه نمایش داده می‌شوند اما در شمارنده لحاظ نمی‌شوند.</p>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportApplicabilityDateMode" dir="rtl" lang="fa">مبنای تاریخ</label>
+            <select id="jim-set-reportApplicabilityDateMode" class="select" style="max-width:420px;">
+                <option value="created_on_or_after">تاریخ ایجاد تسک</option>
+                <option value="due_on_or_after">تاریخ سررسید</option>
+                <option value="created_and_due_on_or_after">تاریخ ایجاد و سررسید</option>
+                <option value="created_or_due_on_or_after">تاریخ ایجاد یا سررسید</option>
+                <option value="fixed_counter_start">تاریخ ثابت شروع شمارش برای همه تسک‌ها</option>
+            </select>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">در حالت «تاریخ ثابت شروع شمارش»، تاریخ ایجاد یا سررسید برای تعیین دامنهٔ اعمال سیاست استفاده نمی‌شود. شمارندهٔ گزارش‌های الزامی و گزارش‌های ازدست‌رفته برای همهٔ تسک‌های مشمول، فقط از تاریخ مشخص‌شده به بعد محاسبه می‌شود. ثبت و نمایش گزارش‌ها همچنان برای همهٔ تسک‌های مجاز فعال است.</p>
+        </div>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check" dir="rtl" lang="fa">
+                <input type="checkbox" id="jim-set-reportApplicabilityNonDoneOnly"/>
+                فقط تسک‌هایی که Done نشده‌اند (statusCategory != Done)
+            </label>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportApplicabilityMissingDuePolicy" dir="rtl" lang="fa">رفتار تسک‌های بدون سررسید</label>
+            <select id="jim-set-reportApplicabilityMissingDuePolicy" class="select" style="max-width:420px;">
+                <option value="exclude_missing_due">تسک‌های بدون سررسید را خارج از محدوده بگذار</option>
+                <option value="include_if_created_matches">اگر تاریخ ایجاد معتبر است، وارد کن</option>
+            </select>
+        </div>
+        <div class="jim-admin-field">
+            <button id="jim-report-applicability-preview" type="button" class="aui-button" dir="rtl" lang="fa">
+                نمایش تعداد تسک‌های مشمول / خارج از محدوده (فقط خواندنی)
+            </button>
+            <div id="jim-report-applicability-impact" class="jim-admin-hint" style="margin-top:8px;white-space:pre-wrap;"></div>
+        </div>
+
+        <h3 style="margin-top:20px;" dir="rtl" lang="fa">تقویم کاری گزارش‌ها</h3>
+        <p class="jim-admin-hint" dir="rtl" lang="fa">این تقویم فقط برای محاسبه شمارنده گزارش‌های الزامی، گزارش‌های ازدست‌رفته و وضعیت تأخیر استفاده می‌شود. ثبت گزارش و نمایش گزارش‌ها محدود نمی‌شود.</p>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportWorkingCalendarSource" dir="rtl" lang="fa">منبع تقویم کاری</label>
+            <select id="jim-set-reportWorkingCalendarSource" class="select" style="max-width:520px;">
+                <option value="jira_board_first">خواندن از تنظیمات Working Days برد Jira</option>
+                <option value="plugin_calendar_plus_board_holidays">برد Jira + تعطیلات افزونه</option>
+                <option value="plugin_calendar_only">تقویم کاری افزونه</option>
+                <option value="time_tracking_fallback">فقط fallback ساده (Time Tracking)</option>
+            </select>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">پیشنهادشده: «خواندن از برد Jira». اگر برد قابل تشخیص نباشد، به‌صورت امن به تقویم افزونه و سپس fallback ساده بازمی‌گردد.</p>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportDefaultBoardId" dir="rtl" lang="fa">شناسه برد پیش‌فرض (Board / rapidView id)</label>
+            <input type="number" id="jim-set-reportDefaultBoardId" class="text" style="max-width:200px;" min="1" placeholder="مثلاً 6"/>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">وقتی پروژه به برد مشخصی نگاشت نشده باشد، از این برد برای خواندن روزهای کاری/تعطیل استفاده می‌شود. خالی = بدون برد پیش‌فرض.</p>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportProjectBoardMapping" dir="rtl" lang="fa">نگاشت پروژه به برد</label>
+            <input type="text" id="jim-set-reportProjectBoardMapping" class="text" style="max-width:520px;" placeholder="COR=6,MIT=2"/>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">فرمت: <code>PROJKEY=boardId</code> با کاما جدا شود. برای پروژه‌هایی که چند برد دارند مفید است.</p>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportWorkingDaysCsv" dir="rtl" lang="fa">روزهای کاری افزونه (شماره روز هفته 1=یکشنبه .. 7=شنبه)</label>
+            <input type="text" id="jim-set-reportWorkingDaysCsv" class="text" style="max-width:320px;" placeholder="مثلاً 1,2,3,4,5"/>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">شنبه=7، یکشنبه=1، دوشنبه=2، سه‌شنبه=3، چهارشنبه=4، پنجشنبه=5، جمعه=6. خالی = از Time Tracking اشتقاق می‌شود.</p>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-reportHolidaysCsv" dir="rtl" lang="fa">تعطیلات / روزهای غیرکاری افزونه</label>
+            <input type="text" id="jim-set-reportHolidaysCsv" class="text" style="max-width:520px;" placeholder="2026-03-20,2026-03-21"/>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">تاریخ‌های زیر به‌عنوان روز غیرکاری در محاسبه شمارنده گزارش لحاظ می‌شوند. فرمت ذخیره‌سازی میلادی و به‌صورت YYYY-MM-DD است.</p>
+        </div>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check" dir="rtl" lang="fa">
+                <input type="checkbox" id="jim-set-reportWorkingDaysEnabled"/>
+                فعال بودن شمارش فقط بر اساس روزهای کاری
+            </label>
+        </div>
+        <div class="jim-admin-field">
+            <button id="jim-report-calendar-diag" type="button" class="aui-button" dir="rtl" lang="fa">
+                نمایش تشخیص تقویم کاری (فقط خواندنی)
+            </button>
+            <div id="jim-report-calendar-diag-out" class="jim-admin-hint" style="margin-top:8px;white-space:pre-wrap;"></div>
+        </div>
+
+        <h3 style="margin-top:20px;">Report Generated Field Mapping / نگاشت اطلاعات تولیدی گزارش به فیلدهای Jira</h3>
+        <p class="jim-admin-hint">
+            Optionally map generated report metrics to Jira custom fields so you can build filters,
+            dashboards, gadgets and exports. Leave a metric blank to disable it. Enter a
+            <code>customfield_xxxxx</code> id; the field type must be compatible with the metric type
+            (validated on save). Missing fields on this environment are skipped safely at write time.
+        </p>
+        <table class="aui" style="max-width:820px;">
+            <thead>
+                <tr>
+                    <th>Metric</th>
+                    <th>فارسی</th>
+                    <th>Type</th>
+                    <th>توضیح / Description</th>
+                    <th>Mapped field (customfield_id) / Disabled = blank</th>
+                </tr>
+            </thead>
+            <tbody id="jim-report-metric-rows"></tbody>
+        </table>
+
+        <div class="jim-admin-actions">
+            <button id="jim-save-report-schedule" type="button" class="aui-button aui-button-primary">Save report schedule</button>
+        </div>
+    </section>
+
+    <!-- ===== Schedule-Approval Fields (environment-specific mapping + provisioning) ===== -->
+    <section class="jim-admin-panel" data-panel="approvalfields">
+        <h3>Schedule-Approval Fields / فیلدهای تایید تاریخ</h3>
+        <p class="jim-admin-hint">
+            The schedule-approval workflow (proposed completion date &rarr; approve/reject) needs five Jira
+            custom fields. Historically their ids were hardcoded to the <strong>production</strong> instance, so
+            the workflow could not work on this environment if the ids differ or the fields are missing.
+        </p>
+        <p class="jim-admin-hint">
+            Each logical field resolves as: <strong>configured id</strong> (below) &rarr;
+            <strong>production fallback id</strong> &rarr; <em>not configured</em>. So production keeps working with
+            no configuration, while here you can either <strong>map</strong> an existing field or
+            <strong>provision</strong> the missing ones. Provisioning is admin-only, cluster-safe, idempotent and
+            audited &mdash; it never runs on startup.
+        </p>
+        <div id="jim-approval-status" class="jim-admin-hint"></div>
+
+        <table class="aui" style="max-width:1080px;">
+            <thead>
+                <tr>
+                    <th>Field / فیلد</th>
+                    <th>Logical key</th>
+                    <th>Configured field id</th>
+                    <th>Effective</th>
+                    <th>Exists</th>
+                    <th>Type</th>
+                    <th>Options</th>
+                    <th>Context</th>
+                    <th>Screen</th>
+                    <th>Fallback?</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="jim-approval-diag-rows">
+                <tr><td colspan="11">Loading&hellip;</td></tr>
+            </tbody>
+        </table>
+
+        <h3 style="margin-top:20px;">Provision missing fields</h3>
+        <p class="jim-admin-hint">
+            Creates any field that neither the configured id nor the production fallback can resolve. Adopts an
+            existing correctly-typed, same-named field instead of duplicating. Creates the
+            <code>Pending / Approved / Rejected</code> options for the status field. Stores the resulting ids here.
+            Running it again is safe (idempotent).
+        </p>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check">
+                <input type="checkbox" id="jim-approval-add-screens"/>
+                Also add created/adopted fields to Jira screens
+            </label>
+            <label class="jim-admin-label" for="jim-approval-screen-ids">Screen ids (comma separated; blank = Default Screen, id 1)</label>
+            <input type="text" id="jim-approval-screen-ids" class="text" style="max-width:260px;" placeholder="1"/>
+            <p class="jim-admin-hint" dir="rtl" lang="fa">
+                فیلدهای گمشده به‌صورت ایمن و فقط با اقدام مدیر ساخته می‌شوند؛ اجرای دوباره باعث تکرار نمی‌شود.
+                تغییری در پیکربندی تولید (production) بدون تایید صریح انجام نمی‌شود.
+            </p>
+            <div class="jim-admin-actions">
+                <button id="jim-approval-refresh" type="button" class="aui-button">Refresh diagnostics</button>
+                <button id="jim-approval-provision" type="button" class="aui-button aui-button-primary">Provision missing fields</button>
+            </div>
+        </div>
+    </section>
+
     <!-- ===== Attachments ===== -->
     <section class="jim-admin-panel" data-panel="attachments">
         <h3>Attachment settings</h3>
         <div class="jim-admin-field">
             <label class="jim-admin-check"><input type="checkbox" id="jim-set-attachmentsEnabled"/> Allow file and voice attachments</label>
-            <label class="jim-admin-label" for="jim-set-maxAttachmentSizeMb">Maximum attachment size (MB, 1&#8211;100)</label>
-            <input type="number" id="jim-set-maxAttachmentSizeMb" min="1" max="100"/>
+            <label class="jim-admin-label" for="jim-set-maxAttachmentSizeMb">Maximum attachment size (MB, 1&#8211;200; default 150)</label>
+            <input type="number" id="jim-set-maxAttachmentSizeMb" min="1" max="200"/>
             <label class="jim-admin-label" for="jim-set-allowedExtensions">Allowed extensions (comma separated, e.g. <code>png,jpg,pdf</code>; empty = built-in safe list)</label>
             <input type="text" id="jim-set-allowedExtensions" placeholder="png,jpg,pdf"/>
             <label class="jim-admin-check"><input type="checkbox" id="jim-set-imagePreviewEnabled"/> Show inline image previews in chat</label>
             <div class="jim-admin-actions">
                 <button id="jim-save-attachments" type="button" class="aui-button aui-button-primary">Save attachment settings</button>
             </div>
+        </div>
+    </section>
+
+    <!-- ===== Branding ===== -->
+    <section class="jim-admin-panel" data-panel="branding">
+        <h3>Branding</h3>
+        <p class="jim-admin-hint">Customise the chat title and logo shown in the sidebar header. Leave a field blank to fall back to the built-in CorbitChat default.</p>
+        <div class="jim-admin-field">
+            <label class="jim-admin-label" for="jim-set-brandingTitle">Chat title</label>
+            <input type="text" id="jim-set-brandingTitle" maxlength="60" placeholder="CorbitChat"/>
+            <span class="jim-admin-hint">Shown in the sidebar header. Up to 60 characters. Leave blank to use &ldquo;CorbitChat&rdquo;.</span>
+
+            <label class="jim-admin-label" for="jim-set-brandingLogoUrl">Chat logo</label>
+            <div class="jim-admin-branding-logo-row">
+                <input type="file" id="jim-branding-logo-file" class="jim-admin-branding-logo-file" accept="image/png,image/jpeg,image/gif,image/webp"/>
+                <button id="jim-branding-logo-clear" type="button" class="aui-button aui-button-link">Clear</button>
+            </div>
+            <span class="jim-admin-hint">Pick a PNG/JPG/GIF/WebP (recommended square, ~256&times;256px, max 300&nbsp;KB). The file is embedded as a data URL &mdash; no separate upload is needed. You can also paste a URL into the field below instead.</span>
+
+            <label class="jim-admin-label" for="jim-set-brandingLogoUrl">Logo URL (optional, or auto-filled from the picker above)</label>
+            <input type="text" id="jim-set-brandingLogoUrl" maxlength="524288" placeholder="/download/resources/com.corbitlogic.corbitchat.jira.dc:jim-messenger-resources/corbit-app-logo.png"/>
+            <span class="jim-admin-hint">Same-origin path starting with <code>/</code>, an <code>https://</code> URL, or a <code>data:image/...</code> URI. Leave blank to use the bundled CorbitChat logo.</span>
+
+            <div class="jim-admin-branding-preview" id="jim-branding-preview" aria-live="polite">
+                <span class="jim-admin-branding-preview-label">Preview</span>
+                <span class="jim-admin-branding-preview-card">
+                    <img id="jim-branding-preview-logo" class="jim-admin-branding-preview-logo" alt="" hidden/>
+                    <span class="jim-admin-branding-preview-logo-fallback" id="jim-branding-preview-logo-fallback" aria-hidden="true">&#128172;</span>
+                    <span id="jim-branding-preview-title" class="jim-admin-branding-preview-title">CorbitChat</span>
+                </span>
+            </div>
+
+            <div class="jim-admin-actions">
+                <button id="jim-save-branding" type="button" class="aui-button aui-button-primary">Save branding</button>
+                <button id="jim-reset-branding" type="button" class="aui-button">Reset to defaults</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== ChatGPT Workspace Agent ===== -->
+    <section class="jim-admin-panel" data-panel="workspaceagent">
+        <h3>ChatGPT Workspace Agent</h3>
+        <p class="jim-admin-hint" dir="rtl" lang="fa">
+            یکپارچه‌سازی دوطرفهٔ چت با «GPT Assistant» (کاربر <code>mcp.bootstrap</code>). با ارسال پیام کاربر به این
+            حساب، پلاگین به‌صورت نامتقارن یک تریگر امن به کانال Workspace Agent می‌فرستد؛ عامل، پیام و دادهٔ Jira را از
+            طریق MCP می‌خواند و پاسخ را دوباره از طریق MCP در همان گفتگو می‌نویسد. توکن فقط نوشتنی است و هرگز بازگردانده نمی‌شود.
+            یکپارچه‌سازی تا زمانی که به‌صراحت فعال نشود، خاموش می‌ماند.
+        </p>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check">
+                <input type="checkbox" id="jim-set-workspaceAgentEnabled"/>
+                Enable Workspace Agent integration / فعال‌سازی
+            </label>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-workspaceAgentTenantId">Tenant id (thread key: corbit:{tenant}:{conversationId})</label>
+            <input type="text" id="jim-set-workspaceAgentTenantId" class="text" style="max-width:240px;" placeholder="default"/>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-workspaceAgentChannelId">Agent channel id (agtch_…)</label>
+            <input type="text" id="jim-set-workspaceAgentChannelId" class="text" style="max-width:360px;" placeholder="agtch_..."/>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-workspaceAgentTriggerUrl">Trigger URL (Workspace Agent API channel)</label>
+            <input type="text" id="jim-set-workspaceAgentTriggerUrl" class="text" style="max-width:520px;" placeholder="https://..."/>
+        </div>
+        <div class="jim-admin-field">
+            <label class="jim-admin-check">
+                <input type="checkbox" id="jim-set-workspaceAgentGroupMention"/>
+                Also trigger on GPT Assistant mentions in group/project chats / تریگر با منشن در گروه‌ها
+            </label>
+        </div>
+        <div class="jim-admin-field">
+            <label for="jim-set-workspaceAgentProjectAllowlist">Project allowlist (comma-separated keys, blank = all)</label>
+            <input type="text" id="jim-set-workspaceAgentProjectAllowlist" class="text" style="max-width:360px;"/>
+        </div>
+        <div class="jim-admin-field">
+            <button id="jim-workspace-agent-save" type="button" class="aui-button aui-button-primary">Save Workspace Agent settings</button>
+        </div>
+        <h3 style="margin-top:20px;">Access token (write-only)</h3>
+        <p class="jim-admin-hint">The token is stored write-only, never returned by REST, never shown in HTML/JS, never logged. Set once; use Revoke to delete.</p>
+        <div class="jim-admin-field">
+            <label for="jim-workspace-agent-token">Workspace Agent access token</label>
+            <input type="password" id="jim-workspace-agent-token" class="text" style="max-width:420px;" autocomplete="new-password" placeholder="••••••••"/>
+            <button id="jim-workspace-agent-token-save" type="button" class="aui-button">Set token</button>
+            <button id="jim-workspace-agent-token-revoke" type="button" class="aui-button">Revoke token</button>
+        </div>
+        <h3 style="margin-top:20px;">Diagnostics &amp; test</h3>
+        <div class="jim-admin-field">
+            <button id="jim-workspace-agent-test" type="button" class="aui-button">Send test trigger</button>
+            <button id="jim-workspace-agent-scan" type="button" class="aui-button">Run fallback scan</button>
+            <div id="jim-workspace-agent-status" class="jim-admin-hint" style="margin-top:8px;white-space:pre-wrap;"></div>
         </div>
     </section>
 
@@ -125,6 +608,27 @@
             </tbody>
         </table>
         <button id="jim-diag-refresh" type="button" class="aui-button">Refresh</button>
+    </section>
+
+    <!-- ===== License ===== -->
+    <section class="jim-admin-panel" data-panel="license">
+        <h3>Marketplace license</h3>
+        <div id="jim-license-state-banner" class="jim-admin-license-banner" hidden></div>
+        <table class="aui jim-admin-diag-table">
+            <tbody id="jim-license-rows">
+            <tr><td colspan="2">Loading...</td></tr>
+            </tbody>
+        </table>
+        <button id="jim-license-refresh" type="button" class="aui-button">Refresh</button>
+        <div class="jim-admin-help" style="margin-top: 16px;">
+            <h4>Managing the license</h4>
+            <ul>
+                <li>Licenses are purchased and managed through Atlassian Marketplace; CorbitChat does not handle billing itself.</li>
+                <li>To install or update a license go to <strong>Administration &rarr; Manage apps</strong>, expand <strong>CorbitChat</strong> and paste the license key into the <strong>License key</strong> field.</li>
+                <li>While the license is missing or expired, sending messages, creating conversations, user search, attachments, push notifications and admin configuration changes are blocked. Existing conversations stay readable and this admin overview remains accessible.</li>
+                <li>The raw license key is never displayed here, returned by the REST API, or written to logs.</li>
+            </ul>
+        </div>
     </section>
 
     <!-- ===== Help ===== -->

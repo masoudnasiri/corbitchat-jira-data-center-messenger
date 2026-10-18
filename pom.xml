@@ -6,13 +6,13 @@
 
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.corbitlogic.jira.internalmessenger</groupId>
-    <artifactId>jira-internal-messenger</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <groupId>com.corbitlogic</groupId>
+    <artifactId>corbitchat-jira-dc</artifactId>
+    <version>1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2-8a-dynlevels1-8b-dayunit1-8c-groupsend1-chatlimit15000-1-8d-wfview1</version>
     <packaging>atlassian-plugin</packaging>
 
-    <name>Jira Internal Messenger</name>
-    <description>Internal messenger for Jira Data Center with direct chat and Jira Assistant notifications.</description>
+    <name>CorbitChat — Team Messenger for Jira (Internal Build + Board Gallery)</name>
+    <description>Internal on-prem distribution of CorbitChat — Slack-style team messaging for Jira Data Center with direct messages, project/team conversations, mentions, attachments, push notifications, and Jira-native collaboration controls. Marketplace licensing is intentionally disabled in this build.</description>
 
     <properties>
         <jira.version>9.17.5</jira.version>
@@ -22,7 +22,7 @@
         <maven.compiler.target>11</maven.compiler.target>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <atlassian.plugin.key>${project.groupId}.${project.artifactId}</atlassian.plugin.key>
+        <atlassian.plugin.key>com.corbitlogic.corbitchat.jira.dc</atlassian.plugin.key>
     </properties>
 
     <repositories>
@@ -103,6 +103,18 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- Beehive cluster lock (bundled with Jira DC). Used ONLY by the
+             admin-triggered approval-field provisioning to guard against two
+             DC nodes creating duplicate custom fields. provided → never
+             packaged; the OSGi import is optional so the plugin still enables
+             if it is somehow absent (provisioning degrades to a no-lock path). -->
+        <dependency>
+            <groupId>com.atlassian.beehive</groupId>
+            <artifactId>beehive-api</artifactId>
+            <version>5.1.0</version>
+            <scope>provided</scope>
+        </dependency>
+
         <dependency>
             <groupId>javax.inject</groupId>
             <artifactId>javax.inject</artifactId>
@@ -116,6 +128,21 @@
             <version>5.0.0</version>
             <scope>provided</scope>
         </dependency>
+
+        <!-- Jira Software / GreenHopper (bundled with Jira DC). Used ONLY by the
+             mobile Board Gallery BFF (Sprint 04D) to list boards the user can see.
+             provided → never packaged; the OSGi import falls under the pom's
+             `*;resolution:=optional` rule, so the plugin still enables if Jira
+             Software is somehow absent (board endpoint degrades gracefully). -->
+        <dependency>
+            <groupId>com.atlassian.jira.plugins</groupId>
+            <artifactId>jira-greenhopper-plugin</artifactId>
+            <version>${jira.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Internal build: UPM/licensing-api intentionally omitted; license
+             enforcement is disabled and never imported at runtime. -->
     </dependencies>
 
     <build>

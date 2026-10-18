@@ -11,11 +11,27 @@ import java.util.Locale;
 import java.util.Set;
 
 public final class JimAttachmentPolicy {
-    public static final long MAX_FILE_SIZE_BYTES = 0xA00000L;
+    /** Absolute ceiling enforced by the server regardless of admin settings (200 MB). */
+    public static final long MAX_FILE_SIZE_BYTES = 200L * 1024L * 1024L;
     public static final String STORAGE_SUBDIR = "data/corbitchat/attachments";
     private static final Set<String> ALLOWED_IMAGE_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("image/png", "image/jpeg", "image/gif", "image/webp")));
-    private static final Set<String> ALLOWED_FILE_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("application/pdf", "text/plain", "application/zip", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint")));
+    private static final Set<String> ALLOWED_FILE_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
+        "application/pdf", "text/plain", "text/csv", "text/markdown", "text/x-markdown",
+        "application/zip", "application/x-rar-compressed", "application/vnd.rar", "application/x-7z-compressed",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint")));
     private static final Set<String> ALLOWED_AUDIO_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("audio/webm", "audio/ogg", "audio/mpeg", "audio/mp4", "audio/wav", "audio/x-wav", "audio/aac")));
+    // Sprint 07 Fix-3: video messages (gallery/camera capture on mobile).
+    private static final Set<String> ALLOWED_VIDEO_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("video/mp4", "video/3gpp", "video/webm", "video/quicktime", "video/x-matroska")));
+    // Sprint 07 Fix-3: shared contacts (single-contact vCard built by the app).
+    private static final Set<String> ALLOWED_CONTACT_TYPES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("text/vcard", "text/x-vcard")));
+
+    /** App-generated vCard (contact share): exempt from the admin extension allowlist like audio/video. */
+    public static boolean isContactCardType(String contentType) {
+        return ALLOWED_CONTACT_TYPES.contains(JimAttachmentPolicy.normalizeContentType(contentType));
+    }
     private static final Set<String> BLOCKED_EXTENSIONS = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("exe", "bat", "cmd", "com", "msi", "sh", "bash", "js", "jar", "jsp", "php", "html", "htm", "svg")));
 
     private JimAttachmentPolicy() {
@@ -26,6 +42,8 @@ public final class JimAttachmentPolicy {
         allowed.addAll(ALLOWED_IMAGE_TYPES);
         allowed.addAll(ALLOWED_FILE_TYPES);
         allowed.addAll(ALLOWED_AUDIO_TYPES);
+        allowed.addAll(ALLOWED_VIDEO_TYPES);
+        allowed.addAll(ALLOWED_CONTACT_TYPES);
         return Collections.unmodifiableSet(allowed);
     }
 
@@ -34,21 +52,46 @@ public final class JimAttachmentPolicy {
     }
 
     public static void validateUpload(long fileSize, String contentType, String originalFilename) {
+        JimAttachmentPolicy.validateUpload(fileSize, contentType, originalFilename, null);
+    }
+
+    /**
+     * When {@code adminAllowedExtensionsCsv} is non-blank, the admin-configured
+     * extension allowlist becomes the authoritative whitelist and the built-in
+     * MIME safe list is skipped (admin explicitly opted those types in).
+     * The hard-blocked extension set (exe/bat/cmd/...) is always enforced and
+     * cannot be bypassed by the admin allowlist.
+     */
+    public static void validateUpload(long fileSize, String contentType, String originalFilename, String adminAllowedExtensionsCsv) {
         if (fileSize <= 0L) {
             throw JimMessengerException.badRequest("Uploaded file is empty");
         }
-        if (fileSize > 0xA00000L) {
-            throw JimMessengerException.badRequest("File exceeds the maximum allowed size of 10 MB");
-        }
-        String normalizedType = JimAttachmentPolicy.normalizeContentType(contentType);
-        if (!JimAttachmentPolicy.allowedMimeTypes().contains(normalizedType)) {
-            throw JimMessengerException.badRequest("File type is not allowed");
+        if (fileSize > MAX_FILE_SIZE_BYTES) {
+            throw JimMessengerException.badRequest("File exceeds the maximum allowed size of 200 MB");
         }
         String sanitizedName = JimAttachmentPolicy.sanitizeOriginalFilename(originalFilename);
         String extension = JimAttachmentPolicy.extractExtension(sanitizedName);
         if (extension != null && BLOCKED_EXTENSIONS.contains(extension)) {
             throw JimMessengerException.badRequest("File extension is not allowed");
         }
+        boolean adminOverride = adminAllowedExtensionsCsv != null && !adminAllowedExtensionsCsv.trim().isEmpty()
+                && extension != null && JimAttachmentPolicy.csvContains(adminAllowedExtensionsCsv, extension);
+        if (adminOverride) {
+            return;
+        }
+        String normalizedType = JimAttachmentPolicy.normalizeContentType(contentType);
+        if (!JimAttachmentPolicy.allowedMimeTypes().contains(normalizedType)) {
+            throw JimMessengerException.badRequest("File type is not allowed");
+        }
+    }
+
+    private static boolean csvContains(String csv, String value) {
+        for (String candidate : csv.split(",")) {
+            if (candidate.trim().equalsIgnoreCase(value)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static String resolveFileKind(String contentType) {
@@ -58,6 +101,9 @@ public final class JimAttachmentPolicy {
         }
         if (ALLOWED_AUDIO_TYPES.contains(normalizedType)) {
             return "AUDIO";
+        }
+        if (ALLOWED_VIDEO_TYPES.contains(normalizedType)) {
+            return "VIDEO";
         }
         return "FILE";
     }
@@ -96,7 +142,21 @@ public final class JimAttachmentPolicy {
         return trimmed.isEmpty() ? "application/octet-stream" : trimmed;
     }
 
+    /**
+     * Sprint 07 Fix-2: whether an AUDIO attachment is a recorded voice note as
+     * opposed to a picked/shared audio file. A NULL flag (legacy rows created
+     * before the flag existed) counts as voice, because historically every
+     * AUDIO upload came from a voice recorder (web MediaRecorder / mobile mic).
+     */
+    public static boolean isVoiceAttachment(String fileKind, Boolean voiceFlag) {
+        return "AUDIO".equals(fileKind) && !Boolean.FALSE.equals(voiceFlag);
+    }
+
     public static String buildPreviewText(String body, String fileKind, String originalFilename) {
+        return JimAttachmentPolicy.buildPreviewText(body, fileKind, originalFilename, true);
+    }
+
+    public static String buildPreviewText(String body, String fileKind, String originalFilename, boolean voice) {
         String normalizedBody;
         String string = normalizedBody = body != null ? body.trim() : "";
         if (!normalizedBody.isEmpty()) {
@@ -105,8 +165,11 @@ public final class JimAttachmentPolicy {
         if ("IMAGE".equals(fileKind)) {
             return "Image";
         }
-        if ("AUDIO".equals(fileKind)) {
+        if ("AUDIO".equals(fileKind) && voice) {
             return "Voice message";
+        }
+        if ("VIDEO".equals(fileKind)) {
+            return "Video";
         }
         return "File: " + JimAttachmentPolicy.sanitizeOriginalFilename(originalFilename);
     }

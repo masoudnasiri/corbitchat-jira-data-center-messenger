@@ -1,0 +1,66 @@
+{
+  "fieldId": "customfield_10903",
+  "fieldKey": "taskTypePerInstructions",
+  "labelFa": "نوع تسک (طبق دستورالعمل)",
+  "labelEn": "Task Type (per instructions)",
+  "description": "Jira custom field customfield_10903. Always display using labelFa/labelEn in the UI — never show the raw field ID to users.",
+  "renderAs": "pill-with-dot",
+  "values": [
+    {
+      "cssClass": "critical",
+      "textColor": "#DE350B",
+      "backgroundColor": "#FFEBE6",
+      "labelFa": "بحرانی",
+      "labelEn": "Critical",
+      "aliasesFa": ["بحرانی"]
+    },
+    {
+      "cssClass": "urgent",
+      "textColor": "#FF8B00",
+      "backgroundColor": "#FFF0B3",
+      "labelFa": "فوری",
+      "labelEn": "Urgent",
+      "aliasesFa": ["فوری"]
+    },
+    {
+      "cssClass": "committed",
+      "textColor": "#FFAB00",
+      "backgroundColor": "#FFF7D6",
+      "labelFa": "تعهدی",
+      "labelEn": "Committed",
+      "aliasesFa": ["تعهدی"]
+    },
+    {
+      "cssClass": "current",
+      "textColor": "#0052CC",
+      "backgroundColor": "#DEEBFF",
+      "labelFa": "جاری",
+      "labelEn": "Current",
+      "aliasesFa": ["جاری"]
+    },
+    {
+      "cssClass": "project",
+      "textColor": "#6554C0",
+      "backgroundColor": "#EAE6FF",
+      "labelFa": "پروژه‌ای",
+      "labelEn": "Project-Based",
+      "aliasesFa": ["پروژه ای", "پروژه‌ای"]
+    },
+    {
+      "cssClass": "development",
+      "textColor": "#00875A",
+      "backgroundColor": "#E3FCEF",
+      "labelFa": "توسعه‌ای",
+      "labelEn": "Development",
+      "aliasesFa": ["توسعه ای", "توسعه‌ای"]
+    },
+    {
+      "cssClass": "strategic",
+      "textColor": "#172B4D",
+      "backgroundColor": "#DFE1E6",
+      "labelFa": "راهبردی",
+      "labelEn": "Strategic",
+      "aliasesFa": ["راهبردی"]
+    }
+  ]
+}

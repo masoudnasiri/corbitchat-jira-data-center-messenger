@@ -1,6 +1,10 @@
     <div id="jim-messenger-app"
-         class="jim-messenger jim-chat-shell jim-chat-page#if($projectChatMode) jim-project-mode#end"
+         class="jim-messenger jim-chat-shell jim-chat-page jim-lang-$!effectiveLanguage#if($projectChatMode) jim-project-mode#end"
          data-user-key="$!currentUserKey"
+         data-effective-lang="$!effectiveLanguage"
+         data-effective-calendar="$!effectiveCalendar"
+         data-user-lang-pref="$!userLanguagePref"
+         data-user-calendar-pref="$!userCalendarPref"
          #if($projectChatMode)
          data-project-key="$!projectKey"
          data-project-name="$!projectName"
@@ -9,33 +13,68 @@
          data-project-lead-name="$!projectLeadDisplayName"
          #end>
 
+        #set($jimDisplayTitle = $brandTitle)
+        #if(!$jimDisplayTitle || $jimDisplayTitle == "")
+            #set($jimDisplayTitle = "CorbitChat")
+        #end
+        #set($jimDisplayLogoUrl = $brandLogoUrl)
+        #if(!$jimDisplayLogoUrl || $jimDisplayLogoUrl == "")
+            #if($logoAvailable && $logoUrl)
+                #set($jimDisplayLogoUrl = $logoUrl)
+            #else
+                #set($jimDisplayLogoUrl = "")
+            #end
+        #end
         <aside class="jim-sidebar" aria-label="Conversations">
             <header class="jim-sidebar-header">
                 <div class="jim-sidebar-brand">
-                    #if($logoAvailable && $logoUrl)
-                    <img class="jim-sidebar-brand-logo" src="$logoUrl" alt="CorbitChat logo" width="36" height="36" />
+                    #if($jimDisplayLogoUrl && $jimDisplayLogoUrl != "")
+                    <img class="jim-sidebar-brand-logo" src="$jimDisplayLogoUrl" alt="$jimDisplayTitle logo" width="36" height="36" />
                     #end
                     <div class="jim-sidebar-brand-text">
-                        <div class="jim-sidebar-brand-title">CorbitChat</div>
+                        <div class="jim-sidebar-brand-title">$jimDisplayTitle</div>
                         <div id="jim-sidebar-unread-summary" class="jim-sidebar-brand-subtitle">0 unread messages</div>
                     </div>
                 </div>
+                <button id="jim-settings-btn" type="button" class="jim-settings-btn" title="Settings" aria-label="Settings" data-i18n-title="Settings">&#9881;</button>
             </header>
 
-            <div class="jim-sidebar-search jim-search">
-                <label class="jim-visually-hidden" for="jim-user-search">$i18n.getText("jim.search.label")</label>
-                <input id="jim-user-search"
+            <div class="jim-sidebar-search-row">
+                <div class="jim-sidebar-search jim-search">
+                    <label class="jim-visually-hidden" for="jim-user-search">$i18n.getText("jim.search.label")</label>
+                    <input id="jim-user-search"
+                           class="jim-search-input"
+                           type="search"
+                           autocomplete="off"
+                           data-i18n-ph="Search people"
+                           placeholder="$i18n.getText('jim.search.placeholder')" />
+                    <div id="jim-user-search-results" class="jim-search-results" hidden role="listbox" aria-label="User search results"></div>
+                </div>
+                <button id="jim-msg-search-toggle"
+                        type="button"
+                        class="jim-sidebar-icon-btn"
+                        title="Search messages"
+                        aria-label="Search messages"
+                        aria-expanded="false"
+                        aria-controls="jim-msg-search-panel">
+                    <span aria-hidden="true">&#128269;</span>
+                </button>
+            </div>
+            <div id="jim-msg-search-panel" class="jim-sidebar-search jim-msg-search" hidden>
+                <label class="jim-visually-hidden" for="jim-msg-search">Search messages</label>
+                <input id="jim-msg-search"
                        class="jim-search-input"
                        type="search"
                        autocomplete="off"
-                       placeholder="$i18n.getText('jim.search.placeholder')" />
-                <div id="jim-user-search-results" class="jim-search-results" hidden role="listbox" aria-label="User search results"></div>
+                       data-i18n-ph="Search messages"
+                       placeholder="Search messages" />
+                <div id="jim-msg-search-results" class="jim-search-results jim-msg-search-results" hidden role="listbox" aria-label="Message search results"></div>
             </div>
 
             <div class="jim-sidebar-tabs" role="tablist" aria-label="Conversation filters">
-                <button id="jim-tab-all" type="button" class="jim-sidebar-tab is-active" role="tab" aria-selected="true" data-tab="all">All</button>
-                <button id="jim-tab-personal" type="button" class="jim-sidebar-tab" role="tab" aria-selected="false" data-tab="personal">Personal</button>
-                <button id="jim-tab-groups" type="button" class="jim-sidebar-tab" role="tab" aria-selected="false" data-tab="groups">Groups</button>
+                <button id="jim-tab-all" type="button" class="jim-sidebar-tab is-active" role="tab" aria-selected="true" data-tab="all" data-i18n="All">All</button>
+                <button id="jim-tab-personal" type="button" class="jim-sidebar-tab" role="tab" aria-selected="false" data-tab="personal" data-i18n="Personal">Personal</button>
+                <button id="jim-tab-groups" type="button" class="jim-sidebar-tab" role="tab" aria-selected="false" data-tab="groups" data-i18n="Groups">Groups</button>
             </div>
 
             <div id="jim-assistant-slot" class="jim-assistant-slot jim-assistant-conversation" aria-label="Jira Assistant"></div>
@@ -44,10 +83,21 @@
             <div class="jim-loading">$i18n.getText("jim.loading.conversations")</div>
         </div>
 
-        <div class="jim-sidebar-actions">
-            <button id="jim-new-conversation" type="button" class="jim-new-conversation">+ New chat</button>
-            <button id="jim-new-group" type="button" class="jim-new-conversation jim-new-group">+ New group</button>
+        <div class="jim-sidebar-actions jim-sidebar-actions-compact">
+            <button id="jim-saved-messages" type="button" class="jim-sidebar-action-btn jim-saved-messages" title="Saved Messages" aria-label="Saved Messages">
+                <span class="jim-sidebar-action-icon" aria-hidden="true">&#128278;</span>
+                <span data-i18n="Saved Messages">Saved Messages</span>
+            </button>
+            <button id="jim-new-conversation" type="button" class="jim-sidebar-action-btn" title="New chat" aria-label="New chat">
+                <span class="jim-sidebar-action-icon" aria-hidden="true">+</span>
+                <span data-i18n="New chat">New chat</span>
+            </button>
+            <button id="jim-new-group" type="button" class="jim-sidebar-action-btn jim-new-group" title="New group" aria-label="New group">
+                <span class="jim-sidebar-action-icon" aria-hidden="true">&#128101;</span>
+                <span data-i18n="New group">New group</span>
+            </button>
         </div>
+        <div id="jim-message-menu" class="jim-message-menu" hidden role="menu" aria-label="Message actions"></div>
 
         <footer class="jim-sidebar-footer">
             #if($currentUserAvatarUrl)
@@ -55,15 +105,23 @@
             #end
             <div class="jim-sidebar-footer-text">
                 <div class="jim-sidebar-footer-name">$!currentUserDisplayName</div>
-                <div class="jim-sidebar-footer-status"><span class="jim-presence-dot" aria-hidden="true"></span>Active</div>
+                <div class="jim-sidebar-footer-status">
+                    <span class="jim-presence-dot" aria-hidden="true"></span>
+                    <span class="jim-sidebar-footer-active" data-i18n="Active">Active</span>
+                    <span class="jim-sidebar-footer-divider" aria-hidden="true"> &middot; </span>
+                    <button id="jim-push-enable"
+                            type="button"
+                            class="jim-push-status-link"
+                            data-i18n="Enable notifications"
+                            hidden>Enable notifications</button>
+                </div>
             </div>
-            <button id="jim-push-enable" type="button" class="jim-push-toggle" hidden title="Enable notifications">&#128276;</button>
         </footer>
         </aside>
 
         <main id="jim-chat-panel-shell" class="jim-main jim-chat-panel jim-chat-panel-empty" aria-label="Chat">
             <div id="jim-chat-empty" class="jim-chat-empty">
-                <p class="jim-chat-empty-text">$i18n.getText("jim.empty.selectConversation")</p>
+                <p class="jim-chat-empty-text" data-i18n="Select a conversation to start chatting">$i18n.getText("jim.empty.selectConversation")</p>
             </div>
 
             <div id="jim-chat-active" class="jim-chat-active jim-chat-panel-body" hidden>
@@ -71,13 +129,16 @@
 
                 <div id="jim-members-panel" class="jim-members-panel" hidden></div>
 
+                <input id="jim-avatar-input" type="file" class="jim-visually-hidden" tabindex="-1"
+                       aria-hidden="true" accept="image/png,image/jpeg,image/webp" />
+
                 <div id="jim-pinned-banner" class="jim-pinned-banner" hidden></div>
 
                 <div id="jim-message-list" class="jim-message-list" role="log" aria-live="polite" aria-relevant="additions"></div>
 
                 <div id="jim-composer" class="jim-composer" role="region" aria-label="Message composer">
                     <div id="jim-composer-error" class="jim-composer-error jim-inline-error" role="alert" hidden></div>
-                    <div id="jim-composer-readonly" class="jim-composer-readonly" hidden>
+                    <div id="jim-composer-readonly" class="jim-composer-readonly" data-i18n="This conversation is read-only" hidden>
                         $i18n.getText("jim.composer.readOnly")
                     </div>
                     <div id="jim-composer-inner" class="jim-composer-inner">
@@ -88,27 +149,29 @@
                             </div>
                             <button id="jim-composer-reply-cancel" type="button" class="jim-composer-chip-remove" aria-label="Cancel reply">&times;</button>
                         </div>
-                        <div id="jim-selected-attachment" class="jim-selected-attachment" hidden>
-                            <div id="jim-selected-attachment-preview" class="jim-selected-attachment-preview" hidden></div>
-                            <div class="jim-selected-attachment-meta">
-                                <span id="jim-selected-attachment-name" class="jim-selected-attachment-name"></span>
-                                <span id="jim-selected-attachment-size" class="jim-selected-attachment-size"></span>
+                        <div id="jim-composer-editing" class="jim-composer-editing" hidden>
+                            <span class="jim-composer-editing-icon" aria-hidden="true">&#9998;</span>
+                            <div class="jim-composer-editing-content">
+                                <span class="jim-composer-editing-label" data-i18n="Editing message">Editing message</span>
+                                <span id="jim-composer-editing-preview" class="jim-composer-editing-preview" dir="auto"></span>
                             </div>
-                            <button id="jim-selected-attachment-remove" type="button" class="jim-composer-chip-remove" aria-label="Remove attachment">&times;</button>
+                            <span class="jim-composer-editing-hint" data-i18n="Esc to cancel">Esc to cancel</span>
+                            <button id="jim-composer-editing-cancel" type="button" class="jim-composer-chip-remove" aria-label="Cancel edit">&times;</button>
                         </div>
+                        <div id="jim-selected-attachment" class="jim-selected-attachment" hidden></div>
                         <div id="jim-selected-issue" class="jim-selected-issue" hidden>
                             <span class="jim-selected-issue-icon" aria-hidden="true">&#128279;</span>
                             <span id="jim-selected-issue-key" class="jim-selected-issue-key"></span>
                             <span id="jim-selected-issue-summary" class="jim-selected-issue-summary"></span>
                             <button id="jim-selected-issue-remove" type="button" class="jim-composer-chip-remove" aria-label="Remove linked issue">&times;</button>
                         </div>
-                        <div id="jim-upload-progress" class="jim-upload-progress" hidden>Uploading...</div>
+                        <div id="jim-upload-progress" class="jim-upload-progress" data-i18n="Uploading..." hidden>Uploading...</div>
                         <div id="jim-voice-recording" class="jim-voice-recording" hidden>
                             <span class="jim-voice-rec-dot" aria-hidden="true"></span>
                             <span id="jim-voice-timer" class="jim-voice-timer">0:00</span>
-                            <span class="jim-voice-hint">Recording voice message...</span>
-                            <button id="jim-voice-cancel" type="button" class="jim-modal-button">Cancel</button>
-                            <button id="jim-voice-send" type="button" class="jim-modal-button jim-modal-button-primary">Send</button>
+                            <span class="jim-voice-hint" data-i18n="Recording voice message...">Recording voice message...</span>
+                            <button id="jim-voice-cancel" type="button" class="jim-modal-button" data-i18n="Cancel">Cancel</button>
+                            <button id="jim-voice-send" type="button" class="jim-modal-button jim-modal-button-primary" data-i18n="Send">Send</button>
                         </div>
                         <div class="jim-composer-surface">
                             <div id="jim-emoji-palette" class="jim-emoji-palette" hidden role="menu" aria-label="Emoji"></div>
@@ -118,49 +181,79 @@
                                        type="text"
                                        class="jim-issue-search-input"
                                        placeholder="Search issues (key or text)..."
+                                       data-i18n-ph="Search issues (key or text)..."
                                        autocomplete="off" />
                                 <div id="jim-issue-search-results" class="jim-issue-search-results"></div>
                             </div>
                             <div id="jim-composer-controls" class="jim-composer-row">
-                                <input id="jim-file-input" type="file" class="jim-visually-hidden" tabindex="-1" aria-hidden="true" />
+                                <input id="jim-file-input" type="file" class="jim-visually-hidden" tabindex="-1" aria-hidden="true" multiple />
                                 <button id="jim-attach-button"
                                         type="button"
                                         class="jim-composer-icon-button jim-attach-button"
-                                        aria-label="Attach a file"
-                                        title="Attach a file">&#128206;</button>
+                                        aria-label="Attach files"
+                                        title="Attach files">
+                                    <svg class="jim-composer-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M16.5 7.5l-7 7a3 3 0 1 0 4.243 4.243L20 13.5a5 5 0 1 0-7.071-7.071L6.343 13.014a7 7 0 1 0 9.9 9.9L20 19.157"/>
+                                    </svg>
+                                </button>
                                 <button id="jim-mention-button"
                                         type="button"
                                         class="jim-composer-icon-button jim-mention-button"
                                         aria-label="Mention a member"
                                         title="Mention a member"
-                                        hidden>@</button>
+                                        hidden>
+                                    <svg class="jim-composer-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <circle cx="12" cy="12" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                                        <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M15.5 12v1.5a2.5 2.5 0 0 0 5 0V12a8.5 8.5 0 1 0-3.5 6.875"/>
+                                    </svg>
+                                </button>
                                 <button id="jim-issue-button"
                                         type="button"
                                         class="jim-composer-icon-button jim-issue-button"
                                         aria-label="Link a Jira issue"
-                                        title="Link a Jira issue">&#128279;</button>
+                                        title="Link a Jira issue">
+                                    <svg class="jim-composer-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M10.5 13.5a4 4 0 0 0 5.66 0l3-3a4 4 0 1 0-5.66-5.66l-1.5 1.5M13.5 10.5a4 4 0 0 0-5.66 0l-3 3a4 4 0 1 0 5.66 5.66l1.5-1.5"/>
+                                    </svg>
+                                </button>
                                 <button id="jim-emoji-button"
                                         type="button"
                                         class="jim-composer-icon-button jim-emoji-button"
                                         aria-label="Insert emoji"
-                                        title="Insert emoji">&#128578;</button>
+                                        title="Insert emoji">
+                                    <svg class="jim-composer-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                                        <circle cx="9" cy="10" r="1.2" fill="currentColor"/>
+                                        <circle cx="15" cy="10" r="1.2" fill="currentColor"/>
+                                        <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8.5 14.5c1 1.5 2.2 2.5 3.5 2.5s2.5-1 3.5-2.5"/>
+                                    </svg>
+                                </button>
                                 <button id="jim-voice-button"
                                         type="button"
                                         class="jim-composer-icon-button jim-voice-button"
                                         aria-label="Record a voice message"
-                                        title="Record a voice message">&#127908;</button>
+                                        title="Record a voice message">
+                                    <svg class="jim-composer-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <rect x="9" y="3" width="6" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                                        <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/>
+                                    </svg>
+                                </button>
                                 <textarea id="jim-message-input"
                                           class="jim-composer-input"
                                           rows="1"
-                                          maxlength="4000"
+                                          maxlength="25000"
+                                          dir="auto"
                                           aria-label="$i18n.getText('jim.composer.label')"
+                                          data-i18n-ph="Type a message"
                                           placeholder="$i18n.getText('jim.composer.placeholder')"></textarea>
                                 <button id="jim-send-button"
                                         type="button"
                                         class="jim-send-button"
                                         aria-label="$i18n.getText('jim.composer.send')"
                                         disabled>
-                                    $i18n.getText("jim.composer.send")
+                                    <svg class="jim-send-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path fill="currentColor" d="M3.4 20.4 21 12 3.4 3.6c-.5-.2-1 .3-.8.8L4.6 11l8.4 1-8.4 1-2 6.6c-.2.5.3 1 .8.8z"/>
+                                    </svg>
                                 </button>
                             </div>
                         </div>
@@ -173,33 +266,61 @@
 
         <div id="jim-group-modal" class="jim-modal-overlay" hidden>
             <div class="jim-modal" role="dialog" aria-modal="true" aria-labelledby="jim-group-modal-title">
-                <h3 id="jim-group-modal-title" class="jim-modal-title">Create group</h3>
-                <label class="jim-modal-label" for="jim-group-name">Group name</label>
+                <h3 id="jim-group-modal-title" class="jim-modal-title" data-i18n="Create group">Create group</h3>
+                <label class="jim-modal-label" for="jim-group-name" data-i18n="Group name">Group name</label>
                 <input id="jim-group-name" class="jim-search-input" type="text" maxlength="120"
-                       autocomplete="off" placeholder="e.g. Dev Team" />
-                <label class="jim-modal-label" for="jim-group-member-search">Add people</label>
+                       autocomplete="off" placeholder="e.g. Dev Team" data-i18n-ph="e.g. Dev Team" />
+                <label class="jim-modal-label" for="jim-group-member-search" data-i18n="Add people">Add people</label>
                 <div class="jim-modal-search">
                     <input id="jim-group-member-search" class="jim-search-input" type="search"
-                           autocomplete="off" placeholder="Search teammates..." />
+                           autocomplete="off" placeholder="Search teammates..." data-i18n-ph="Search teammates..." />
                     <div id="jim-group-member-results" class="jim-search-results jim-modal-search-results" hidden role="listbox"></div>
                 </div>
                 <div id="jim-group-selected-members" class="jim-group-chips"></div>
                 <div id="jim-group-modal-error" class="jim-inline-error" role="alert" hidden></div>
                 <div class="jim-modal-actions">
-                    <button id="jim-group-cancel" type="button" class="jim-modal-button">Cancel</button>
-                    <button id="jim-group-create" type="button" class="jim-modal-button jim-modal-button-primary" disabled>Create group</button>
+                    <button id="jim-group-cancel" type="button" class="jim-modal-button" data-i18n="Cancel">Cancel</button>
+                    <button id="jim-group-create" type="button" class="jim-modal-button jim-modal-button-primary" data-i18n="Create group" disabled>Create group</button>
                 </div>
             </div>
         </div>
 
         <div id="jim-message-info-modal" class="jim-modal-overlay" hidden>
             <div class="jim-modal" role="dialog" aria-modal="true" aria-labelledby="jim-message-info-title">
-                <h3 id="jim-message-info-title" class="jim-modal-title">Message info</h3>
+                <h3 id="jim-message-info-title" class="jim-modal-title" data-i18n="Message info">Message info</h3>
                 <div id="jim-message-info-body" class="jim-message-info-body">
-                    <div class="jim-loading">Loading...</div>
+                    <div class="jim-loading" data-i18n="Loading...">Loading...</div>
                 </div>
                 <div class="jim-modal-actions">
-                    <button id="jim-message-info-close" type="button" class="jim-modal-button">Close</button>
+                    <button id="jim-message-info-close" type="button" class="jim-modal-button" data-i18n="Close">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="jim-shared-modal" class="jim-modal-overlay" hidden>
+            <div class="jim-modal jim-shared-modal" role="dialog" aria-modal="true" aria-labelledby="jim-shared-modal-title">
+                <div class="jim-shared-modal-header">
+                    <h3 id="jim-shared-modal-title" class="jim-modal-title" data-i18n="Shared">Shared</h3>
+                    <button id="jim-shared-close" type="button" class="jim-modal-button" data-i18n="Close">Close</button>
+                </div>
+                <div id="jim-shared-tabs" class="jim-shared-tabs" role="tablist"></div>
+                <div id="jim-shared-body" class="jim-shared-body"></div>
+            </div>
+        </div>
+
+        <div id="jim-forward-modal" class="jim-modal-overlay" hidden>
+            <div class="jim-modal jim-forward-modal" role="dialog" aria-modal="true" aria-labelledby="jim-forward-modal-title">
+                <h3 id="jim-forward-modal-title" class="jim-modal-title" data-i18n="Forward message">Forward message</h3>
+                <div id="jim-forward-preview" class="jim-forward-preview" dir="auto"></div>
+                <label class="jim-modal-label" for="jim-forward-search" data-i18n="Send to">Send to</label>
+                <input id="jim-forward-search" class="jim-search-input" type="search" autocomplete="off"
+                       placeholder="Search conversations..." data-i18n-ph="Search conversations..." />
+                <div id="jim-forward-targets" class="jim-forward-targets" role="listbox" aria-label="Forwarding targets">
+                    <div class="jim-loading" data-i18n="Loading conversations...">Loading conversations...</div>
+                </div>
+                <div id="jim-forward-error" class="jim-inline-error" role="alert" hidden></div>
+                <div class="jim-modal-actions">
+                    <button id="jim-forward-cancel" type="button" class="jim-modal-button" data-i18n="Cancel">Cancel</button>
                 </div>
             </div>
         </div>
@@ -210,9 +331,36 @@
                 <figcaption class="jim-image-lightbox-caption">
                     <span id="jim-image-lightbox-name" class="jim-image-lightbox-name"></span>
                     <a id="jim-image-lightbox-download" class="jim-modal-button" href="#"
-                       target="_blank" rel="noopener noreferrer" download>Download</a>
-                    <button id="jim-image-lightbox-close" type="button" class="jim-modal-button">Close</button>
+                       target="_blank" rel="noopener noreferrer" data-i18n="Download" download>Download</a>
+                    <button id="jim-image-lightbox-close" type="button" class="jim-modal-button" data-i18n="Close">Close</button>
                 </figcaption>
             </figure>
+        </div>
+
+        <div id="jim-settings-modal" class="jim-modal-overlay" hidden>
+            <div class="jim-modal" role="dialog" aria-modal="true" aria-label="Chat settings">
+                <div class="jim-modal-header">
+                    <h2 class="jim-modal-title" data-i18n="Language and dates">Language and dates</h2>
+                </div>
+                <div class="jim-modal-body">
+                    <label class="jim-settings-label" for="jim-setting-language" data-i18n="Chat language">Chat language</label>
+                    <select id="jim-setting-language" class="jim-settings-select">
+                        <option value="default" data-i18n="Use admin default">Use admin default</option>
+                        <option value="fa" data-i18n="Persian">Persian</option>
+                        <option value="en" data-i18n="English">English</option>
+                    </select>
+                    <label class="jim-settings-label" for="jim-setting-calendar" data-i18n="Chat date format">Chat date format</label>
+                    <select id="jim-setting-calendar" class="jim-settings-select">
+                        <option value="default" data-i18n="Use admin default">Use admin default</option>
+                        <option value="jalali" data-i18n="Jalali / Shamsi">Jalali / Shamsi</option>
+                        <option value="gregorian" data-i18n="Gregorian">Gregorian</option>
+                    </select>
+                    <div id="jim-settings-message" class="jim-inline-error" role="alert" hidden></div>
+                </div>
+                <div class="jim-modal-actions">
+                    <button id="jim-settings-cancel" type="button" class="jim-modal-button" data-i18n="Cancel">Cancel</button>
+                    <button id="jim-settings-save" type="button" class="jim-modal-button jim-modal-button-primary" data-i18n="Save">Save</button>
+                </div>
+            </div>
         </div>
     </div>

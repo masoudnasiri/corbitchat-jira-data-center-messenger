@@ -3,32 +3,35 @@
 #jim-messenger-app.jim-chat-shell,
 #jim-messenger-app.jim-messenger,
 .jim-chat-shell#jim-messenger-app {
+    /* Hub Figma tokens (fyCTz4B2izGsUFSsFXV13K, frames in /figma) */
     --jim-bg: #ffffff;
-    --jim-surface: #f7f8fa;
-    --jim-panel-bg: #f4f5f7;
+    --jim-surface: #f7f7f7;
+    --jim-panel-bg: #fbfbfb;
     --jim-sidebar-bg: #ffffff;
-    --jim-border: #dfe1e6;
-    --jim-border-subtle: #ebecf0;
-    --jim-text: #172b4d;
-    --jim-text-secondary: #5e6c84;
-    --jim-muted: #6b778c;
-    --jim-brand: #0052cc;
-    --jim-brand-hover: #0747a6;
-    --jim-brand-subtle: #e9f2ff;
-    --jim-bubble-own: #0c66e4;
-    --jim-bubble-own-border: #0c66e4;
-    --jim-bubble-own-text: #ffffff;
-    --jim-bubble-own-muted: rgba(255, 255, 255, 0.78);
+    --jim-border: #eeeeee;
+    --jim-border-subtle: #eeeeee;
+    --jim-text: #141414;
+    --jim-text-secondary: #4c4c4c;
+    --jim-muted: #797979;
+    --jim-brand: #01ba9e;
+    --jim-brand-hover: #004a3f;
+    --jim-brand-subtle: #e6f8f5;
+    --jim-bubble-own: #eeeeee;
+    --jim-bubble-own-border: #eeeeee;
+    --jim-bubble-own-text: #141414;
+    --jim-bubble-own-muted: #797979;
     --jim-bubble-other: #ffffff;
-    --jim-bubble-other-border: #dfe1e6;
-    --jim-selected: #e9f2ff;
-    --jim-hover: #ebecf0;
-    --jim-error: #bf2600;
-    --jim-error-bg: #ffebe6;
-    --jim-error-border: #ff8f73;
-    --jim-success: #006644;
-    --jim-warning: #974f0c;
-    --jim-info: #0052cc;
+    --jim-bubble-other-border: #eeeeee;
+    --jim-selected: #e6f8f5;
+    --jim-hover: #f7f7f7;
+    --jim-error: #cf1322;
+    --jim-error-bg: #fff1f0;
+    --jim-error-border: #ffa39e;
+    --jim-success: #16a163;
+    --jim-warning: #d46b08;
+    --jim-info: #1677ff;
+    --jim-focus: #01ba9e;
+    --jim-focus-ring: rgba(1, 186, 158, 0.22);
 
     box-sizing: border-box;
     display: flex;
@@ -42,11 +45,11 @@
     margin: 0 auto;
     background: var(--jim-bg);
     border: 1px solid var(--jim-border);
-    border-radius: 10px;
+    border-radius: 12px;
     overflow: hidden;
     position: relative;
-    box-shadow: 0 1px 3px rgba(9, 30, 66, 0.06);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+    box-shadow: 0 1px 3px rgba(20, 20, 20, 0.06);
+    font-family: Vazirmatn, "IRANSansXFaNum", -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, sans-serif;
     color: var(--jim-text);
 }
 
@@ -72,9 +75,703 @@
 
 #jim-messenger-app .jim-sidebar-header {
     flex-shrink: 0;
-    padding: 12px 14px 10px;
+    padding: 8px 12px 6px;
     border-bottom: 1px solid var(--jim-border-subtle);
     background: var(--jim-bg);
+}
+
+/* Lock the chat shell to LTR layout so bubble positions and composer button
+   order stay stable even when Jira's UI is set to a Persian/Arabic/Hebrew
+   locale (which would otherwise make <html dir="rtl"> flip every flex
+   container in here and move own messages to the left). Text-bearing inner
+   elements still carry dir="auto" which overrides this for their own
+   content, so Persian text inside bubbles still flows right-to-left. */
+#jim-messenger-app {
+    direction: ltr;
+}
+
+/* Persian effective language: RTL chrome (sidebar, header, composer, tabs,
+   modals). The message thread stays LTR so bubble sides (own right / other
+   left) remain stable; per-message text still flows via dir="auto". */
+#jim-messenger-app.jim-lang-fa {
+    direction: rtl;
+}
+#jim-messenger-app.jim-lang-fa .jim-message-list,
+#jim-messenger-app.jim-lang-fa .jim-messages,
+#jim-messenger-app.jim-lang-fa .jim-chat-messages {
+    direction: ltr;
+}
+
+/* RTL mirroring for Persian. Most of the shell is flexbox and follows
+   `direction: rtl` automatically; these rules flip the few remaining
+   physical-direction properties so the chrome mirrors cleanly. The message
+   thread stays LTR (above) to keep own/other bubble sides stable. */
+#jim-messenger-app.jim-lang-fa .jim-chat-header-actions {
+    margin-left: 0;
+    margin-right: auto;
+}
+#jim-messenger-app.jim-lang-fa .jim-conversation-preview-draft-label,
+#jim-messenger-app.jim-lang-fa .jim-conversation-group-mark {
+    margin-right: 0;
+    margin-left: 4px;
+}
+#jim-messenger-app.jim-lang-fa .jim-presence-badge {
+    right: auto;
+    left: -2px;
+}
+#jim-messenger-app.jim-lang-fa .jim-forward-target {
+    text-align: right;
+}
+#jim-messenger-app.jim-lang-fa .jim-search-input,
+#jim-messenger-app.jim-lang-fa .jim-settings-select,
+#jim-messenger-app.jim-lang-fa .jim-composer-input,
+#jim-messenger-app.jim-lang-fa .jim-issue-search-input {
+    text-align: right;
+}
+/* Schedule / due-date approval card: force RTL in Persian mode so the
+   label→value rows read right-to-left cleanly and consistently (the message
+   thread itself stays LTR, so this explicit rule is needed rather than relying
+   on per-node dir="auto"). */
+#jim-messenger-app.jim-lang-fa .jim-system-card-approval {
+    direction: rtl;
+    text-align: right;
+}
+#jim-messenger-app.jim-lang-fa .jim-approval-row {
+    flex-direction: row;
+}
+#jim-messenger-app.jim-lang-fa .jim-approval-reason-text {
+    text-align: right;
+}
+
+/* Settings gear in the sidebar header + settings modal controls. */
+#jim-messenger-app .jim-settings-btn {
+    margin-inline-start: auto;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    color: #6b778c;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+#jim-messenger-app .jim-settings-btn:hover {
+    background: var(--jim-hover);
+    color: var(--jim-text);
+}
+#jim-messenger-app .jim-settings-label {
+    display: block;
+    margin: 12px 0 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #42526e;
+}
+#jim-messenger-app .jim-settings-select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #dfe1e6;
+    border-radius: 4px;
+    background: #fff;
+    font-size: 14px;
+}
+#jim-messenger-app .jim-inline-success {
+    margin-top: 8px;
+    color: #006644;
+    font-size: 13px;
+}
+
+/* Jira Assistant / system card - actioned state.
+   Once the user has acknowledged (clicked the issue link or "Mark as
+   seen"), the card mutes its visual weight so the user can tell at a
+   glance which assistant messages they've already handled. The card
+   remains visible and fully interactable - this is a style change only,
+   never a content change. */
+#jim-messenger-app .jim-system-card-actioned {
+    opacity: 0.7;
+    background: #fafbfc;
+    border-color: #ebecf0;
+}
+#jim-messenger-app .jim-system-card-actioned .jim-system-card-title,
+#jim-messenger-app .jim-system-card-actioned .jim-system-card-text {
+    color: #6b778c;
+}
+#jim-messenger-app .jim-system-card-actioned .jim-system-card-lozenge {
+    background: #f4f5f7;
+    color: #6b778c;
+    border-color: #ebecf0;
+}
+
+/* Jira Assistant — full mention/comment text (notification enrichment).
+   Preserves line breaks and wraps long content; safe (text is HTML-escaped
+   in JS before insertion). RTL text renders correctly via `unicode-bidi`. */
+#jim-messenger-app .jim-system-card-mention-text {
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: #f4f5f7;
+    border-radius: 4px;
+    color: #172b4d;
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+#jim-messenger-app .jim-system-card-mention {
+    margin-top: 6px;
+}
+#jim-messenger-app .jim-system-card-mention > summary.jim-system-card-mention-preview {
+    cursor: pointer;
+    color: #42526e;
+    font-size: 13px;
+    line-height: 1.45;
+    list-style: revert;
+}
+#jim-messenger-app .jim-system-card-mention[open] > summary.jim-system-card-mention-preview {
+    color: #6b778c;
+    margin-bottom: 4px;
+}
+#jim-messenger-app .jim-system-card-mention .jim-system-card-mention-text {
+    margin-top: 0;
+}
+
+/* Jira Assistant — attached issue files. Each row shows the file name, an
+   optional size and a secure Download action (Jira-permission enforced). */
+#jim-messenger-app .jim-system-card-attachments {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+#jim-messenger-app .jim-system-card-attachment {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: #f4f5f7;
+    border: 1px solid #ebecf0;
+    border-radius: 4px;
+    font-size: 13px;
+}
+#jim-messenger-app .jim-system-card-attachment .jim-att-icon {
+    flex: 0 0 auto;
+    opacity: 0.75;
+}
+#jim-messenger-app .jim-system-card-attachment .jim-att-name {
+    flex: 1 1 auto;
+    color: #172b4d;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#jim-messenger-app .jim-system-card-attachment .jim-att-size {
+    flex: 0 0 auto;
+    color: #6b778c;
+    font-size: 12px;
+}
+#jim-messenger-app .jim-system-card-attachment .jim-att-download {
+    flex: 0 0 auto;
+    padding: 2px 8px !important;
+}
+#jim-messenger-app .jim-system-card-attachment .jim-att-unavailable {
+    flex: 0 0 auto;
+    color: #97a0af;
+    font-size: 12px;
+    font-style: italic;
+}
+#jim-messenger-app .jim-system-card-attachments-more > summary {
+    cursor: pointer;
+    color: #42526e;
+    font-size: 12px;
+    padding: 2px 0;
+}
+#jim-messenger-app .jim-system-card-attachments-more[open] {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Summary-first subtitle: the event phrase shown under the issue summary. */
+#jim-messenger-app .jim-system-card-subtitle {
+    margin-top: 2px;
+    color: #6b778c;
+    font-size: 12px;
+}
+
+/* Schedule-approval info block (proposed date / requester / status). */
+#jim-messenger-app .jim-system-card-approval {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: #f4f5f7;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+#jim-messenger-app .jim-approval-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+#jim-messenger-app .jim-approval-label {
+    color: #6b778c;
+    min-width: 96px;
+}
+#jim-messenger-app .jim-approval-value {
+    color: #172b4d;
+    font-weight: 600;
+}
+#jim-messenger-app .jim-approval-status {
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+}
+#jim-messenger-app .jim-approval-status-pending {
+    background: #fffae6;
+    color: #7a5c00;
+}
+#jim-messenger-app .jim-approval-status-approved {
+    background: #e3fcef;
+    color: #006644;
+}
+#jim-messenger-app .jim-approval-status-rejected {
+    background: #ffebe6;
+    color: #bf2600;
+}
+#jim-messenger-app .jim-approval-reason {
+    margin-top: 2px;
+}
+#jim-messenger-app .jim-approval-reason-text {
+    margin-top: 4px;
+    padding: 6px 8px;
+    background: #ffebe6;
+    border-radius: 4px;
+    color: #172b4d;
+    font-size: 13px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+#jim-messenger-app .jim-approval-btn {
+    padding: 2px 12px !important;
+}
+#jim-messenger-app .jim-approval-approve {
+    color: #006644 !important;
+}
+#jim-messenger-app .jim-approval-reject {
+    color: #bf2600 !important;
+}
+
+/* Viewer lost access to the referenced issue: safe redacted notice. */
+#jim-messenger-app .jim-system-card-unavailable {
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: #fffae6;
+    border: 1px solid #ffe380;
+    border-radius: 4px;
+    color: #7a5c00;
+    font-size: 12px;
+}
+
+/* Acknowledged pill that replaces the 'Mark as seen' button after the
+   user has actioned the message. */
+#jim-messenger-app .jim-system-card-actioned-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: #e3fcef;
+    color: #006644;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+/* Manual acknowledge button. Subtle, sits next to the 'Open issue' link
+   in the card footer. */
+#jim-messenger-app .jim-system-card-ack-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: #5e6c84;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+#jim-messenger-app .jim-system-card-ack-btn:hover {
+    background: #f4f5f7;
+    color: #172b4d;
+    border-color: #dfe1e6;
+}
+#jim-messenger-app .jim-system-card-ack-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
+}
+
+/* Lazy-load older messages button. Sits at the top of the message list
+   when the server might still have older history we haven't fetched. */
+#jim-messenger-app .jim-load-older-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0 12px;
+}
+#jim-messenger-app .jim-load-older-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--jim-border-subtle);
+    background: #ffffff;
+    color: var(--jim-text-secondary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+#jim-messenger-app .jim-load-older-btn:hover:not(:disabled) {
+    background: var(--jim-hover);
+    color: var(--jim-text);
+    border-color: var(--jim-border);
+}
+#jim-messenger-app .jim-load-older-btn:disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
+/* Jira Assistant event-type filter chips (web parity with the mobile feed).
+   Display-only filter over the SYSTEM conversation; pinned to the top of the
+   feed and horizontally scrollable when the chips overflow. */
+#jim-messenger-app .jim-assistant-filter-bar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: flex;
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 10px 0;
+    margin-bottom: 12px;
+    background: #ffffff;
+    border-bottom: 1px solid var(--jim-border-subtle);
+    scrollbar-width: thin;
+}
+/* Full-bleed across the padded message list so the sticky bar covers the
+   content scrolling beneath it. Margins mirror .jim-message-list-inner padding. */
+#jim-messenger-app.jim-chat-page .jim-assistant-filter-bar {
+    margin: -24px -28px 12px;
+    padding: 10px 28px;
+}
+#jim-messenger-app .jim-assistant-filter-chip {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    border: 1px solid var(--jim-border-subtle);
+    background: #ffffff;
+    color: var(--jim-text-secondary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+#jim-messenger-app .jim-assistant-filter-chip:hover {
+    background: var(--jim-hover);
+    color: var(--jim-text);
+    border-color: var(--jim-border);
+}
+#jim-messenger-app .jim-assistant-filter-chip-active {
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand);
+    border-color: var(--jim-brand);
+}
+#jim-messenger-app .jim-assistant-filter-showall {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--jim-border-subtle);
+    background: #ffffff;
+    color: var(--jim-brand);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    margin-inline-start: 8px;
+}
+/* Persian/RTL: chips run right-to-left. */
+#jim-messenger-app.jim-lang-fa .jim-assistant-filter-bar {
+    direction: rtl;
+}
+
+@media (max-width: 768px) {
+    #jim-messenger-app.jim-chat-page .jim-assistant-filter-bar {
+        margin: -14px -10px 10px;
+        padding: 8px 10px;
+    }
+}
+
+/* Forward message modal */
+#jim-messenger-app .jim-forward-modal {
+    max-width: 480px;
+    width: 92%;
+}
+#jim-messenger-app .jim-forward-preview {
+    max-height: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 8px;
+    background: var(--jim-panel-bg);
+    padding: 8px 10px;
+    color: var(--jim-text-secondary);
+    font-size: 13px;
+    margin-bottom: 12px;
+    white-space: pre-wrap;
+}
+#jim-messenger-app .jim-forward-targets {
+    max-height: 280px;
+    overflow-y: auto;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 8px;
+    background: var(--jim-bg);
+    padding: 4px;
+    margin: 8px 0 12px;
+}
+#jim-messenger-app .jim-forward-target {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--jim-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+#jim-messenger-app .jim-forward-target:hover {
+    background: var(--jim-hover);
+}
+#jim-messenger-app .jim-forward-target-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+}
+#jim-messenger-app .jim-forward-target-kind {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--jim-muted);
+    background: var(--jim-surface);
+    border-radius: 999px;
+    padding: 2px 8px;
+}
+
+/* Auto-linked URLs inside message bubbles. */
+#jim-messenger-app .jim-message-text .jim-link {
+    color: #0b66cb; /* clear link affordance on incoming bubbles */
+    font-weight: 600;
+    text-decoration: underline;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+#jim-messenger-app .jim-message-text .jim-link:hover {
+    text-decoration-thickness: 2px;
+}
+/* Outgoing (blue/teal) bubbles: white link is readable and clearly a link. */
+#jim-messenger-app .jim-message-row-own .jim-message-text .jim-link {
+    color: var(--jim-brand-hover);
+}
+
+/* Sprint 12: tappable phone numbers (tel:) inside message bubbles. */
+#jim-messenger-app .jim-message-text .jim-phone-link {
+    color: #0b66cb;
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    white-space: nowrap;
+}
+#jim-messenger-app .jim-message-text .jim-phone-link:hover {
+    text-decoration-style: solid;
+}
+#jim-messenger-app .jim-message-row-own .jim-message-text .jim-phone-link {
+    color: var(--jim-brand-hover);
+}
+
+/* Sprint 12: Corbit Easter egg — a premium luminous shimmer on trigger words.
+   Render-time decoration only; message text is never modified or made
+   unreadable. Respects reduced-motion (static glow instead of animation). */
+#jim-messenger-app .jim-easter-egg {
+    font-weight: 700;
+    background: linear-gradient(90deg, #0d6e6e, #2cb5b5, #e07a2f, #2cb5b5, #0d6e6e);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: #0d6e6e; /* fallback where background-clip:text is unsupported */
+    text-shadow: 0 0 6px rgba(44, 181, 181, 0.45);
+    animation: jimCorbitShimmer 2.6s ease-in-out infinite;
+}
+@keyframes jimCorbitShimmer {
+    0%   { background-position: 0% 50%; text-shadow: 0 0 4px rgba(44,181,181,0.35); }
+    50%  { background-position: 100% 50%; text-shadow: 0 0 10px rgba(224,122,47,0.55); }
+    100% { background-position: 0% 50%; text-shadow: 0 0 4px rgba(44,181,181,0.35); }
+}
+@media (prefers-reduced-motion: reduce) {
+    #jim-messenger-app .jim-easter-egg {
+        animation: none;
+        background-position: 0% 50%;
+        text-shadow: 0 0 6px rgba(44, 181, 181, 0.5);
+    }
+}
+/* Issue 1 fix: on outgoing blue/teal bubbles the transparent gradient-clip text
+   has poor contrast. Use a solid, readable contrast-safe variant (white glyphs
+   with a warm glow) instead of the clipped gradient. corbitlogic.com links keep
+   their own white link styling above. */
+#jim-messenger-app .jim-message-row-own .jim-easter-egg {
+    background: none;
+    -webkit-background-clip: initial;
+    background-clip: initial;
+    -webkit-text-fill-color: #ffffff;
+    color: #ffffff;
+    font-weight: 800;
+    text-shadow: 0 0 6px rgba(255, 224, 138, 0.85), 0 0 2px rgba(0, 0, 0, 0.35);
+    animation: jimCorbitShimmerOwn 2.6s ease-in-out infinite;
+}
+@keyframes jimCorbitShimmerOwn {
+    0%   { text-shadow: 0 0 4px rgba(255,255,255,0.6), 0 0 2px rgba(0,0,0,0.3); }
+    50%  { text-shadow: 0 0 10px rgba(255,224,138,0.95), 0 0 3px rgba(0,0,0,0.35); }
+    100% { text-shadow: 0 0 4px rgba(255,255,255,0.6), 0 0 2px rgba(0,0,0,0.3); }
+}
+@media (prefers-reduced-motion: reduce) {
+    #jim-messenger-app .jim-message-row-own .jim-easter-egg {
+        animation: none;
+        text-shadow: 0 0 6px rgba(255, 224, 138, 0.9), 0 0 2px rgba(0, 0, 0, 0.35);
+    }
+}
+
+/* Sprint 12 polish: ephemeral chat activity indicator above the composer. */
+#jim-messenger-app .jim-activity-indicator {
+    padding: 2px 16px 4px;
+    font-size: 12px;
+    font-style: italic;
+    color: #0b66cb;
+}
+
+/* Sprint 12: multi-select toolbar + selected message highlight. */
+#jim-messenger-app .jim-selection-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    background: #0d6e6e;
+    color: #ffffff;
+    border-radius: 8px;
+}
+#jim-messenger-app.jim-lang-fa .jim-selection-toolbar {
+    direction: rtl;
+}
+#jim-messenger-app .jim-selection-count {
+    flex: 1 1 auto;
+    font-weight: 600;
+}
+#jim-messenger-app .jim-selection-toolbar button {
+    border: none;
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font: inherit;
+}
+#jim-messenger-app .jim-selection-cancel {
+    background: transparent;
+    color: #ffffff;
+    font-size: 16px;
+    padding: 4px 8px;
+}
+#jim-messenger-app .jim-selection-delete {
+    background: #ffffff;
+    color: #0d6e6e;
+    font-weight: 600;
+}
+#jim-messenger-app .jim-selection-delete[disabled] {
+    opacity: 0.5;
+    cursor: default;
+}
+#jim-messenger-app .jim-message-bubble-selected {
+    background: rgba(13, 110, 110, 0.14);
+    border-radius: 10px;
+    outline: 2px solid rgba(13, 110, 110, 0.55);
+}
+
+/* Bidirectional text inside text-bearing elements.
+
+   - Composer textarea, conversation sidebar title/preview and reply preview
+     use unicode-bidi: plaintext so the browser picks direction per paragraph
+     from the first strong character (best for live typing and short labels).
+
+   - Message body text (.jim-message-text) is classified explicitly in JS by
+     a majority-character vote — see detectTextDirection() — and tagged with
+     either .jim-message-text-rtl or .jim-message-text-ltr. The bubble's row
+     position is NOT changed by this; only the text inside the bubble gets
+     direction + alignment. */
+#jim-messenger-app .jim-composer-input,
+#jim-messenger-app .jim-conversation-preview,
+#jim-messenger-app .jim-conversation-title,
+#jim-messenger-app .jim-reply-preview-text {
+    unicode-bidi: plaintext;
+}
+
+#jim-messenger-app .jim-message-text-rtl {
+    direction: rtl;
+    text-align: right;
+    unicode-bidi: plaintext;
+}
+
+#jim-messenger-app .jim-message-text-ltr {
+    direction: ltr;
+    text-align: left;
+    unicode-bidi: plaintext;
+}
+
+#jim-messenger-app #jim-chat-panel-shell.jim-chat-drop-active {
+    position: relative;
+}
+
+#jim-messenger-app #jim-chat-panel-shell.jim-chat-drop-active::after {
+    content: "Drop to attach";
+    position: absolute;
+    inset: 8px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed var(--jim-brand, #0052cc);
+    border-radius: 12px;
+    background: rgba(9, 30, 66, 0.06);
+    color: var(--jim-brand, #0052cc);
+    font-size: 16px;
+    font-weight: 600;
+    pointer-events: none;
 }
 
 #jim-messenger-app .jim-sidebar-brand {
@@ -116,34 +813,76 @@
     line-height: 1.35;
 }
 
+#jim-messenger-app .jim-sidebar-search-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    padding: 6px 10px 4px;
+    background: var(--jim-bg);
+}
+
+#jim-messenger-app .jim-sidebar-search-row .jim-sidebar-search,
+#jim-messenger-app .jim-sidebar-search-row .jim-search {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border-bottom: 0;
+}
+
+#jim-messenger-app .jim-sidebar-icon-btn {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 999px;
+    background: var(--jim-surface);
+    color: var(--jim-muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+
+#jim-messenger-app .jim-sidebar-icon-btn[aria-expanded="true"],
+#jim-messenger-app .jim-sidebar-icon-btn:hover {
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand-hover);
+    border-color: var(--jim-brand);
+}
+
 #jim-messenger-app .jim-sidebar-search,
 #jim-messenger-app .jim-search {
     position: relative;
     flex-shrink: 0;
-    padding: 10px 12px;
+    padding: 6px 10px;
     background: var(--jim-bg);
     border-bottom: 1px solid var(--jim-border-subtle);
+}
+
+#jim-messenger-app .jim-sidebar-search.jim-msg-search {
+    padding-top: 0;
 }
 
 #jim-messenger-app .jim-sidebar-search .jim-search-input,
 #jim-messenger-app .jim-search-input {
     width: 100%;
-    padding: 9px 12px;
+    padding: 6px 10px;
     border: 1px solid var(--jim-border-subtle);
-    border-radius: 8px;
-    background: var(--jim-surface);
+    border-radius: 999px;
+    background: var(--jim-bg);
     color: var(--jim-text);
     font-size: 13px;
-    line-height: 20px;
+    line-height: 18px;
     transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 #jim-messenger-app .jim-sidebar-search .jim-search-input:focus,
 #jim-messenger-app .jim-search-input:focus {
     outline: none;
-    border-color: #4c9aff;
+    border-color: var(--jim-focus);
     background: var(--jim-bg);
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.18);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
 }
 
 #jim-messenger-app .jim-sidebar-search .jim-search-input::placeholder,
@@ -175,8 +914,9 @@
 #jim-messenger-app .jim-conversation-list {
     flex: 1;
     overflow-y: auto;
-    padding: 4px 8px 10px;
+    padding: 0;
     min-height: 0;
+    background: var(--jim-bg);
 }
 
 #jim-messenger-app .jim-sidebar-section-label {
@@ -204,12 +944,13 @@
     align-items: center;
     gap: 10px;
     width: 100%;
-    min-height: 60px;
-    margin-bottom: 2px;
-    padding: 8px 10px 8px 8px;
+    min-height: 56px;
+    margin-bottom: 0;
+    padding: 8px 12px;
     border: 0;
-    border-radius: 10px;
-    border-inline-start: 3px solid transparent;
+    border-radius: 0;
+    border-bottom: 1px solid var(--jim-border);
+    border-inline-start: 0;
     background: transparent;
     text-align: start;
     cursor: pointer;
@@ -229,16 +970,16 @@
 #jim-messenger-app .jim-search-result-item:focus {
     background: var(--jim-hover);
     outline: none;
-    box-shadow: inset 0 0 0 1px rgba(76, 154, 255, 0.35);
+    box-shadow: inset 0 0 0 1px var(--jim-focus-ring);
 }
 
 #jim-messenger-app .jim-conversation-item-selected {
     background: var(--jim-selected) !important;
-    border-inline-start-color: var(--jim-brand);
+    border-inline-start: 0;
 }
 
 #jim-messenger-app .jim-assistant-item {
-    background: rgba(222, 235, 255, 0.35);
+    background: rgba(1, 186, 158, 0.08);
 }
 
 #jim-messenger-app .jim-assistant-item:hover,
@@ -254,15 +995,15 @@
 #jim-messenger-app .jim-assistant-icon {
     width: 40px;
     height: 40px;
-    border-radius: 10px;
-    background: linear-gradient(145deg, #0747a6, #2684ff);
+    border-radius: 50%;
+    background: linear-gradient(145deg, #004a3f, #01ba9e);
     color: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 18px;
     flex-shrink: 0;
-    box-shadow: 0 2px 6px rgba(0, 82, 204, 0.22);
+    box-shadow: 0 2px 6px rgba(1, 186, 158, 0.22);
 }
 
 #jim-messenger-app .jim-conversation-main {
@@ -321,15 +1062,51 @@
     text-overflow: ellipsis;
     flex: 1;
     min-width: 0;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+/* Subtle light-blue background when the last message was sent by me. */
+#jim-messenger-app .jim-conversation-preview-own {
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand-hover);
+}
+
+/* Subtle light-gray background when the last message was someone else's. */
+#jim-messenger-app .jim-conversation-preview-other {
+    background: #f4f5f7;
+    color: #5e6c84;
+}
+
+/* Unsent draft - amber so it's immediately visible alongside owned / others. */
+#jim-messenger-app .jim-conversation-preview-draft {
+    background: #fff7d6;
+    color: #7f5f01;
+    font-style: italic;
+}
+
+#jim-messenger-app .jim-conversation-preview-draft-label {
+    display: inline-block;
+    margin-right: 4px;
+    padding: 0 4px;
+    font-size: 10px;
+    font-weight: 700;
+    font-style: normal;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: #ffab00;
+    color: #ffffff;
+    border-radius: 3px;
+    vertical-align: middle;
 }
 
 #jim-messenger-app .jim-assistant-badge {
     display: inline-flex;
     align-items: center;
     padding: 2px 7px;
-    border-radius: 4px;
-    background: #deebff;
-    color: #0747a6;
+    border-radius: 8px;
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand-hover);
     font-size: 9px;
     font-weight: 800;
     text-transform: uppercase;
@@ -342,13 +1119,51 @@
     height: 18px;
     padding: 0 5px;
     border-radius: 9px;
-    background: #de350b;
+    background: var(--jim-brand);
     color: #ffffff;
     font-size: 10px;
     font-weight: 700;
     line-height: 18px;
     text-align: center;
     flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-mention-badge {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #0D6E6E;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 18px;
+    text-align: center;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-conversation-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-msg-result-meta {
+    display: block;
+    font-size: 11px;
+    color: var(--jim-muted);
+    margin-top: 2px;
+}
+
+#jim-messenger-app .jim-search-retry {
+    margin-inline-start: 8px;
+    border: 0;
+    background: transparent;
+    color: var(--jim-brand);
+    cursor: pointer;
+    font-weight: 600;
 }
 
 #jim-messenger-app .jim-search-empty {
@@ -437,9 +1252,9 @@
 #jim-messenger-app .jim-chat-header-assistant-avatar {
     width: 44px;
     height: 44px;
-    border-radius: 12px;
-    background: linear-gradient(145deg, #0747a6, #2684ff);
-    box-shadow: 0 2px 6px rgba(0, 82, 204, 0.22);
+    border-radius: 50%;
+    background: linear-gradient(145deg, #004a3f, #01ba9e);
+    box-shadow: 0 2px 6px rgba(1, 186, 158, 0.22);
 }
 
 #jim-messenger-app .jim-chat-header-assistant-icon {
@@ -481,9 +1296,9 @@
     display: inline-flex;
     align-items: center;
     padding: 2px 7px;
-    border-radius: 4px;
-    background: #deebff;
-    color: #0747a6;
+    border-radius: 8px;
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand-hover);
     font-size: 9px;
     font-weight: 800;
     text-transform: uppercase;
@@ -555,7 +1370,7 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: #0747a6;
+    color: var(--jim-brand-hover);
 }
 
 #jim-messenger-app .jim-pinned-banner-unpin {
@@ -566,7 +1381,7 @@
     border: 0;
     border-radius: 6px;
     background: transparent;
-    color: #0747a6;
+    color: var(--jim-brand-hover);
     font-size: 16px;
     line-height: 1;
     cursor: pointer;
@@ -593,17 +1408,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 14px;
+    gap: 0;
     margin: 10px 0 16px;
     text-align: center;
 }
 
 #jim-messenger-app .jim-date-divider::before,
 #jim-messenger-app .jim-date-divider::after {
-    content: "";
-    flex: 1 1 auto;
-    height: 1px;
-    background: var(--jim-border);
+    content: none;
 }
 
 #jim-messenger-app .jim-date-divider-text {
@@ -612,6 +1424,10 @@
     color: var(--jim-muted);
     font-size: 12px;
     font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: var(--jim-bg);
+    border: 1px solid var(--jim-border);
 }
 
 #jim-messenger-app .jim-message-row {
@@ -697,10 +1513,10 @@
     max-width: 100%;
     width: fit-content;
     padding: 10px 14px;
-    border-radius: 14px;
+    border-radius: 18px;
     background: var(--jim-bubble-other);
     border: 1px solid var(--jim-bubble-other-border);
-    box-shadow: 0 1px 2px rgba(9, 30, 66, 0.05);
+    box-shadow: 0 1px 2px rgba(20, 20, 20, 0.04);
 }
 
 #jim-messenger-app .jim-message-row-own .jim-message-bubble {
@@ -726,8 +1542,8 @@
 }
 
 #jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-reply-preview {
-    background: rgba(255, 255, 255, 0.18);
-    border-inline-start-color: rgba(255, 255, 255, 0.75);
+    background: rgba(20, 20, 20, 0.06);
+    border-inline-start-color: var(--jim-brand);
 }
 
 #jim-messenger-app .jim-message-row-own .jim-message-bubble .jim-reply-preview-author {
@@ -791,11 +1607,15 @@
 }
 
 #jim-messenger-app .jim-message-meta {
-    margin-top: 5px;
+    margin-top: 4px;
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 6px;
     flex-wrap: wrap;
+    font-size: 11px;
+    color: var(--jim-muted);
+    line-height: 1;
 }
 
 #jim-messenger-app .jim-message-time {
@@ -803,8 +1623,24 @@
     font-size: 11px;
 }
 
+/* Per-bubble exact send time. Sits at the bottom-right of every bubble
+   so each message can be timestamped individually, not only the first
+   of a group. Stays subtle - tiny size, low contrast. */
+#jim-messenger-app .jim-message-bubble-time {
+    font-size: 10px;
+    color: var(--jim-muted);
+    opacity: 0.8;
+    white-space: nowrap;
+}
+
+#jim-messenger-app .jim-message-row-own .jim-message-bubble-time {
+    color: var(--jim-bubble-own-muted);
+    opacity: 1;
+}
+
 #jim-messenger-app .jim-message-row-own .jim-message-meta {
     justify-content: flex-end;
+    color: var(--jim-bubble-own-muted);
 }
 
 /* System notification cards */
@@ -1048,8 +1884,8 @@
 
 #jim-messenger-app.jim-chat-shell #jim-composer.jim-composer textarea#jim-message-input.jim-composer-input:focus {
     outline: none;
-    border-color: #4c9aff;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.18);
+    border-color: var(--jim-focus);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
 }
 
 #jim-messenger-app.jim-chat-shell #jim-composer.jim-composer button#jim-send-button.jim-send-button {
@@ -1060,7 +1896,7 @@
     padding: 0;
     border: 0;
     border-radius: 10px;
-    background: #0c66e4;
+    background: var(--jim-brand);
     color: #ffffff;
     font: inherit;
     font-size: 14px;
@@ -1078,12 +1914,12 @@
 }
 
 #jim-messenger-app.jim-chat-shell #jim-composer.jim-composer button#jim-send-button.jim-send-button:hover:not(:disabled) {
-    background: #0055cc;
+    background: var(--jim-brand-hover);
 }
 
 #jim-messenger-app.jim-chat-shell #jim-composer.jim-composer button#jim-send-button.jim-send-button:focus {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
 }
 
 #jim-messenger-app.jim-chat-shell #jim-composer.jim-composer button#jim-send-button.jim-send-button:disabled {
@@ -1094,7 +1930,7 @@
 }
 
 #jim-messenger-app .jim-avatar {
-    border-radius: 10px;
+    border-radius: 50%;
     object-fit: cover;
     flex-shrink: 0;
 }
@@ -1113,7 +1949,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: #6554c0;
+    border-radius: 50%;
+    background: var(--jim-brand);
     color: #ffffff;
     font-size: 13px;
     font-weight: 700;
@@ -1126,10 +1963,47 @@
 
 #jim-messenger-app .jim-loading,
 #jim-messenger-app .jim-empty-state {
-    padding: 16px;
+    padding: 24px 16px;
     color: var(--jim-muted);
     font-size: 14px;
     text-align: center;
+}
+
+#jim-messenger-app .jim-empty-illustrated {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+#jim-messenger-app .jim-empty-glyph {
+    width: 72px;
+    height: 72px;
+    border-radius: 999px;
+    background: var(--jim-brand-subtle, #e6f8f5);
+    color: var(--jim-brand);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#jim-messenger-app .jim-empty-glyph::before {
+    content: "";
+    width: 28px;
+    height: 28px;
+    background: currentColor;
+    -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z'/></svg>") center / contain no-repeat;
+            mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z'/></svg>") center / contain no-repeat;
+}
+
+#jim-messenger-app .jim-empty-glyph-media::before {
+    -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z'/></svg>") center / contain no-repeat;
+            mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z'/></svg>") center / contain no-repeat;
+}
+
+#jim-messenger-app .jim-empty-glyph-links::before {
+    -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z'/></svg>") center / contain no-repeat;
+            mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='black' d='M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z'/></svg>") center / contain no-repeat;
 }
 
 #jim-messenger-app .jim-loading-spinner {
@@ -1172,7 +2046,7 @@
 
 #jim-messenger-app .jim-retry-button:focus {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
 }
 
 #jim-messenger-app .jim-error-banner {
@@ -1228,48 +2102,70 @@
     border: 0;
 }
 
-[dir="rtl"] #jim-messenger-app .jim-sidebar {
-    border-inline-end: 0;
-    border-inline-start: 1px solid var(--jim-border);
-}
+/* (Removed legacy [dir="rtl"] overrides for sidebar/system-card; the chat
+   shell is now locked to LTR layout at the top of this file, so RTL flips
+   would only create inconsistency. Per-message text still flows RTL when
+   appropriate via dir="auto".) */
 
-[dir="rtl"] #jim-messenger-app .jim-system-card {
-    border-inline-start: 0;
-    border-inline-end: 4px solid var(--jim-brand);
-}
-
+/* Modern composer icon buttons (SVG-based). Telegram-style rounded
+   touch targets with subtle hover/active feedback. */
 #jim-messenger-app .jim-composer-icon-button {
-    flex: 0 0 36px;
-    width: 36px;
-    height: 44px;
-    margin: 0;
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
+    margin: 0 1px;
     padding: 0;
     border: 0;
-    border-radius: 8px;
+    border-radius: 50%;
     background: transparent;
     color: var(--jim-muted);
-    font-size: 18px;
     line-height: 1;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease, transform 0.05s ease;
     -webkit-appearance: none;
     appearance: none;
 }
 
-#jim-messenger-app .jim-composer-icon-button:hover:not(:disabled) {
-    background: var(--jim-hover);
+#jim-messenger-app .jim-composer-icon-button .jim-composer-icon {
+    width: 22px;
+    height: 22px;
+    display: block;
+    pointer-events: none;
 }
 
-#jim-messenger-app .jim-composer-icon-button:focus {
+#jim-messenger-app .jim-composer-icon-button:hover:not(:disabled) {
+    background: var(--jim-hover);
+    color: var(--jim-brand);
+}
+
+#jim-messenger-app .jim-composer-icon-button:active:not(:disabled) {
+    transform: scale(0.94);
+}
+
+#jim-messenger-app .jim-composer-icon-button:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
 }
 
 #jim-messenger-app .jim-composer-icon-button:disabled {
-    opacity: 0.45;
+    opacity: 0.4;
     cursor: not-allowed;
+}
+
+#jim-messenger-app .jim-send-icon {
+    width: 22px;
+    height: 22px;
+    display: block;
+    pointer-events: none;
+}
+
+#jim-messenger-app .jim-send-label {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
 }
 
 #jim-messenger-app .jim-emoji-palette {
@@ -1286,8 +2182,8 @@
 #jim-messenger-app .jim-mention-palette {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    max-height: 220px;
+    gap: 4px;
+    max-height: 280px;
     overflow-y: auto;
     padding: 6px;
     margin-bottom: 6px;
@@ -1300,35 +2196,167 @@
     display: none;
 }
 
+/* "Mention all members" header button - inserts mentions for everyone */
+#jim-messenger-app .jim-mention-all {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+
+#jim-messenger-app .jim-mention-all:hover {
+    background: #c8f3ec;
+}
+
+#jim-messenger-app .jim-mention-all-icon {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--jim-brand);
+    color: #ffffff;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+#jim-messenger-app .jim-mention-all-text {
+    flex: 1;
+    text-align: start;
+}
+
+#jim-messenger-app .jim-mention-all-count {
+    color: var(--jim-muted);
+    font-weight: 500;
+    font-size: 12px;
+}
+
+#jim-messenger-app .jim-mention-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* Member row: [checkbox] + [avatar + name clickable area] */
 #jim-messenger-app .jim-mention-option {
     display: flex;
     align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 6px 8px;
-    border: 0;
+    gap: 4px;
+    padding: 0;
     border-radius: 8px;
     background: transparent;
-    text-align: start;
-    font-size: 13px;
     color: var(--jim-text);
-    cursor: pointer;
+    overflow: hidden;
 }
 
 #jim-messenger-app .jim-mention-option:hover {
     background: var(--jim-panel-bg);
 }
 
+#jim-messenger-app .jim-mention-checkbox-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+#jim-messenger-app .jim-mention-checkbox {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--jim-brand);
+}
+
+/* The clickable name+avatar region (single-mention quick path) */
+#jim-messenger-app .jim-mention-option-body {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    text-align: start;
+    font-size: 13px;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+}
+
+#jim-messenger-app .jim-mention-option-body:hover {
+    background: var(--jim-hover);
+}
+
 #jim-messenger-app .jim-mention-option-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 1;
+}
+
+#jim-messenger-app .jim-mention-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 6px 4px 2px;
+    border-top: 1px solid var(--jim-border-subtle);
+    margin-top: 2px;
+}
+
+#jim-messenger-app .jim-mention-clear,
+#jim-messenger-app .jim-mention-insert {
+    padding: 5px 12px;
+    border: 1px solid var(--jim-border);
+    border-radius: 6px;
+    background: #ffffff;
+    color: var(--jim-text);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.12s ease, opacity 0.12s ease;
+}
+
+#jim-messenger-app .jim-mention-clear:hover {
+    background: var(--jim-hover);
+}
+
+#jim-messenger-app .jim-mention-insert {
+    background: var(--jim-brand);
+    border-color: var(--jim-brand);
+    color: #ffffff;
+    font-weight: 600;
+}
+
+#jim-messenger-app .jim-mention-insert:hover:not(:disabled) {
+    background: var(--jim-brand-hover);
+}
+
+#jim-messenger-app .jim-mention-insert:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 #jim-messenger-app .jim-mention {
     color: var(--jim-brand);
     font-weight: 600;
-    background: rgba(12, 102, 228, 0.1);
+    background: var(--jim-brand-subtle);
     border-radius: 4px;
     padding: 0 3px;
 }
@@ -1338,15 +2366,14 @@
     background: rgba(255, 171, 0, 0.25);
 }
 
-/* Mentions inside own bubbles sit on the brand-blue background, so invert the chip */
 #jim-messenger-app .jim-message-row-own .jim-mention {
-    color: #ffffff;
+    color: var(--jim-brand-hover);
     font-weight: 700;
-    background: rgba(255, 255, 255, 0.26);
+    background: rgba(1, 186, 158, 0.16);
 }
 
 #jim-messenger-app .jim-message-row-own .jim-mention-self {
-    color: #172b4d;
+    color: #7f5f01;
     background: #ffd66e;
 }
 
@@ -1518,8 +2545,8 @@
 }
 
 #jim-messenger-app .jim-issue-status-indeterminate {
-    background: #deebff;
-    color: #0747a6;
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand-hover);
 }
 
 #jim-messenger-app .jim-issue-status-done {
@@ -1614,15 +2641,16 @@
     flex-shrink: 0;
     display: flex;
     gap: 4px;
-    padding: 0 12px 8px;
+    padding: 2px 10px 6px;
+    background: var(--jim-bg);
 }
 
 #jim-messenger-app .jim-sidebar-tab {
     flex: 1;
-    padding: 6px 8px;
+    padding: 5px 6px;
     border: 0;
-    border-radius: 6px;
-    background: transparent;
+    border-radius: 999px;
+    background: var(--jim-surface);
     color: var(--jim-muted);
     font: inherit;
     font-size: 12px;
@@ -1638,8 +2666,8 @@
 }
 
 #jim-messenger-app .jim-sidebar-tab.is-active {
-    background: var(--jim-brand-subtle);
-    color: var(--jim-brand);
+    background: var(--jim-brand);
+    color: #ffffff;
 }
 
 #jim-messenger-app .jim-conversation-group-mark {
@@ -1650,47 +2678,146 @@
 #jim-messenger-app .jim-sidebar-actions {
     flex-shrink: 0;
     display: flex;
+    flex-wrap: nowrap;
     gap: 6px;
-    padding: 8px 12px;
+    padding: 6px 10px;
     border-top: 1px solid var(--jim-border-subtle);
     background: var(--jim-bg);
 }
 
+#jim-messenger-app .jim-sidebar-action-btn,
 #jim-messenger-app .jim-new-conversation {
     flex: 1;
     min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    padding: 8px 10px;
-    border: 1px dashed var(--jim-border);
+    padding: 6px 8px;
+    border: 0;
     border-radius: 8px;
-    background: transparent;
-    color: var(--jim-brand);
+    background: var(--jim-brand);
+    color: #ffffff;
     font: inherit;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     cursor: pointer;
     text-align: center;
     transition: background 0.12s ease, border-color 0.12s ease;
 }
 
+#jim-messenger-app .jim-sidebar-action-icon {
+    font-size: 13px;
+    line-height: 1;
+}
+
+#jim-messenger-app .jim-sidebar-action-btn:hover,
 #jim-messenger-app .jim-new-conversation:hover {
+    background: var(--jim-brand-hover);
+    border-color: var(--jim-brand-hover);
+}
+
+#jim-messenger-app .jim-sidebar-action-btn.jim-new-group,
+#jim-messenger-app .jim-new-conversation.jim-new-group,
+#jim-messenger-app .jim-sidebar-action-btn.jim-saved-messages,
+#jim-messenger-app .jim-new-conversation.jim-saved-messages {
+    flex: 1;
     background: var(--jim-brand-subtle);
-    border-color: var(--jim-brand);
+    color: var(--jim-brand-hover);
+}
+
+#jim-messenger-app .jim-sidebar-action-btn.jim-new-group:hover,
+#jim-messenger-app .jim-new-conversation.jim-new-group:hover,
+#jim-messenger-app .jim-sidebar-action-btn.jim-saved-messages:hover,
+#jim-messenger-app .jim-new-conversation.jim-saved-messages:hover {
+    background: #c8f3ec;
+}
+
+#jim-messenger-app .jim-conversation-self-mark {
+    margin-inline-end: 4px;
 }
 
 #jim-messenger-app .jim-new-conversation:focus {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
+}
+
+#jim-messenger-app .jim-message-menu {
+    position: fixed;
+    z-index: 80;
+    min-width: 220px;
+    max-width: 256px;
+    padding: 8px;
+    border: 1px solid var(--jim-border);
+    border-radius: 14px;
+    background: var(--jim-bg);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+#jim-messenger-app .jim-message-menu-item {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--jim-text);
+    font: inherit;
+    font-size: 14px;
+    text-align: start;
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-message-menu-item.is-danger {
+    color: var(--jim-error, #c62828);
+}
+
+#jim-messenger-app .jim-message-menu-item:hover,
+#jim-messenger-app .jim-message-menu-item:focus {
+    background: var(--jim-hover);
+}
+
+#jim-messenger-app .jim-message-menu-item[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+#jim-messenger-app .jim-selection-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+#jim-messenger-app.jim-lang-fa .jim-selection-toolbar {
+    direction: rtl;
+}
+
+#jim-messenger-app .jim-selection-toolbar button {
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--jim-brand-subtle);
+    color: var(--jim-brand-hover);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-selection-toolbar button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 #jim-messenger-app .jim-sidebar-footer {
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
+    gap: 8px;
+    padding: 6px 12px;
     border-top: 1px solid var(--jim-border-subtle);
     background: var(--jim-bg);
 }
@@ -1727,31 +2854,64 @@
     flex-shrink: 0;
 }
 
-#jim-messenger-app .jim-push-toggle {
-    margin-inline-start: auto;
-    flex-shrink: 0;
-    width: 32px;
-    height: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid transparent;
-    border-radius: 50%;
+/* Bottom-left notification status as a small text link / chip.
+   Replaces the old crossed-bell button so users aren't confused with the
+   per-conversation mute icon. Three states (controlled by JS adding
+   .jim-push-status-on / .jim-push-status-blocked):
+     default  -> "Enable notifications" (link-style, accent blue)
+     on       -> "Notifications on"     (calm green text)
+     blocked  -> "Notifications blocked" (warning amber, not clickable)
+*/
+#jim-messenger-app .jim-sidebar-footer-status {
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+    line-height: 1.35;
+}
+#jim-messenger-app .jim-sidebar-footer-divider {
+    color: var(--jim-muted);
+    opacity: 0.7;
+    padding: 0 4px;
+    user-select: none;
+}
+#jim-messenger-app .jim-push-status-link {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 0;
+    padding: 0;
     background: transparent;
-    font-size: 16px;
-    line-height: 1;
+    color: var(--jim-brand);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.35;
     cursor: pointer;
-    transition: background 0.12s ease, border-color 0.12s ease;
+    text-decoration: none;
+    border-radius: 4px;
+    transition: color 0.12s ease, text-decoration 0.12s ease;
 }
-
-#jim-messenger-app .jim-push-toggle:hover {
-    background: var(--jim-hover);
-    border-color: var(--jim-border-subtle);
+#jim-messenger-app .jim-push-status-link:hover {
+    text-decoration: underline;
 }
-
-#jim-messenger-app .jim-push-toggle:focus {
+#jim-messenger-app .jim-push-status-link:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.35);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
+}
+#jim-messenger-app .jim-push-status-link.jim-push-status-on {
+    color: #006644;
+    cursor: pointer;
+    font-weight: 500;
+}
+#jim-messenger-app .jim-push-status-link.jim-push-status-on:hover {
+    text-decoration: underline;
+}
+#jim-messenger-app .jim-push-status-link.jim-push-status-blocked {
+    color: #974f0c;
+    cursor: default;
+    font-weight: 600;
+}
+#jim-messenger-app .jim-push-status-link.jim-push-status-blocked:hover {
+    text-decoration: none;
 }
 
 #jim-messenger-app .jim-modal-overlay {
@@ -1906,7 +3066,7 @@
 }
 
 #jim-messenger-app .jim-group-chip-remove:hover {
-    background: rgba(12, 102, 228, 0.18);
+    background: rgba(1, 186, 158, 0.18);
 }
 
 #jim-messenger-app .jim-modal-actions {
@@ -1933,13 +3093,14 @@
 }
 
 #jim-messenger-app .jim-modal-button-primary {
-    border-color: #0c66e4;
-    background: #0c66e4;
+    border-color: var(--jim-brand);
+    background: var(--jim-brand);
     color: #ffffff;
 }
 
 #jim-messenger-app .jim-modal-button-primary:hover:not(:disabled) {
-    background: #0055cc;
+    background: var(--jim-brand-hover);
+    border-color: var(--jim-brand-hover);
 }
 
 #jim-messenger-app .jim-modal-button-primary:disabled {
@@ -2037,6 +3198,107 @@
     text-transform: uppercase;
 }
 
+/* --- Group/Project settings panel (Phase 1: admins & custom avatars) --- */
+#jim-messenger-app .jim-member-role-admin {
+    background: #fff4e5;
+    color: #b45309;
+}
+
+#jim-messenger-app .jim-member-role-btn {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 8px;
+    background: var(--jim-bg);
+    color: var(--jim-brand);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-member-role-btn:hover {
+    background: var(--jim-brand-subtle);
+}
+
+#jim-messenger-app .jim-settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--jim-border-subtle);
+}
+
+#jim-messenger-app .jim-settings-avatar {
+    align-items: center;
+    text-align: center;
+}
+
+#jim-messenger-app .jim-avatar-lg {
+    width: 64px;
+    height: 64px;
+    font-size: 22px;
+}
+
+#jim-messenger-app .jim-settings-avatar-img {
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+#jim-messenger-app .jim-settings-avatar-controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+#jim-messenger-app .jim-settings-avatar-progress {
+    color: var(--jim-muted);
+    font-size: 12px;
+}
+
+#jim-messenger-app .jim-settings-avatar-progress[hidden] {
+    display: none;
+}
+
+#jim-messenger-app .jim-settings-label {
+    color: var(--jim-muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+#jim-messenger-app .jim-settings-rename-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+#jim-messenger-app .jim-settings-rename-row .jim-search-input {
+    flex: 1;
+    min-width: 0;
+}
+
+#jim-messenger-app .jim-settings-section-label {
+    color: var(--jim-muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 4px;
+}
+
+#jim-messenger-app .jim-settings-gear {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#jim-messenger-app .jim-settings-gear-icon {
+    font-size: 15px;
+    line-height: 1;
+}
+
 #jim-messenger-app .jim-member-remove {
     flex-shrink: 0;
     width: 22px;
@@ -2126,15 +3388,38 @@
     pointer-events: none;
 }
 
+/* Selected-attachment container holds N chips, one per staged file. */
 #jim-messenger-app .jim-selected-attachment {
     display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+#jim-messenger-app .jim-selected-attachment-chip {
+    display: inline-flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 8px;
-    padding: 8px 10px;
+    padding: 6px 8px 6px 10px;
     border: 1px solid var(--jim-border-subtle);
-    border-radius: 6px;
+    border-radius: 10px;
     background: var(--jim-panel-bg);
+    max-width: 240px;
+}
+
+#jim-messenger-app .jim-selected-attachment-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--jim-bg);
+    border: 1px solid var(--jim-border-subtle);
+    color: var(--jim-muted);
+    font-size: 16px;
+    flex-shrink: 0;
 }
 
 #jim-messenger-app .jim-selected-attachment-preview {
@@ -2142,11 +3427,12 @@
 }
 
 #jim-messenger-app .jim-selected-attachment-thumb {
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
     object-fit: cover;
-    border-radius: 4px;
+    border-radius: 8px;
     border: 1px solid var(--jim-border-subtle);
+    display: block;
 }
 
 #jim-messenger-app .jim-selected-attachment-meta {
@@ -2446,7 +3732,7 @@
 
 @keyframes jim-message-highlight {
     0% {
-        background: rgba(76, 154, 255, 0.22);
+        background: var(--jim-focus-ring);
     }
     100% {
         background: transparent;
@@ -2465,65 +3751,86 @@
     justify-content: flex-end;
 }
 
+/* Modern reaction pills: small rounded pills, consistent for own/other
+   bubbles, with clear emoji + count when more than one reactor. */
 #jim-messenger-app .jim-reaction-chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border: 1px solid var(--jim-border);
-    border-radius: 12px;
-    background: var(--jim-bg);
+    gap: 5px;
+    padding: 3px 10px;
+    border: 1px solid rgba(9, 30, 66, 0.08);
+    border-radius: 999px;
+    background: #f4f5f7;
     color: var(--jim-text);
-    font-size: 12px;
+    font-size: 13px;
     font-family: inherit;
-    line-height: 1.5;
+    line-height: 1.3;
     cursor: pointer;
-    transition: background 0.12s ease, border-color 0.12s ease;
+    transition: background 0.12s ease, border-color 0.12s ease, transform 0.05s ease;
 }
 
 #jim-messenger-app .jim-reaction-chip:hover {
-    background: var(--jim-hover);
+    background: #ebecf0;
+    border-color: rgba(9, 30, 66, 0.16);
+}
+
+#jim-messenger-app .jim-reaction-chip:active {
+    transform: scale(0.96);
 }
 
 #jim-messenger-app .jim-reaction-chip-mine {
     background: var(--jim-brand-subtle);
-    border-color: #85b8ff;
+    border-color: #01ba9e;
+    color: var(--jim-brand);
+}
+
+#jim-messenger-app .jim-reaction-chip-mine:hover {
+    background: #c8f3ec;
 }
 
 #jim-messenger-app .jim-reaction-count {
-    color: var(--jim-text-secondary);
-    font-size: 11px;
+    color: inherit;
+    font-size: 12px;
     font-weight: 600;
+    min-width: 8px;
+    text-align: center;
+}
+
+/* Hide the count when only one reactor (looks cleaner). */
+#jim-messenger-app .jim-reaction-chip[data-count="1"] .jim-reaction-count {
+    display: none;
 }
 
 #jim-messenger-app .jim-reaction-picker {
     display: inline-flex;
     align-items: center;
     gap: 2px;
-    padding: 2px 4px;
-    border: 1px solid var(--jim-border-subtle);
-    border-radius: 14px;
-    background: var(--jim-bg);
-    box-shadow: 0 2px 8px rgba(9, 30, 66, 0.12);
+    padding: 4px 6px;
+    border: 1px solid rgba(9, 30, 66, 0.08);
+    border-radius: 999px;
+    background: #ffffff;
+    box-shadow: 0 4px 14px rgba(9, 30, 66, 0.16);
 }
 
 #jim-messenger-app .jim-reaction-option {
-    width: 28px;
-    height: 26px;
+    width: 32px;
+    height: 32px;
     padding: 0;
     border: 0;
-    border-radius: 8px;
+    border-radius: 50%;
     background: transparent;
-    font-size: 15px;
+    font-size: 18px;
     line-height: 1;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    transition: background 0.12s ease, transform 0.05s ease;
 }
 
 #jim-messenger-app .jim-reaction-option:hover {
-    background: var(--jim-hover);
+    background: #f4f5f7;
+    transform: scale(1.18);
 }
 
 #jim-messenger-app .jim-message-actions {
@@ -2662,6 +3969,92 @@
     margin-bottom: 2px;
 }
 
+/* Composer chip shown while editing a message. Sits next to the reply
+   chip and uses a different accent color so the user can tell at a
+   glance which mode the composer is in. */
+#jim-messenger-app .jim-composer-editing {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    padding: 8px 10px;
+    border-inline-start: 3px solid #f59f00;          /* amber to signal edit mode */
+    border-radius: 4px;
+    background: #fff8e1;
+    color: #5e4500;
+}
+#jim-messenger-app .jim-composer-editing-icon {
+    flex: 0 0 auto;
+    font-size: 16px;
+    line-height: 1;
+    color: #d18b00;
+}
+#jim-messenger-app .jim-composer-editing-content {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+#jim-messenger-app .jim-composer-editing-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #b07700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+#jim-messenger-app .jim-composer-editing-preview {
+    font-size: 12.5px;
+    color: #5e4500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+#jim-messenger-app .jim-composer-editing-hint {
+    font-size: 10.5px;
+    color: #997000;
+    background: rgba(255,196,0,0.18);
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+
+/* When the composer is in edit mode, give the textarea container a
+   subtle amber outline as a second visual cue so it lines up with
+   the chip above it. */
+#jim-messenger-app .jim-composer.jim-composer-is-editing .jim-composer-surface {
+    box-shadow: 0 0 0 1px #f59f00 inset;
+    border-radius: 6px;
+}
+#jim-messenger-app .jim-send-button.jim-send-button-editing {
+    background: #f59f00;
+    color: #ffffff;
+}
+#jim-messenger-app .jim-send-button.jim-send-button-editing:hover {
+    background: #d18b00;
+}
+
+/* Faint inline placeholder shown inside the original message bubble
+   while the user is editing it via the main composer. Replaces the
+   old inline edit form that used to render here. */
+#jim-messenger-app .jim-message-editing-placeholder {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: rgba(245,159,0,0.10);
+    border-radius: 4px;
+    color: #997000;
+    font-size: 12px;
+    font-style: italic;
+}
+#jim-messenger-app .jim-message-editing-placeholder .jim-message-editing-icon {
+    color: #d18b00;
+    font-style: normal;
+}
+
 #jim-messenger-app .jim-message-edit-form {
     display: flex;
     flex-direction: column;
@@ -2707,8 +4100,8 @@
 #jim-messenger-app.jim-chat-page .jim-conversation-row.is-selected,
 #jim-messenger-app.jim-chat-page .jim-conversation-item-selected {
     background: var(--jim-selected);
-    border-inline-start-color: var(--jim-brand);
-    box-shadow: inset 0 0 0 1px rgba(0, 82, 204, 0.08);
+    border-inline-start: 0;
+    box-shadow: none;
 }
 
 #jim-messenger-app.jim-chat-page .jim-conversation-preview {
@@ -2856,8 +4249,8 @@
 }
 
 #jim-messenger-app.jim-chat-page .jim-composer-surface:focus-within {
-    border-color: #4c9aff;
-    box-shadow: 0 0 0 2px rgba(76, 154, 255, 0.18);
+    border-color: var(--jim-focus);
+    box-shadow: 0 0 0 2px var(--jim-focus-ring);
 }
 
 #jim-messenger-app.jim-chat-page #jim-composer.jim-composer .jim-composer-surface .jim-composer-row {
@@ -3113,8 +4506,8 @@
 /* ===== Assistant unread (NEW) cards ===== */
 
 #jim-messenger-app .jim-system-card.jim-system-card-new {
-    border-color: #0c66e4;
-    box-shadow: 0 0 0 1px rgba(12, 102, 228, 0.35), 0 1px 3px rgba(9, 30, 66, 0.12);
+    border-color: var(--jim-brand);
+    box-shadow: 0 0 0 1px rgba(1, 186, 158, 0.35), 0 1px 3px rgba(20, 20, 20, 0.08);
 }
 
 #jim-messenger-app .jim-system-card-new-badge {
@@ -3126,7 +4519,7 @@
     font-weight: 700;
     letter-spacing: 0.4px;
     color: #ffffff;
-    background: #0c66e4;
+    background: var(--jim-brand);
     border-radius: 8px;
 }
 
@@ -3190,3 +4583,248 @@
         padding: 6px 14px;
     }
 }
+
+/* ===== Marketplace license banner ===== */
+
+#jim-messenger-app .jim-license-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 16px;
+    background: #fffae6;
+    border-bottom: 1px solid #ffe380;
+    color: #172b4d;
+    font-size: 13px;
+    line-height: 1.4;
+    flex: 0 0 auto;
+}
+
+#jim-messenger-app .jim-license-banner-blocking {
+    background: #ffebe6;
+    border-bottom-color: #ffbdad;
+}
+
+#jim-messenger-app .jim-license-banner-icon {
+    font-size: 16px;
+    color: #ff8b00;
+    flex: 0 0 auto;
+}
+
+#jim-messenger-app .jim-license-banner-blocking .jim-license-banner-icon {
+    color: #de350b;
+}
+
+#jim-messenger-app .jim-license-banner-text {
+    flex: 1 1 auto;
+}
+
+#jim-messenger-app .jim-shared-modal {
+    width: min(560px, 96vw);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#jim-messenger-app .jim-shared-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+#jim-messenger-app .jim-shared-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 8px 0 12px;
+}
+
+#jim-messenger-app .jim-shared-tab {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 40px;
+    border: 1px solid var(--jim-border-subtle, #e5e7eb);
+    border-radius: 999px;
+    padding: 8px 10px;
+    background: var(--jim-bg, #fff);
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#jim-messenger-app .jim-shared-tab.is-active {
+    background: var(--jim-brand);
+    border-color: var(--jim-brand);
+    color: #fff;
+}
+
+#jim-messenger-app .jim-shared-tab-count {
+    display: inline-flex;
+    min-width: 18px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(15, 23, 32, 0.08);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+#jim-messenger-app .jim-shared-tab.is-active .jim-shared-tab-count {
+    background: rgba(255, 255, 255, 0.22);
+    color: #fff;
+}
+
+#jim-messenger-app .jim-shared-body {
+    overflow: auto;
+    min-height: 160px;
+}
+
+#jim-messenger-app .jim-shared-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#jim-messenger-app .jim-shared-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--jim-border-subtle);
+    border-radius: 12px;
+    background: var(--jim-bg);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+#jim-messenger-app .jim-shared-file-icon,
+#jim-messenger-app .jim-shared-link-icon {
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: #0052cc;
+    background: #deebff;
+}
+
+#jim-messenger-app .jim-shared-file-icon.is-pdf {
+    color: #de350b;
+    background: #ffebe6;
+}
+
+#jim-messenger-app .jim-shared-file-icon.is-sheet {
+    color: #00875a;
+    background: #e3fcef;
+}
+
+#jim-messenger-app .jim-shared-file-icon.is-slide {
+    color: #c47a00;
+    background: #fff0b3;
+}
+
+#jim-messenger-app .jim-shared-file-icon.is-file {
+    color: #5a6578;
+    background: #f2f3f5;
+}
+
+#jim-messenger-app .jim-shared-link-icon {
+    color: #1677ff;
+    background: #e8f1ff;
+}
+
+#jim-messenger-app .jim-shared-row-main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#jim-messenger-app .jim-shared-row-title {
+    font-weight: 600;
+}
+
+#jim-messenger-app .jim-shared-row-url {
+    font-size: 12px;
+    color: #1677ff;
+    direction: ltr;
+    text-align: start;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#jim-messenger-app .jim-shared-row-meta {
+    font-size: 12px;
+    color: var(--jim-text-secondary, #4c4c4c);
+}
+
+#jim-messenger-app .jim-shared-row-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-end;
+    flex: 0 0 auto;
+}
+
+#jim-messenger-app .jim-shared-action,
+#jim-messenger-app .jim-shared-more,
+#jim-messenger-app .jim-shared-retry {
+    border: 0;
+    background: transparent;
+    color: var(--jim-brand);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+#jim-messenger-app .jim-shared-media-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+}
+
+#jim-messenger-app .jim-shared-media-cell {
+    position: relative;
+    aspect-ratio: 1;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--jim-surface-subtle, #f2f3f5);
+}
+
+#jim-messenger-app .jim-shared-media-cell img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+#jim-messenger-app .jim-shared-media-open {
+    position: absolute;
+    inset-inline: 4px;
+    bottom: 4px;
+    padding: 4px 6px;
+    font-size: 11px;
+    line-height: 1.2;
+    border-radius: 6px;
+    background: rgba(15, 23, 32, 0.72);
+    color: #fff;
+}
+
+/* Phase 8C — group send policy controls (scoped under #jim-messenger-app). */
+#jim-messenger-app .jim-settings-sendpolicy { display: flex; flex-direction: column; gap: 6px; }
+#jim-messenger-app .jim-sendpolicy-option { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+#jim-messenger-app .jim-sendpolicy-option input { margin: 0; }
+#jim-messenger-app .jim-member-allow-btn { margin-inline-start: 8px; font-size: 12px; padding: 2px 8px; border-radius: 12px; border: 1px solid var(--jim-border, #d0d0d0); background: transparent; cursor: pointer; }
+#jim-messenger-app .jim-member-allow-btn.is-allowed { background: var(--jim-accent, #2f7d32); color: #fff; border-color: transparent; }

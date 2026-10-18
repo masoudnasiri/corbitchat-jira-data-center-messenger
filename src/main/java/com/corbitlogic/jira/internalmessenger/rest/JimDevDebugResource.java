@@ -77,15 +77,15 @@ public class JimDevDebugResource {
         try {
             LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
             body.put("ok", true);
-            body.put("plugin", "Jira Internal Messenger");
-            body.put("pluginKey", "com.corbitlogic.jira.internalmessenger.jira-internal-messenger");
+            body.put("plugin", "CorbitChat");
+            body.put("pluginKey", "com.corbitlogic.corbitchat.jira.dc");
             body.put("currentUserKey", user.getKey());
             body.put("assignmentListenerRegistered", this.pluginBootstrap.isAssignmentListenerRegistered());
             body.put("mentionListenerRegistered", this.pluginBootstrap.isMentionListenerRegistered());
             body.put("statusChangeListenerRegistered", this.pluginBootstrap.isStatusChangeListenerRegistered());
             LinkedHashMap<String, Object> attachments = new LinkedHashMap<String, Object>();
             attachments.put("attachmentAoEntityIncluded", true);
-            attachments.put("maxUploadSizeBytes", 0xA00000L);
+            attachments.put("maxUploadSizeBytes", com.corbitlogic.jira.internalmessenger.attachment.JimAttachmentPolicy.MAX_FILE_SIZE_BYTES);
             attachments.put("allowedMimeTypesCount", JimAttachmentPolicy.allowedMimeTypeCount());
             try {
                 attachments.put("attachmentStorageRootExists", this.attachmentStorageService.storageRootExists());

@@ -21,6 +21,7 @@ import com.atlassian.jira.user.ApplicationUser;
 import com.corbitlogic.jira.internalmessenger.dto.UserSearchResultDto;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestJsonMapper;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
+import com.corbitlogic.jira.internalmessenger.service.JimLicenseService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
 import com.corbitlogic.jira.internalmessenger.service.JimUserSearchService;
@@ -45,13 +46,15 @@ public class JimUserResource {
     private final JimPermissionService permissionService;
     private final JimUserSearchService userSearchService;
     private final JimRestJsonMapper restJsonMapper;
+    private final JimLicenseService licenseService;
 
     @Inject
-    public JimUserResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimUserSearchService userSearchService, JimRestJsonMapper restJsonMapper) {
+    public JimUserResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimUserSearchService userSearchService, JimRestJsonMapper restJsonMapper, JimLicenseService licenseService) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.userSearchService = userSearchService;
         this.restJsonMapper = restJsonMapper;
+        this.licenseService = licenseService;
     }
 
     @GET
@@ -63,6 +66,9 @@ public class JimUserResource {
         }
         if (query == null) {
             return JimRestResponses.errorJson(400, "bad_request", "query is required");
+        }
+        if (!this.licenseService.canUseMessaging()) {
+            return JimRestResponses.licenseBlocked();
         }
         try {
             this.permissionService.requireAuthenticatedUserKey();

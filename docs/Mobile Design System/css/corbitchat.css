@@ -1,0 +1,469 @@
+/**
+ * CorbitChat Design System — Foundation
+ * Tokens, theming (light/dark), typography, and base accessibility.
+ *
+ * Locale:  html[lang="fa"] dir="rtl"  (default)  |  html[lang="en"] dir="ltr"
+ * Theme:   html[data-theme="light" | "dark"]      |  follows OS when unset
+ *
+ * All component styles consume the semantic --cc-* variables below, so a single
+ * theme switch re-colors the whole system.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Vazirmatn:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ============================================================
+   1. SEMANTIC TOKENS — LIGHT (default)
+   ============================================================ */
+:root {
+  color-scheme: light;
+
+  /* Brand */
+  --cc-color-primary: #0D6E6E;
+  --cc-color-primary-hover: #0A5858;
+  --cc-color-primary-active: #084848;
+  --cc-color-primary-muted: #E6F4F4;
+  --cc-color-primary-on: #FFFFFF;
+  --cc-color-secondary: #3D4F7C;
+  --cc-color-secondary-muted: #EEF1F7;
+  --cc-color-accent: #E07A2F;
+  --cc-color-workflow: #0052CC; /* Jira transition/link blue */
+
+  /* Surface */
+  --cc-color-bg: #F5F6F8;
+  --cc-color-bg-elevated: #FFFFFF;
+  --cc-color-bg-subtle: #ECEEF2;
+  --cc-color-bg-hover: rgba(15, 23, 42, 0.04);
+  --cc-color-overlay: rgba(15, 23, 42, 0.48);
+  --cc-color-border: #D8DCE4;
+  --cc-color-border-strong: #B8BFC9;
+  --cc-color-divider: #E8EBF0;
+
+  /* Text */
+  --cc-color-text: #1A2332;
+  --cc-color-text-secondary: #55627A;
+  --cc-color-text-tertiary: #6E7A8C; /* AA on white at >=13px */
+  --cc-color-text-disabled: #A9B1BD;
+  --cc-color-text-inverse: #FFFFFF;
+  --cc-color-link: #0D6E6E;
+
+  /* Semantic */
+  --cc-color-success: #1F8A4C;
+  --cc-color-success-muted: #E8F6EE;
+  --cc-color-warning: #B26A00;
+  --cc-color-warning-muted: #FFF4E0;
+  --cc-color-error: #C62828;
+  --cc-color-error-muted: #FDECEC;
+  --cc-color-info: #1565C0;
+  --cc-color-info-muted: #E8F0FA;
+
+  /* Status */
+  --cc-status-todo: #5A6270;
+  --cc-status-todo-bg: #F0F1F4;
+  --cc-status-in-progress: #1565C0;
+  --cc-status-in-progress-bg: #E8F0FA;
+  --cc-status-done: #1F8A4C;
+  --cc-status-done-bg: #E8F6EE;
+  --cc-status-blocked: #C62828;
+  --cc-status-blocked-bg: #FDECEC;
+
+  /* Priority */
+  --cc-priority-highest: #B71C1C;
+  --cc-priority-highest-bg: #FDECEC;
+  --cc-priority-high: #C1531A;
+  --cc-priority-high-bg: #FFF3E0;
+  --cc-priority-medium: #A66A00;
+  --cc-priority-medium-bg: #FFF7E0;
+  --cc-priority-low: #4E6472;
+  --cc-priority-low-bg: #ECEFF1;
+
+  /* Chat */
+  --cc-chat-outgoing: #0D6E6E;
+  --cc-chat-outgoing-text: #FFFFFF;
+  --cc-chat-incoming: #FFFFFF;
+  --cc-chat-incoming-text: #1A2332;
+  --cc-chat-incoming-border: #E8EBF0;
+  --cc-chat-mention: #3D4F7C;
+  --cc-chat-mention-bg: #EEF1F7;
+  --cc-chat-unread: #E07A2F;
+  --cc-presence-online: #1F8A4C;
+  --cc-presence-away: #E0A100;
+  --cc-presence-offline: #B0B8C4;
+
+  /* Dashboard card tints */
+  --cc-dash-messages: #0D6E6E;   --cc-dash-messages-bg: #E6F4F4;
+  --cc-dash-today: #1565C0;      --cc-dash-today-bg: #E8F0FA;
+  --cc-dash-overdue: #C62828;    --cc-dash-overdue-bg: #FDECEC;
+  --cc-dash-followup: #7B1FA2;   --cc-dash-followup-bg: #F3E8F9;
+  --cc-dash-colleagues: #00838F; --cc-dash-colleagues-bg: #E0F7FA;
+  --cc-dash-reports: #C25E17;    --cc-dash-reports-bg: #FFF4E8;
+
+  /* Board (Kanban) */
+  --cc-board-column-bg: #EBECF0;
+  --cc-board-column-text: #5E6C84;
+  --cc-board-card-bg: #FFFFFF;
+  --cc-board-card-hover-bg: #FAFBFC;
+  --cc-board-chip-bg: rgba(9, 30, 66, 0.08);
+  --cc-board-card-shadow: 0 1px 2px rgba(9, 30, 66, 0.25);
+  --cc-board-card-shadow-hover: 0 4px 10px rgba(9, 30, 66, 0.2);
+
+  /* ── Typography ── */
+  --cc-font-fa: 'Vazirmatn', 'Tahoma', sans-serif;
+  --cc-font-en: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --cc-font-mono: 'JetBrains Mono', 'Consolas', monospace;
+
+  --cc-text-xs: 11px;   --cc-text-xs-lh: 16px;
+  --cc-text-sm: 13px;   --cc-text-sm-lh: 18px;
+  --cc-text-base: 15px; --cc-text-base-lh: 22px;
+  --cc-text-md: 17px;   --cc-text-md-lh: 24px;
+  --cc-text-lg: 20px;   --cc-text-lg-lh: 28px;
+  --cc-text-xl: 24px;   --cc-text-xl-lh: 32px;
+  --cc-text-2xl: 28px;  --cc-text-2xl-lh: 36px;
+
+  --cc-weight-regular: 400;
+  --cc-weight-medium: 500;
+  --cc-weight-semibold: 600;
+  --cc-weight-bold: 700;
+
+  --cc-tracking-tight: -0.01em;
+  --cc-tracking-normal: 0;
+  --cc-tracking-wide: 0.02em;
+
+  /* ── Spacing (4px base) ── */
+  --cc-space-1: 4px;
+  --cc-space-2: 8px;
+  --cc-space-3: 12px;
+  --cc-space-4: 16px;
+  --cc-space-5: 20px;
+  --cc-space-6: 24px;
+  --cc-space-8: 32px;
+  --cc-space-10: 40px;
+  --cc-space-12: 48px;
+  --cc-space-16: 64px;
+
+  --cc-touch-min: 44px;
+  --cc-screen-px: 16px;
+  --cc-bottom-nav-h: 56px;
+  --cc-top-bar-h: 56px;
+  --cc-tab-bar-h: 48px;
+
+  /* ── Radius ── */
+  --cc-radius-sm: 6px;
+  --cc-radius-md: 10px;
+  --cc-radius-lg: 14px;
+  --cc-radius-xl: 20px;
+  --cc-radius-full: 9999px;
+  --cc-radius-bubble: 16px;
+
+  /* ── Elevation ── */
+  --cc-shadow-0: none;
+  --cc-shadow-1: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --cc-shadow-2: 0 4px 12px rgba(15, 23, 42, 0.10), 0 2px 4px rgba(15, 23, 42, 0.06);
+  --cc-shadow-3: 0 8px 24px rgba(15, 23, 42, 0.12), 0 4px 8px rgba(15, 23, 42, 0.08);
+  --cc-shadow-fab: 0 6px 16px rgba(13, 110, 110, 0.32);
+
+  /* ── Focus ring (accessibility) ── */
+  --cc-focus-ring: 0 0 0 2px var(--cc-color-bg-elevated), 0 0 0 4px var(--cc-color-primary);
+  --cc-focus-ring-inset: inset 0 0 0 2px var(--cc-color-primary);
+
+  /* ── Icon sizes ── */
+  --cc-icon-sm: 16px;
+  --cc-icon-md: 20px;
+  --cc-icon-lg: 24px;
+  --cc-icon-xl: 32px;
+
+  /* ── Motion ── */
+  --cc-duration-instant: 100ms;
+  --cc-duration-fast: 150ms;
+  --cc-duration-normal: 250ms;
+  --cc-duration-slow: 400ms;
+  --cc-easing: cubic-bezier(0.4, 0, 0.2, 1);
+  --cc-easing-enter: cubic-bezier(0, 0, 0.2, 1);
+  --cc-easing-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ── Z-index ── */
+  --cc-z-sticky: 10;
+  --cc-z-dropdown: 100;
+  --cc-z-overlay: 200;
+  --cc-z-modal: 300;
+  --cc-z-toast: 400;
+}
+
+/* ============================================================
+   2. SEMANTIC TOKENS — DARK
+   Applies when html[data-theme="dark"], or when the OS prefers
+   dark and no explicit light theme is set.
+   ============================================================ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --cc-color-primary: #2CB5B5;
+  --cc-color-primary-hover: #46C7C7;
+  --cc-color-primary-active: #63D4D4;
+  --cc-color-primary-muted: #12312F;
+  --cc-color-primary-on: #04211F;
+  --cc-color-secondary: #97A6CC;
+  --cc-color-secondary-muted: #232B3D;
+  --cc-color-accent: #F0965A;
+  --cc-color-workflow: #4C9AFF;
+
+  --cc-color-bg: #0E1116;
+  --cc-color-bg-elevated: #171B22;
+  --cc-color-bg-subtle: #1F242D;
+  --cc-color-bg-hover: rgba(255, 255, 255, 0.06);
+  --cc-color-overlay: rgba(0, 0, 0, 0.62);
+  --cc-color-border: #2A303A;
+  --cc-color-border-strong: #3A424E;
+  --cc-color-divider: #232833;
+
+  --cc-color-text: #E7EBF0;
+  --cc-color-text-secondary: #A6B0BD;
+  --cc-color-text-tertiary: #7E8A99;
+  --cc-color-text-disabled: #515C6B;
+  --cc-color-text-inverse: #0E1116;
+  --cc-color-link: #46C7C7;
+
+  --cc-color-success: #4CC08A;   --cc-color-success-muted: #10281E;
+  --cc-color-warning: #E0A93A;   --cc-color-warning-muted: #2C2410;
+  --cc-color-error: #F0736A;     --cc-color-error-muted: #2E1616;
+  --cc-color-info: #5AA7F0;      --cc-color-info-muted: #12233A;
+
+  --cc-status-todo: #A6B0BD;     --cc-status-todo-bg: #232833;
+  --cc-status-in-progress: #5AA7F0; --cc-status-in-progress-bg: #12233A;
+  --cc-status-done: #4CC08A;     --cc-status-done-bg: #10281E;
+  --cc-status-blocked: #F0736A;  --cc-status-blocked-bg: #2E1616;
+
+  --cc-priority-highest: #F0736A; --cc-priority-highest-bg: #2E1616;
+  --cc-priority-high: #F0965A;    --cc-priority-high-bg: #2C1E12;
+  --cc-priority-medium: #E0A93A;  --cc-priority-medium-bg: #2C2410;
+  --cc-priority-low: #93A0AD;     --cc-priority-low-bg: #232833;
+
+  --cc-chat-outgoing: #1C6E6E;
+  --cc-chat-outgoing-text: #F1FAFA;
+  --cc-chat-incoming: #1F242D;
+  --cc-chat-incoming-text: #E7EBF0;
+  --cc-chat-incoming-border: #2A303A;
+  --cc-chat-mention: #97A6CC;
+  --cc-chat-mention-bg: #232B3D;
+  --cc-chat-unread: #F0965A;
+  --cc-presence-online: #4CC08A;
+  --cc-presence-away: #E0A93A;
+  --cc-presence-offline: #566173;
+
+  --cc-dash-messages: #46C7C7;   --cc-dash-messages-bg: #10302F;
+  --cc-dash-today: #5AA7F0;      --cc-dash-today-bg: #12233A;
+  --cc-dash-overdue: #F0736A;    --cc-dash-overdue-bg: #2E1616;
+  --cc-dash-followup: #C088DB;   --cc-dash-followup-bg: #271A30;
+  --cc-dash-colleagues: #3FC3CE; --cc-dash-colleagues-bg: #0F2C2F;
+  --cc-dash-reports: #F0965A;    --cc-dash-reports-bg: #2C1E12;
+
+  --cc-board-column-bg: #1B2028;
+  --cc-board-column-text: #A6B0BD;
+  --cc-board-card-bg: #232A34;
+  --cc-board-card-hover-bg: #29313C;
+  --cc-board-chip-bg: rgba(255, 255, 255, 0.08);
+  --cc-board-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --cc-board-card-shadow-hover: 0 4px 10px rgba(0, 0, 0, 0.5);
+
+  --cc-shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --cc-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --cc-shadow-3: 0 8px 24px rgba(0, 0, 0, 0.6), 0 4px 8px rgba(0, 0, 0, 0.4);
+  --cc-shadow-fab: 0 6px 16px rgba(0, 0, 0, 0.55);
+}
+
+/* Follow OS preference when the author has not pinned a theme */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --cc-color-primary: #2CB5B5;
+    --cc-color-primary-hover: #46C7C7;
+    --cc-color-primary-active: #63D4D4;
+    --cc-color-primary-muted: #12312F;
+    --cc-color-primary-on: #04211F;
+    --cc-color-secondary: #97A6CC;
+    --cc-color-secondary-muted: #232B3D;
+    --cc-color-accent: #F0965A;
+    --cc-color-workflow: #4C9AFF;
+
+    --cc-color-bg: #0E1116;
+    --cc-color-bg-elevated: #171B22;
+    --cc-color-bg-subtle: #1F242D;
+    --cc-color-bg-hover: rgba(255, 255, 255, 0.06);
+    --cc-color-overlay: rgba(0, 0, 0, 0.62);
+    --cc-color-border: #2A303A;
+    --cc-color-border-strong: #3A424E;
+    --cc-color-divider: #232833;
+
+    --cc-color-text: #E7EBF0;
+    --cc-color-text-secondary: #A6B0BD;
+    --cc-color-text-tertiary: #7E8A99;
+    --cc-color-text-disabled: #515C6B;
+    --cc-color-text-inverse: #0E1116;
+    --cc-color-link: #46C7C7;
+
+    --cc-color-success: #4CC08A;   --cc-color-success-muted: #10281E;
+    --cc-color-warning: #E0A93A;   --cc-color-warning-muted: #2C2410;
+    --cc-color-error: #F0736A;     --cc-color-error-muted: #2E1616;
+    --cc-color-info: #5AA7F0;      --cc-color-info-muted: #12233A;
+
+    --cc-status-todo: #A6B0BD;     --cc-status-todo-bg: #232833;
+    --cc-status-in-progress: #5AA7F0; --cc-status-in-progress-bg: #12233A;
+    --cc-status-done: #4CC08A;     --cc-status-done-bg: #10281E;
+    --cc-status-blocked: #F0736A;  --cc-status-blocked-bg: #2E1616;
+
+    --cc-priority-highest: #F0736A; --cc-priority-highest-bg: #2E1616;
+    --cc-priority-high: #F0965A;    --cc-priority-high-bg: #2C1E12;
+    --cc-priority-medium: #E0A93A;  --cc-priority-medium-bg: #2C2410;
+    --cc-priority-low: #93A0AD;     --cc-priority-low-bg: #232833;
+
+    --cc-chat-outgoing: #1C6E6E;
+    --cc-chat-outgoing-text: #F1FAFA;
+    --cc-chat-incoming: #1F242D;
+    --cc-chat-incoming-text: #E7EBF0;
+    --cc-chat-incoming-border: #2A303A;
+    --cc-chat-mention: #97A6CC;
+    --cc-chat-mention-bg: #232B3D;
+    --cc-chat-unread: #F0965A;
+    --cc-presence-online: #4CC08A;
+    --cc-presence-away: #E0A93A;
+    --cc-presence-offline: #566173;
+
+    --cc-dash-messages: #46C7C7;   --cc-dash-messages-bg: #10302F;
+    --cc-dash-today: #5AA7F0;      --cc-dash-today-bg: #12233A;
+    --cc-dash-overdue: #F0736A;    --cc-dash-overdue-bg: #2E1616;
+    --cc-dash-followup: #C088DB;   --cc-dash-followup-bg: #271A30;
+    --cc-dash-colleagues: #3FC3CE; --cc-dash-colleagues-bg: #0F2C2F;
+    --cc-dash-reports: #F0965A;    --cc-dash-reports-bg: #2C1E12;
+
+    --cc-board-column-bg: #1B2028;
+    --cc-board-column-text: #A6B0BD;
+    --cc-board-card-bg: #232A34;
+    --cc-board-card-hover-bg: #29313C;
+    --cc-board-chip-bg: rgba(255, 255, 255, 0.08);
+    --cc-board-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --cc-board-card-shadow-hover: 0 4px 10px rgba(0, 0, 0, 0.5);
+
+    --cc-shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --cc-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.3);
+    --cc-shadow-3: 0 8px 24px rgba(0, 0, 0, 0.6), 0 4px 8px rgba(0, 0, 0, 0.4);
+    --cc-shadow-fab: 0 6px 16px rgba(0, 0, 0, 0.55);
+  }
+}
+
+/* ============================================================
+   3. LOCALE-AWARE FONTS
+   ============================================================ */
+html[lang="fa"],
+html[lang="fa-IR"] { font-family: var(--cc-font-fa); }
+
+html[lang="en"],
+html[lang="en-US"] { font-family: var(--cc-font-en); }
+
+/* ============================================================
+   4. BASE RESET & ACCESSIBILITY
+   ============================================================ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--cc-color-bg);
+  color: var(--cc-color-text);
+  font-size: var(--cc-text-base);
+  line-height: var(--cc-text-base-lh);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background-color var(--cc-duration-normal) var(--cc-easing),
+              color var(--cc-duration-normal) var(--cc-easing);
+}
+
+/* Visible keyboard focus for every interactive element.
+   The ring follows each element's own border-radius. Mouse/touch
+   users don't see it thanks to :focus-visible. */
+:where(a, button, input, textarea, select, [tabindex], [role="button"], [role="tab"]):focus-visible {
+  outline: none;
+  box-shadow: var(--cc-focus-ring);
+}
+
+/* Text selection */
+::selection {
+  background: var(--cc-color-primary-muted);
+  color: var(--cc-color-primary);
+}
+
+/* Honour reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================
+   5. TYPOGRAPHY UTILITIES
+   ============================================================ */
+.cc-display-lg {
+  font-size: var(--cc-text-2xl);
+  line-height: var(--cc-text-2xl-lh);
+  font-weight: var(--cc-weight-bold);
+  letter-spacing: var(--cc-tracking-tight);
+}
+
+.cc-display {
+  font-size: var(--cc-text-xl);
+  line-height: var(--cc-text-xl-lh);
+  font-weight: var(--cc-weight-bold);
+}
+
+.cc-heading-lg {
+  font-size: var(--cc-text-lg);
+  line-height: var(--cc-text-lg-lh);
+  font-weight: var(--cc-weight-semibold);
+}
+
+.cc-heading-md {
+  font-size: var(--cc-text-md);
+  line-height: var(--cc-text-md-lh);
+  font-weight: var(--cc-weight-semibold);
+}
+
+.cc-body {
+  font-size: var(--cc-text-base);
+  line-height: var(--cc-text-base-lh);
+}
+
+.cc-body-sm {
+  font-size: var(--cc-text-sm);
+  line-height: var(--cc-text-sm-lh);
+}
+
+.cc-caption {
+  font-size: var(--cc-text-xs);
+  line-height: var(--cc-text-xs-lh);
+  color: var(--cc-color-text-secondary);
+}
+
+.cc-mono {
+  font-family: var(--cc-font-mono);
+  font-size: var(--cc-text-sm);
+}
+
+/* Screen-reader-only helper */
+.cc-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

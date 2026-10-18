@@ -30,9 +30,12 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class JimUserSearchServiceImpl
 implements JimUserSearchService {
+    private static final Logger log = LoggerFactory.getLogger(JimUserSearchServiceImpl.class);
     public static final int MIN_QUERY_LENGTH = 2;
     public static final int MAX_RESULTS = 20;
     private final UserSearchService userSearchService;
@@ -40,13 +43,15 @@ implements JimUserSearchService {
     private final JiraAuthenticationContext authenticationContext;
     private final JimPermissionService permissionService;
     private final JimAccessPolicyService accessPolicyService;
+    private final JimReviewerService reviewerService;
 
-    public JimUserSearchServiceImpl(UserSearchService userSearchService, AvatarService avatarService, JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimAccessPolicyService accessPolicyService) {
+    public JimUserSearchServiceImpl(UserSearchService userSearchService, AvatarService avatarService, JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimAccessPolicyService accessPolicyService, JimReviewerService reviewerService) {
         this.userSearchService = userSearchService;
         this.avatarService = avatarService;
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.accessPolicyService = accessPolicyService;
+        this.reviewerService = reviewerService;
     }
 
     @Override
@@ -61,11 +66,26 @@ implements JimUserSearchService {
         List<ApplicationUser> users = this.userSearchService.findUsers(query.trim(), params);
         LinkedHashSet<String> seenKeys = new LinkedHashSet<String>();
         ArrayList<UserSearchResultDto> results = new ArrayList<UserSearchResultDto>();
+        int rawCount = users != null ? users.size() : 0;
+        int hiddenAccountFiltered = 0;
         for (ApplicationUser user : users) {
             if (user == null || !user.isActive() || !seenKeys.add(user.getKey()) || !user.getKey().equals(viewerKey) && !this.accessPolicyService.canSearch(viewerKey, user.getKey())) continue;
+            // Only the dedicated hidden system account (pluginuser) is hidden from
+            // search. Ordinary users — including the configured reviewer user
+            // (m.nasiri), admins and the operator — must remain searchable.
+            if (this.reviewerService != null && this.reviewerService.isHiddenSystemAccountUserKey(user.getKey())) {
+                hiddenAccountFiltered++;
+                continue;
+            }
             results.add(this.toUserSearchResult(user, viewer));
             if (results.size() < 20) continue;
             break;
+        }
+        if (log.isDebugEnabled()) {
+            // Diagnostic only (no PII beyond the already-authenticated context):
+            // how many raw Jira hits, how many the hidden-account guard removed.
+            log.debug("jim user search: rawJiraHits={}, returned={}, hiddenAccountFiltered={}",
+                    rawCount, results.size(), hiddenAccountFiltered);
         }
         return results;
     }

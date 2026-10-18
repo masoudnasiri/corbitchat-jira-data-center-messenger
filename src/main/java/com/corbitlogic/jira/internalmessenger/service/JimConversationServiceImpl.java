@@ -115,6 +115,8 @@ implements JimConversationService {
         for (JimGroupMember membership : memberships = (JimGroupMember[])this.activeObjects.find(JimGroupMember.class, Query.select().where("USER_KEY = ?", new Object[]{userKey}))) {
             JimConversation conversation = (JimConversation)this.activeObjects.get(JimConversation.class, membership.getConversationId());
             if (conversation == null || !JimConversationType.GROUP.name().equals(conversation.getConversationType())) continue;
+            // Sprint 12: soft-archived ("deleted") groups are hidden from normal users.
+            if (conversation.getArchived() != null && conversation.getArchived() != 0) continue;
             conversations.add(conversation);
         }
         conversations.sort(Comparator.comparing(JimConversation::getLastMessageAt, Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(JimConversation::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(JimConversation::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
@@ -123,12 +125,18 @@ implements JimConversationService {
 
     @Override
     public JimConversation touchConversation(int conversationId, String preview) {
+        return this.touchConversation(conversationId, preview, null);
+    }
+
+    @Override
+    public JimConversation touchConversation(int conversationId, String preview, String senderUserKey) {
         this.validateTouchRequest(conversationId, preview);
         JimConversation conversation = this.getConversation(conversationId);
         long now = System.currentTimeMillis();
         conversation.setUpdatedAt(now);
         conversation.setLastMessageAt(now);
         conversation.setLastMessagePreview(JimValidation.truncatePreview(preview));
+        conversation.setLastMessageSenderUserKey(senderUserKey);
         conversation.save();
         return conversation;
     }
@@ -148,6 +156,12 @@ implements JimConversationService {
         JimValidation.requireNonBlank(userKey, "userKey");
         JimConversation conversation = this.getConversation(conversationId);
         this.permissionService.requireParticipant(conversation, userKey);
+        // Sprint 12: a soft-archived ("deleted") group is unavailable to normal
+        // users (its data is retained for the hidden reviewer, which reads via a
+        // separate path that does not call this method).
+        if (conversation.getArchived() != null && conversation.getArchived() != 0) {
+            throw JimMessengerException.notFound("Conversation not found");
+        }
         return conversation;
     }
 
@@ -157,9 +171,12 @@ implements JimConversationService {
     }
 
     void validateDirectConversationRequest(String currentUserKey, String targetUserKey) {
-        String normalizedCurrent = JimValidation.requireNonBlank(currentUserKey, "currentUserKey");
-        String normalizedTarget = JimValidation.requireNonBlank(targetUserKey, "targetUserKey");
-        JimValidation.requireDistinctUsers(normalizedCurrent, normalizedTarget);
+        // Self-direct conversations ("Saved Messages", Sprint 06 Fix-2) are
+        // allowed: current == target is intentional and produces a single
+        // canonical row (USER_A_KEY == USER_B_KEY). We therefore no longer
+        // require the two keys to be distinct here.
+        JimValidation.requireNonBlank(currentUserKey, "currentUserKey");
+        JimValidation.requireNonBlank(targetUserKey, "targetUserKey");
     }
 
     void validateSystemConversationRequest(String userKey) {
@@ -168,7 +185,11 @@ implements JimConversationService {
 
     void validateTouchRequest(int conversationId, String preview) {
         JimValidation.requirePositiveId(conversationId, "conversationId");
-        JimValidation.requireMaxLength(preview, 500, "preview");
+        // The 500-char ceiling is enforced by JimValidation.truncatePreview()
+        // at the storage call site, so we let any preview length through
+        // here. Previously, this used requireMaxLength which prevented long
+        // messages (>500 chars body) from being sent at all because the
+        // message body itself was passed as the preview.
     }
 }
 

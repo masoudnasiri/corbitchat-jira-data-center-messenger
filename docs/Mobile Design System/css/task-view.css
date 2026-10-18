@@ -1,0 +1,508 @@
+/**
+ * CorbitChat — Task View (Issue Detail) & Trello Board
+ */
+
+/* ─── Task View Header ─── */
+.cc-task-header {
+  padding: var(--cc-space-4);
+  background: var(--cc-color-bg-elevated);
+  border-bottom: 1px solid var(--cc-color-divider);
+}
+
+.cc-task-header__breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--cc-space-2);
+  margin-bottom: var(--cc-space-3);
+  font-size: var(--cc-text-sm);
+}
+
+.cc-task-header__project-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--cc-radius-sm);
+  background: var(--cc-color-primary-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.cc-task-header__project-key {
+  color: var(--cc-color-link);
+  font-weight: var(--cc-weight-medium);
+  padding: 2px 6px;
+  border: 1px solid var(--cc-color-info-muted);
+  border-radius: var(--cc-radius-sm);
+  background: var(--cc-color-info-muted);
+}
+
+.cc-task-header__issue-key {
+  color: var(--cc-color-text-secondary);
+}
+
+.cc-task-header__title {
+  margin: 0;
+  font-size: var(--cc-text-lg);
+  font-weight: var(--cc-weight-semibold);
+  line-height: var(--cc-text-lg-lh);
+  color: var(--cc-color-text);
+}
+
+/* ─── Action Toolbar ─── */
+.cc-task-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cc-space-2);
+  padding: var(--cc-space-3) var(--cc-space-4);
+  background: var(--cc-color-bg-elevated);
+  border-bottom: 1px solid var(--cc-color-divider);
+  align-items: center;
+}
+
+.cc-task-toolbar__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 var(--cc-space-3);
+  border: 1px solid var(--cc-color-border);
+  border-radius: var(--cc-radius-sm);
+  background: var(--cc-color-bg-elevated);
+  color: var(--cc-color-text);
+  font: inherit;
+  font-size: var(--cc-text-sm);
+  font-weight: var(--cc-weight-regular);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cc-task-toolbar__btn:hover {
+  background: var(--cc-color-bg-subtle);
+}
+
+.cc-task-toolbar__btn svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+
+.cc-task-toolbar__status {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 var(--cc-space-4);
+  border: none;
+  border-radius: var(--cc-radius-sm);
+  background: var(--cc-color-workflow);
+  color: #FFFFFF;
+  font: inherit;
+  font-size: var(--cc-text-sm);
+  font-weight: var(--cc-weight-medium);
+  cursor: pointer;
+  transition: filter var(--cc-duration-fast) var(--cc-easing);
+}
+
+.cc-task-toolbar__status:hover {
+  filter: brightness(1.08);
+}
+
+.cc-task-toolbar__status svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+
+/* ─── Collapsible Section ─── */
+.cc-task-section {
+  background: var(--cc-color-bg-elevated);
+  border-bottom: 1px solid var(--cc-color-divider);
+}
+
+.cc-task-section__header {
+  display: flex;
+  align-items: center;
+  gap: var(--cc-space-2);
+  width: 100%;
+  padding: var(--cc-space-4);
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--cc-text-base);
+  font-weight: var(--cc-weight-bold);
+  color: var(--cc-color-text);
+  cursor: pointer;
+  text-align: start;
+}
+
+.cc-task-section__chevron {
+  width: 16px;
+  height: 16px;
+  stroke: var(--cc-color-text-secondary);
+  fill: none;
+  stroke-width: 2;
+  transition: transform var(--cc-duration-fast) var(--cc-easing);
+  flex-shrink: 0;
+}
+
+.cc-task-section--collapsed .cc-task-section__chevron {
+  transform: rotate(-90deg);
+}
+
+html[dir="rtl"] .cc-task-section--collapsed .cc-task-section__chevron {
+  transform: rotate(90deg);
+}
+
+.cc-task-section__body {
+  padding: 0 var(--cc-space-4) var(--cc-space-4);
+}
+
+.cc-task-section--collapsed .cc-task-section__body {
+  display: none;
+}
+
+/* ─── Field Rows (Details / People) ─── */
+.cc-field-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--cc-space-4);
+}
+
+@media (min-width: 768px) {
+  .cc-field-grid--two-col {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--cc-space-4) var(--cc-space-8);
+  }
+}
+
+.cc-field-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 38%) 1fr;
+  gap: var(--cc-space-3);
+  align-items: start;
+  min-height: 32px;
+}
+
+.cc-field-row__label {
+  font-size: var(--cc-text-sm);
+  color: var(--cc-color-text-secondary);
+  padding-top: 2px;
+}
+
+.cc-field-row__value {
+  font-size: var(--cc-text-sm);
+  color: var(--cc-color-text);
+  word-break: break-word;
+}
+
+.cc-field-row__value--empty {
+  color: var(--cc-color-text-tertiary);
+  font-style: italic;
+}
+
+/* Issue type & priority inline icons */
+.cc-field-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cc-field-type__icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--cc-color-workflow);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cc-field-type__icon svg {
+  width: 10px;
+  height: 10px;
+  stroke: white;
+  fill: none;
+  stroke-width: 3;
+}
+
+.cc-field-priority__icon {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 14px;
+}
+
+.cc-field-priority__icon span {
+  display: block;
+  height: 3px;
+  border-radius: 1px;
+  background: var(--cc-priority-medium);
+}
+
+.cc-field-priority__icon span:nth-child(2) { width: 80%; }
+.cc-field-priority__icon span:nth-child(3) { width: 60%; opacity: 0.4; }
+
+/* ─── User Field (Assignee / Reporter) ─── */
+.cc-user-field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cc-space-2);
+}
+
+.cc-user-field__info {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--cc-radius-full);
+  background: var(--cc-color-info);
+  color: white;
+  font-size: 10px;
+  font-weight: var(--cc-weight-bold);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+/* ─── نوع تسک (طبق دستورالعمل) — customfield_10903 pills ─── */
+.cc-field-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px 2px 8px;
+  border-radius: var(--cc-radius-full);
+  font-size: var(--cc-text-xs);
+  font-weight: var(--cc-weight-semibold);
+  line-height: var(--cc-text-xs-lh);
+  white-space: nowrap;
+}
+
+.cc-field-pill__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--cc-radius-full);
+  flex-shrink: 0;
+  background: currentColor;
+}
+
+.cc-field-pill--critical { color: #DE350B; background: #FFEBE6; }
+.cc-field-pill--urgent { color: #FF8B00; background: #FFF0B3; }
+.cc-field-pill--committed { color: #FFAB00; background: #FFF7D6; }
+.cc-field-pill--current { color: #0052CC; background: #DEEBFF; }
+.cc-field-pill--project { color: #6554C0; background: #EAE6FF; }
+.cc-field-pill--development { color: #00875A; background: #E3FCEF; }
+.cc-field-pill--strategic { color: #172B4D; background: #DFE1E6; }
+
+/* Dark theme: tint the chip from its own hue and brighten dark-on-dark hues */
+:root[data-theme="dark"] .cc-field-pill {
+  background: color-mix(in srgb, currentColor 22%, transparent);
+}
+:root[data-theme="dark"] .cc-field-pill--current { color: #6BA5FF; }
+:root[data-theme="dark"] .cc-field-pill--development { color: #4CC08A; }
+:root[data-theme="dark"] .cc-field-pill--strategic { color: #B7C0CE; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .cc-field-pill {
+    background: color-mix(in srgb, currentColor 22%, transparent);
+  }
+  :root:not([data-theme="light"]) .cc-field-pill--current { color: #6BA5FF; }
+  :root:not([data-theme="light"]) .cc-field-pill--development { color: #4CC08A; }
+  :root:not([data-theme="light"]) .cc-field-pill--strategic { color: #B7C0CE; }
+}
+
+/* ─── Description placeholder ─── */
+.cc-task-description {
+  min-height: 48px;
+  font-size: var(--cc-text-sm);
+  color: var(--cc-color-text-tertiary);
+  font-style: italic;
+}
+
+/* ─── Attachments drop zone ─── */
+.cc-attachments-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+  border: 2px dashed var(--cc-color-border);
+  border-radius: var(--cc-radius-md);
+  color: var(--cc-color-text-tertiary);
+  font-size: var(--cc-text-sm);
+  gap: var(--cc-space-2);
+}
+
+.cc-attachments-zone svg {
+  width: 24px;
+  height: 24px;
+  stroke: var(--cc-color-text-tertiary);
+  fill: none;
+  stroke-width: 1.5;
+}
+
+/* ─── Trello-style Board ─── */
+.cc-board {
+  display: flex;
+  gap: var(--cc-space-3);
+  padding: var(--cc-space-4);
+  overflow-x: auto;
+  min-height: calc(100vh - var(--cc-top-bar-h));
+  background: var(--cc-color-bg);
+  align-items: flex-start;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cc-board-column {
+  flex: 0 0 280px;
+  max-width: 280px;
+  background: var(--cc-board-column-bg);
+  border-radius: var(--cc-radius-md);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--cc-top-bar-h) - 32px);
+}
+
+.cc-board-column__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--cc-space-3) var(--cc-space-3) var(--cc-space-2);
+  gap: var(--cc-space-2);
+}
+
+.cc-board-column__title {
+  font-size: var(--cc-text-sm);
+  font-weight: var(--cc-weight-semibold);
+  color: var(--cc-board-column-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc-board-column__count {
+  font-size: var(--cc-text-xs);
+  color: var(--cc-board-column-text);
+  background: var(--cc-board-chip-bg);
+  padding: 2px 8px;
+  border-radius: var(--cc-radius-full);
+  flex-shrink: 0;
+}
+
+.cc-board-column__cards {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 var(--cc-space-2) var(--cc-space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cc-space-2);
+}
+
+.cc-board-card {
+  background: var(--cc-board-card-bg);
+  border-radius: var(--cc-radius-sm);
+  padding: var(--cc-space-3);
+  box-shadow: var(--cc-board-card-shadow);
+  cursor: pointer;
+  transition: box-shadow var(--cc-duration-fast) var(--cc-easing),
+              background var(--cc-duration-fast) var(--cc-easing);
+}
+
+.cc-board-card:hover {
+  box-shadow: var(--cc-board-card-shadow-hover);
+  background: var(--cc-board-card-hover-bg);
+}
+
+.cc-board-card:active {
+  transform: scale(0.99);
+}
+
+.cc-board-card__labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: var(--cc-space-2);
+}
+
+.cc-board-card__label-bar {
+  height: 8px;
+  width: 40px;
+  border-radius: 4px;
+}
+
+.cc-board-card__summary {
+  font-size: var(--cc-text-sm);
+  font-weight: var(--cc-weight-regular);
+  color: var(--cc-color-text);
+  line-height: 18px;
+  margin-bottom: var(--cc-space-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cc-board-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cc-space-2);
+}
+
+.cc-board-card__key {
+  font-family: var(--cc-font-mono);
+  font-size: var(--cc-text-xs);
+  color: var(--cc-color-text-tertiary);
+}
+
+.cc-board-card__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--cc-space-2);
+  margin-inline-start: auto;
+}
+
+.cc-board-card__due {
+  font-size: var(--cc-text-xs);
+  padding: 2px 6px;
+  border-radius: var(--cc-radius-sm);
+  background: var(--cc-color-error-muted);
+  color: var(--cc-color-error);
+  font-weight: var(--cc-weight-medium);
+}
+
+.cc-board-card__due--ok {
+  background: var(--cc-color-bg-subtle);
+  color: var(--cc-color-text-secondary);
+}
+
+.cc-board-card__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--cc-radius-full);
+  font-size: 10px;
+}
+
+.cc-board-add-card {
+  margin: 0 var(--cc-space-2) var(--cc-space-2);
+  padding: var(--cc-space-2) var(--cc-space-3);
+  border: none;
+  border-radius: var(--cc-radius-sm);
+  background: transparent;
+  color: var(--cc-board-column-text);
+  font: inherit;
+  font-size: var(--cc-text-sm);
+  text-align: start;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.cc-board-add-card:hover {
+  background: var(--cc-board-chip-bg);
+}

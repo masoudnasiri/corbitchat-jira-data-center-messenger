@@ -23,6 +23,7 @@ import com.corbitlogic.jira.internalmessenger.ao.JimMessage;
 import com.corbitlogic.jira.internalmessenger.ao.JimReaction;
 import com.corbitlogic.jira.internalmessenger.ao.JimReadState;
 import com.corbitlogic.jira.internalmessenger.attachment.JimAttachmentStorageService;
+import com.corbitlogic.jira.internalmessenger.attachment.JimAvatarStorageService;
 import com.corbitlogic.jira.internalmessenger.model.JimBodyFormat;
 import com.corbitlogic.jira.internalmessenger.model.JimConversationType;
 import com.corbitlogic.jira.internalmessenger.model.JimEventType;
@@ -31,8 +32,11 @@ import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
 import com.corbitlogic.jira.internalmessenger.service.JimGroupService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
+import com.corbitlogic.jira.internalmessenger.util.JimSanitizer;
 import com.corbitlogic.jira.internalmessenger.util.JimValidation;
+import com.corbitlogic.jira.internalmessenger.attachment.JimAvatarStorageService.StoredAvatar;
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -48,21 +52,31 @@ public class JimGroupServiceImpl
 implements JimGroupService {
     private static final Logger log = LoggerFactory.getLogger(JimGroupServiceImpl.class);
     public static final String ROLE_OWNER = "OWNER";
+    public static final String ROLE_ADMIN = "ADMIN";
     public static final String ROLE_MEMBER = "MEMBER";
+    // Phase 8C send policies.
+    public static final String SEND_POLICY_ALL_MEMBERS = "ALL_MEMBERS";
+    public static final String SEND_POLICY_ADMINS_AND_ALLOWED = "ADMINS_AND_ALLOWED";
     public static final int MAX_GROUP_NAME_LENGTH = 120;
     public static final int MAX_GROUP_MEMBERS = 100;
     private final ActiveObjects activeObjects;
     private final JimPermissionService permissionService;
     private final JimConversationService conversationService;
     private final JimAttachmentStorageService attachmentStorageService;
+    private final JimAvatarStorageService avatarStorageService;
     private final UserManager userManager;
+    private final JimChatAuditService auditService;
+    private final JimReviewerService reviewerService;
 
-    public JimGroupServiceImpl(ActiveObjects activeObjects, JimPermissionService permissionService, JimConversationService conversationService, JimAttachmentStorageService attachmentStorageService, UserManager userManager) {
+    public JimGroupServiceImpl(ActiveObjects activeObjects, JimPermissionService permissionService, JimConversationService conversationService, JimAttachmentStorageService attachmentStorageService, JimAvatarStorageService avatarStorageService, UserManager userManager, JimChatAuditService auditService, JimReviewerService reviewerService) {
         this.activeObjects = activeObjects;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
         this.attachmentStorageService = attachmentStorageService;
+        this.avatarStorageService = avatarStorageService;
         this.userManager = userManager;
+        this.auditService = auditService;
+        this.reviewerService = reviewerService;
     }
 
     @Override
@@ -102,43 +116,36 @@ implements JimGroupService {
         }
         this.requireAuthenticatedSameUser(userKey);
         this.requireOwner(conversation, userKey);
+        // Sprint 12 governance: SOFT-ARCHIVE instead of hard delete. Nothing is
+        // removed — messages, members, attachments (files + rows), reactions,
+        // read-state and audit are all retained for complaint review. The group
+        // is flagged archived so it disappears from normal users' lists and is
+        // unavailable to them, while the hidden reviewer can still inspect it
+        // and its (soft-deleted / hidden) messages.
         this.activeObjects.executeInTransaction(() -> {
-            JimGroupMember[] members;
-            JimReadState[] readStates;
-            JimMessage[] messages;
-            for (JimMessage message : messages = (JimMessage[])this.activeObjects.find(JimMessage.class, Query.select().where("CONVERSATION_ID = ?", new Object[]{conversationId}))) {
-                JimAttachment[] attachments;
-                JimReaction[] reactions = (JimReaction[])this.activeObjects.find(JimReaction.class, Query.select().where("MESSAGE_ID = ?", new Object[]{message.getID()}));
-                if (reactions.length > 0) {
-                    this.activeObjects.delete((RawEntity[])reactions);
-                }
-                for (JimAttachment attachment : attachments = (JimAttachment[])this.activeObjects.find(JimAttachment.class, Query.select().where("MESSAGE_ID = ?", new Object[]{message.getID()}))) {
-                    this.deleteAttachmentFileQuietly(attachment);
-                }
-                if (attachments.length <= 0) continue;
-                this.activeObjects.delete((RawEntity[])attachments);
-            }
-            if (messages.length > 0) {
-                this.activeObjects.delete((RawEntity[])messages);
-            }
-            if ((readStates = (JimReadState[])this.activeObjects.find(JimReadState.class, Query.select().where("CONVERSATION_ID = ?", new Object[]{conversationId}))).length > 0) {
-                this.activeObjects.delete((RawEntity[])readStates);
-            }
-            if ((members = (JimGroupMember[])this.activeObjects.find(JimGroupMember.class, Query.select().where("CONVERSATION_ID = ?", new Object[]{conversationId}))).length > 0) {
-                this.activeObjects.delete((RawEntity[])members);
-            }
-            this.activeObjects.delete(new RawEntity[]{conversation});
-            log.info("event=group stage=delete outcome=success conversationId={} owner={}", (Object)conversationId, (Object)userKey);
+            long now = System.currentTimeMillis();
+            conversation.setArchived(1);
+            conversation.setArchivedAt(now);
+            conversation.setArchivedByUserKey(userKey);
+            conversation.save();
+            // Immutable in-chat audit trail entry.
+            this.addGroupEventMessage(conversationId,
+                    this.displayName(userKey) + " deleted the group");
             return null;
         });
+        this.auditService.record(userKey, "group.archive", null, conversationId,
+                null, "group soft-archived (history retained)");
+        log.info("event=group stage=archive outcome=success conversationId={} owner={}", (Object)conversationId, (Object)userKey);
     }
 
     @Override
     public void addMember(int conversationId, String actorUserKey, String targetUserKey) {
         JimConversation conversation = this.requireGroupConversation(conversationId);
         this.requireAuthenticatedSameUser(actorUserKey);
-        this.requireOwner(conversation, actorUserKey);
+        this.requireNotArchived(conversation);
+        this.requireCanManageMembers(conversation, actorUserKey);
         String normalizedTarget = JimValidation.requireNonBlank(targetUserKey, "userKey").trim();
+        this.requireNotReviewer(normalizedTarget);
         this.permissionService.requireActiveUser(normalizedTarget);
         if (this.findMember(conversationId, normalizedTarget) != null) {
             throw JimMessengerException.badRequest("User is already a member of this group");
@@ -169,9 +176,16 @@ implements JimGroupService {
                 throw JimMessengerException.badRequest("The group owner cannot leave the group. Delete the group instead.");
             }
         } else {
-            this.requireOwner(conversation, actorUserKey);
+            this.requireNotArchived(conversation);
+            this.requireCanManageMembers(conversation, actorUserKey);
             if (this.isOwner(conversation, normalizedTarget)) {
                 throw JimMessengerException.badRequest("The group owner cannot be removed");
+            }
+            // An ADMIN (non-owner) may only remove normal MEMBERS, never other
+            // admins — only the OWNER can manage admins.
+            if (!this.isOwner(conversation, actorUserKey)
+                    && ROLE_ADMIN.equals(this.getRole(conversation, normalizedTarget))) {
+                throw JimMessengerException.forbidden("Only the group owner can remove an administrator");
             }
         }
         if ((member = this.findMember(conversationId, normalizedTarget)) == null) {
@@ -211,6 +225,330 @@ implements JimGroupService {
         if (!this.isOwner(conversation, userKey)) {
             throw JimMessengerException.forbidden("Only the group owner can perform this action");
         }
+    }
+
+    @Override
+    public String getRole(JimConversation conversation, String userKey) {
+        if (conversation == null || userKey == null) {
+            return null;
+        }
+        // The permanent owner (createdByUserKey / project lead) is always OWNER,
+        // even if their member row is missing or its role column is null (legacy).
+        if (this.isOwner(conversation, userKey)) {
+            return ROLE_OWNER;
+        }
+        JimGroupMember member = this.findMember(conversation.getID(), userKey.trim());
+        if (member == null) {
+            return null;
+        }
+        String role = member.getRole();
+        if (role == null || role.trim().isEmpty()) {
+            return ROLE_MEMBER;
+        }
+        return role.trim();
+    }
+
+    @Override
+    public boolean isAdmin(JimConversation conversation, String userKey) {
+        return ROLE_ADMIN.equals(this.getRole(conversation, userKey));
+    }
+
+    @Override
+    public boolean canManageMembers(JimConversation conversation, String userKey) {
+        String role = this.getRole(conversation, userKey);
+        return ROLE_OWNER.equals(role) || ROLE_ADMIN.equals(role);
+    }
+
+    @Override
+    public boolean canManageAdmins(JimConversation conversation, String userKey) {
+        return this.isOwner(conversation, userKey);
+    }
+
+    private void requireCanManageMembers(JimConversation conversation, String userKey) {
+        if (!this.canManageMembers(conversation, userKey)) {
+            throw JimMessengerException.forbidden("Only the group owner or an administrator can perform this action");
+        }
+    }
+
+    // ---- Phase 8C: group send policy ----
+
+    @Override
+    public String getSendPolicy(JimConversation conversation) {
+        if (conversation == null) {
+            return SEND_POLICY_ALL_MEMBERS;
+        }
+        String raw = conversation.getSendPolicy();
+        if (raw == null || raw.trim().isEmpty()) {
+            return SEND_POLICY_ALL_MEMBERS; // legacy/default → unchanged behavior
+        }
+        String normalized = raw.trim().toUpperCase(java.util.Locale.ROOT);
+        return SEND_POLICY_ADMINS_AND_ALLOWED.equals(normalized)
+                ? SEND_POLICY_ADMINS_AND_ALLOWED : SEND_POLICY_ALL_MEMBERS;
+    }
+
+    @Override
+    public boolean isAllowedSender(JimConversation conversation, String userKey) {
+        if (conversation == null || userKey == null) {
+            return false;
+        }
+        JimGroupMember member = this.findMember(conversation.getID(), userKey.trim());
+        return member != null && Boolean.TRUE.equals(member.getAllowedSender());
+    }
+
+    @Override
+    public boolean canSend(JimConversation conversation, String userKey) {
+        if (conversation == null || userKey == null) {
+            return true; // nothing to restrict → let existing checks decide
+        }
+        // Send policy is a GROUP/PROJECT concept only. DIRECT/SYSTEM keep existing rules.
+        boolean isGroupLike = JimConversationType.GROUP.name().equals(conversation.getConversationType())
+                || this.isProjectConversation(conversation);
+        if (!isGroupLike) {
+            return true;
+        }
+        if (!SEND_POLICY_ADMINS_AND_ALLOWED.equals(this.getSendPolicy(conversation))) {
+            return true; // ALL_MEMBERS (default) → any participant may send
+        }
+        // Restricted: OWNER/ADMIN always; allowed members; everyone else blocked.
+        if (this.canManageMembers(conversation, userKey)) {
+            return true;
+        }
+        return this.isAllowedSender(conversation, userKey);
+    }
+
+    @Override
+    public void requireCanSend(JimConversation conversation, String userKey) {
+        if (!this.canSend(conversation, userKey)) {
+            // Persian-friendly, mobile/web-safe message.
+            throw JimMessengerException.forbidden(
+                    "ارسال پیام در این گروه توسط مدیران محدود شده است / Sending is restricted by the group admins");
+        }
+    }
+
+    @Override
+    public JimConversation setSendPolicy(int conversationId, String actorUserKey, String policy) {
+        JimConversation conversation = this.requireGroupConversation(conversationId);
+        this.requireAuthenticatedSameUser(actorUserKey);
+        this.requireNotArchived(conversation);
+        this.requireCanManageMembers(conversation, actorUserKey);
+        String normalized = policy == null ? "" : policy.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!SEND_POLICY_ALL_MEMBERS.equals(normalized) && !SEND_POLICY_ADMINS_AND_ALLOWED.equals(normalized)) {
+            throw JimMessengerException.badRequest("Invalid send policy (ALL_MEMBERS | ADMINS_AND_ALLOWED)");
+        }
+        this.activeObjects.executeInTransaction(() -> {
+            conversation.setSendPolicy(normalized);
+            conversation.save();
+            return null;
+        });
+        this.auditService.record(actorUserKey,
+                this.isProjectConversation(conversation) ? "projectChat.sendPolicy.set" : "group.sendPolicy.set",
+                null, conversationId, null, "policy=" + normalized);
+        log.info("event=group stage=sendPolicy outcome=success conversationId={} actor={} policy={}",
+                new Object[]{conversationId, actorUserKey, normalized});
+        return conversation;
+    }
+
+    @Override
+    public void setAllowedSender(int conversationId, String actorUserKey, String targetUserKey, boolean allowed) {
+        JimConversation conversation = this.requireGroupConversation(conversationId);
+        this.requireAuthenticatedSameUser(actorUserKey);
+        this.requireNotArchived(conversation);
+        this.requireCanManageMembers(conversation, actorUserKey);
+        String normalizedTarget = JimValidation.requireNonBlank(targetUserKey, "userKey").trim();
+        JimGroupMember member = this.findMember(conversationId, normalizedTarget);
+        if (member == null) {
+            // Only participants can be on the allowlist; non-members cannot be added.
+            throw JimMessengerException.notFound("User is not a member of this group");
+        }
+        this.activeObjects.executeInTransaction(() -> {
+            member.setAllowedSender(allowed ? Boolean.TRUE : Boolean.FALSE);
+            member.save();
+            return null;
+        });
+        this.auditService.record(actorUserKey,
+                this.isProjectConversation(conversation) ? "projectChat.allowedSender.set" : "group.allowedSender.set",
+                null, conversationId, normalizedTarget, "allowed=" + allowed);
+        log.info("event=group stage=allowedSender outcome=success conversationId={} actor={} target={} allowed={}",
+                new Object[]{conversationId, actorUserKey, normalizedTarget, allowed});
+    }
+
+    private void requireNotArchived(JimConversation conversation) {
+        if (conversation != null && conversation.getArchived() != null && conversation.getArchived() != 0) {
+            throw JimMessengerException.badRequest("This group has been archived and can no longer be modified");
+        }
+    }
+
+    private void requireNotReviewer(String userKey) {
+        // Only the dedicated hidden system account (pluginuser) is blocked from
+        // being added to conversations. The configured reviewer user (m.nasiri)
+        // is an ordinary user and may be added/promoted like anyone else.
+        if (this.reviewerService != null && this.reviewerService.isHiddenSystemAccountUserKey(userKey)) {
+            throw JimMessengerException.forbidden("This user cannot be added to a conversation");
+        }
+    }
+
+    @Override
+    public void promoteToAdmin(int conversationId, String actorUserKey, String targetUserKey) {
+        JimConversation conversation = this.requireGroupConversation(conversationId);
+        this.requireAuthenticatedSameUser(actorUserKey);
+        this.requireNotArchived(conversation);
+        // Only the OWNER (createdByUserKey / project lead) may manage admins.
+        this.requireOwner(conversation, actorUserKey);
+        String normalizedTarget = JimValidation.requireNonBlank(targetUserKey, "userKey").trim();
+        this.requireNotReviewer(normalizedTarget);
+        if (this.isOwner(conversation, normalizedTarget)) {
+            throw JimMessengerException.badRequest("The group owner is already an administrator");
+        }
+        JimGroupMember member = this.findMember(conversationId, normalizedTarget);
+        if (member == null) {
+            throw JimMessengerException.notFound("User is not a member of this group");
+        }
+        if (ROLE_ADMIN.equals(this.getRole(conversation, normalizedTarget))) {
+            throw JimMessengerException.badRequest("User is already an administrator");
+        }
+        this.activeObjects.executeInTransaction(() -> {
+            member.setRole(ROLE_ADMIN);
+            member.save();
+            this.addGroupEventMessage(conversationId,
+                    this.displayName(actorUserKey) + " made " + this.displayName(normalizedTarget) + " an admin");
+            return null;
+        });
+        this.auditService.record(actorUserKey,
+                this.isProjectConversation(conversation) ? "projectChat.admin.add" : "group.admin.add",
+                null, conversationId, normalizedTarget, "role=ADMIN");
+        log.info("event=group stage=promote outcome=success conversationId={} actor={} target={}",
+                new Object[]{conversationId, actorUserKey, normalizedTarget});
+    }
+
+    @Override
+    public void demoteToMember(int conversationId, String actorUserKey, String targetUserKey) {
+        JimConversation conversation = this.requireGroupConversation(conversationId);
+        this.requireAuthenticatedSameUser(actorUserKey);
+        this.requireNotArchived(conversation);
+        this.requireOwner(conversation, actorUserKey);
+        String normalizedTarget = JimValidation.requireNonBlank(targetUserKey, "userKey").trim();
+        if (this.isOwner(conversation, normalizedTarget)) {
+            // The permanent owner can never be demoted — guarantees >= 1 admin.
+            throw JimMessengerException.badRequest("The group owner cannot be demoted");
+        }
+        JimGroupMember member = this.findMember(conversationId, normalizedTarget);
+        if (member == null) {
+            throw JimMessengerException.notFound("User is not a member of this group");
+        }
+        if (!ROLE_ADMIN.equals(this.getRole(conversation, normalizedTarget))) {
+            throw JimMessengerException.badRequest("User is not an administrator");
+        }
+        this.activeObjects.executeInTransaction(() -> {
+            member.setRole(ROLE_MEMBER);
+            member.save();
+            this.addGroupEventMessage(conversationId,
+                    this.displayName(actorUserKey) + " removed " + this.displayName(normalizedTarget) + " as admin");
+            return null;
+        });
+        this.auditService.record(actorUserKey,
+                this.isProjectConversation(conversation) ? "projectChat.admin.remove" : "group.admin.remove",
+                null, conversationId, normalizedTarget, "role=MEMBER");
+        log.info("event=group stage=demote outcome=success conversationId={} actor={} target={}",
+                new Object[]{conversationId, actorUserKey, normalizedTarget});
+    }
+
+    @Override
+    public JimConversation renameGroup(int conversationId, String actorUserKey, String newName) {
+        JimConversation conversation = this.requireGroupConversation(conversationId);
+        this.requireAuthenticatedSameUser(actorUserKey);
+        this.requireNotArchived(conversation);
+        this.requireCanManageMembers(conversation, actorUserKey);
+        String normalizedName = this.normalizeGroupName(newName);
+        String sanitized = JimSanitizer.sanitizeText(normalizedName);
+        this.activeObjects.executeInTransaction(() -> {
+            conversation.setGroupName(normalizedName);
+            conversation.setUpdatedAt(System.currentTimeMillis());
+            conversation.save();
+            this.addGroupEventMessage(conversationId,
+                    this.displayName(actorUserKey) + " renamed the group to " + sanitized);
+            return null;
+        });
+        this.auditService.record(actorUserKey, "group.rename", null, conversationId, null,
+                "name length=" + normalizedName.length());
+        log.info("event=group stage=rename outcome=success conversationId={} actor={}",
+                (Object) conversationId, (Object) actorUserKey);
+        return conversation;
+    }
+
+    @Override
+    public JimConversation uploadAvatar(int conversationId, String actorUserKey, File sourceFile,
+                                        String contentType, String originalFilename) {
+        JimConversation conversation = this.requireGroupConversation(conversationId);
+        this.requireAuthenticatedSameUser(actorUserKey);
+        this.requireNotArchived(conversation);
+        this.requireCanManageMembers(conversation, actorUserKey);
+        StoredAvatar stored;
+        try {
+            stored = this.avatarStorageService.storeAvatar(conversationId, sourceFile, contentType);
+        } catch (IOException ex) {
+            throw JimMessengerException.internalError("Unable to store the avatar image");
+        }
+        long now = System.currentTimeMillis();
+        this.activeObjects.executeInTransaction(() -> {
+            conversation.setAvatarStoragePath(stored.getStoragePath());
+            conversation.setAvatarContentType(stored.getContentType());
+            conversation.setAvatarSize(stored.getSize());
+            conversation.setAvatarChecksum(stored.getChecksum());
+            conversation.setAvatarFilename(truncate(JimSanitizer.sanitizeText(originalFilename), 255));
+            conversation.setAvatarUpdatedAt(now);
+            conversation.setAvatarUpdatedByUserKey(actorUserKey);
+            conversation.setAvatarVersion(nextVersion(conversation));
+            conversation.setUpdatedAt(now);
+            conversation.save();
+            this.addGroupEventMessage(conversationId, this.displayName(actorUserKey) + " changed the group photo");
+            return null;
+        });
+        // Never place binary data in the audit trail — metadata only.
+        this.auditService.record(actorUserKey, "conversation.avatar.upload", null, conversationId, null,
+                "contentType=" + stored.getContentType() + " size=" + stored.getSize());
+        log.info("event=avatar stage=upload outcome=success conversationId={} actor={} size={}",
+                new Object[]{conversationId, actorUserKey, stored.getSize()});
+        return conversation;
+    }
+
+    @Override
+    public JimConversation resetAvatar(int conversationId, String actorUserKey) {
+        JimConversation conversation = this.requireGroupConversation(conversationId);
+        this.requireAuthenticatedSameUser(actorUserKey);
+        this.requireNotArchived(conversation);
+        this.requireCanManageMembers(conversation, actorUserKey);
+        long now = System.currentTimeMillis();
+        this.activeObjects.executeInTransaction(() -> {
+            conversation.setAvatarStoragePath(null);
+            conversation.setAvatarContentType(null);
+            conversation.setAvatarSize(null);
+            conversation.setAvatarChecksum(null);
+            conversation.setAvatarFilename(null);
+            conversation.setAvatarUpdatedAt(now);
+            conversation.setAvatarUpdatedByUserKey(actorUserKey);
+            conversation.setAvatarVersion(nextVersion(conversation));
+            conversation.setUpdatedAt(now);
+            conversation.save();
+            this.addGroupEventMessage(conversationId, this.displayName(actorUserKey) + " reset the group photo");
+            return null;
+        });
+        this.avatarStorageService.deleteAvatar(conversationId);
+        this.auditService.record(actorUserKey, "conversation.avatar.reset", null, conversationId, null, "reset");
+        log.info("event=avatar stage=reset outcome=success conversationId={} actor={}",
+                (Object) conversationId, (Object) actorUserKey);
+        return conversation;
+    }
+
+    private static long nextVersion(JimConversation conversation) {
+        Long v = conversation.getAvatarVersion();
+        return (v == null ? 0L : v) + 1L;
+    }
+
+    private static String truncate(String value, int max) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() <= max ? value : value.substring(0, max);
     }
 
     private void requireAuthenticatedSameUser(String userKey) {

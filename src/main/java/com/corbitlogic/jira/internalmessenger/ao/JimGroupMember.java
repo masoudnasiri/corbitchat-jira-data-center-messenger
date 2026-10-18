@@ -36,5 +36,15 @@ extends Entity {
     public Long getJoinedAt();
 
     public void setJoinedAt(Long var1);
+
+    /**
+     * Phase 8C: when the conversation's sendPolicy is ADMINS_AND_ALLOWED, a non-admin member
+     * with {@code allowedSender=true} may still send. {@code null}/false = not allowed.
+     * Lives on the member row so removing the member automatically clears the allowance.
+     * Nullable → AO auto-migration adds the column; existing rows read as null (harmless).
+     */
+    public Boolean getAllowedSender();
+
+    public void setAllowedSender(Boolean var1);
 }
 

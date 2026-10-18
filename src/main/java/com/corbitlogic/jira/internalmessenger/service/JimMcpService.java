@@ -1,0 +1,78 @@
+package com.corbitlogic.jira.internalmessenger.service;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * MCP Control Plane service: administrative source of truth for MCP settings and
+ * per-tool policy. Builds the signed policy document consumed by the Corbit Logic
+ * Gateway. Never stores or returns raw secrets.
+ */
+public interface JimMcpService {
+
+    /** Seed/refresh the tool registry rows from the bundled contract. Returns count. */
+    int seedFromRegistry();
+
+    /** General status for the admin UI (enabled, gateway config/reachability, counts, revision). */
+    Map<String, Object> getStatus();
+
+    /** All tool policy rows for the admin UI. */
+    List<Map<String, Object>> listTools();
+
+    void setToolEnabled(String toolName, boolean enabled);
+
+    void setToolConfirm(String toolName, boolean confirm);
+
+    /** Bulk operations: enable_all, disable_all, enable_read, enable_write, enable_destructive. */
+    int bulk(String op);
+
+    /** Update global settings: mcpEnabled, classes, allowedProjects, limits, gatewayUrl. */
+    void setGlobal(Map<String, Object> body);
+
+    /** Build the signed effective policy document served to the Gateway. */
+    Map<String, Object> buildSignedPolicy();
+
+    /** Machine-to-machine auth for the Gateway policy pull. */
+    boolean checkGatewayToken(String provided);
+
+    /** Record an authenticated heartbeat from the Corbit Logic Gateway. */
+    void recordHeartbeat(Map<String, Object> heartbeat);
+
+    /**
+     * Verify a signed machine-to-machine request from the Gateway (token + timestamp +
+     * nonce + HMAC signature, replay protection, rate limiting). Returns null when valid,
+     * otherwise a short reason code.
+     */
+    String verifyGatewayRequest(String token, String method, String path,
+                                String timestamp, String nonce, String signature);
+
+    /** True when both the shared signing secret and gateway pull token are configured. */
+    boolean isConfigured();
+
+    /** Store the shared signing secret and gateway pull token (write-only, never returned). */
+    void configureSecrets(String sharedSecret, String gatewayToken);
+
+    void setGatewayUrl(String url);
+
+    /** Current configuration revision (increments on every policy change). */
+    int getRevision();
+
+    // ---- MCP Access management (per-user / per-group presets; Phase 2) ----
+
+    /** The current MCP access policy for the admin UI (mode, defaultPreset, user/group rules,
+     *  project restrictions, revision). Never returns secrets. */
+    Map<String, Object> getAccessPolicy();
+
+    /** Validate and apply an access-policy draft (optimistic locking via expectedRevision).
+     *  Returns {ok, revision, ...} or {ok:false, error, message}. Audited. */
+    Map<String, Object> setAccessPolicy(Map<String, Object> draft, String actorUserKey);
+
+    /** Signed access policy served to the Gateway (HMAC over a shared canonical). */
+    Map<String, Object> buildSignedAccessPolicy();
+
+    /** Access-policy revision (separate from tool-policy revision). */
+    int getAccessRevision();
+
+    /** Effective-access simulation for one user/tool without executing it. */
+    Map<String, Object> simulateAccess(String jiraUserKey, String toolName);
+}

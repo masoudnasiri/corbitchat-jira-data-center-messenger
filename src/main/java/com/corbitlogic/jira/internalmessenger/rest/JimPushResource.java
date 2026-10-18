@@ -23,6 +23,7 @@ import com.atlassian.jira.user.ApplicationUser;
 import com.corbitlogic.jira.internalmessenger.ao.JimConversation;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
+import com.corbitlogic.jira.internalmessenger.service.JimLicenseService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
 import com.corbitlogic.jira.internalmessenger.service.JimPermissionService;
 import com.corbitlogic.jira.internalmessenger.service.JimPushService;
@@ -51,14 +52,16 @@ public class JimPushResource {
     private final JimPushService pushService;
     private final JimConversationService conversationService;
     private final JimReadStateService readStateService;
+    private final JimLicenseService licenseService;
 
     @Inject
-    public JimPushResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimPushService pushService, JimConversationService conversationService, JimReadStateService readStateService) {
+    public JimPushResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimPushService pushService, JimConversationService conversationService, JimReadStateService readStateService, JimLicenseService licenseService) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.pushService = pushService;
         this.conversationService = conversationService;
         this.readStateService = readStateService;
+        this.licenseService = licenseService;
     }
 
     @GET
@@ -85,6 +88,9 @@ public class JimPushResource {
         ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
         if (viewer == null) {
             return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        if (!this.licenseService.canUsePushNotifications()) {
+            return JimRestResponses.licenseBlocked();
         }
         try {
             String userKey = this.permissionService.requireAuthenticatedUserKey();

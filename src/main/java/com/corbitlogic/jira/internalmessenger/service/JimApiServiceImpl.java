@@ -34,8 +34,9 @@ implements JimApiService {
     private final JimReadStateService readStateService;
     private final JimUserSearchService userSearchService;
     private final JimDtoMapper dtoMapper;
+    private final JimMessageUserStateService userStateService;
 
-    public JimApiServiceImpl(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReadStateService readStateService, JimUserSearchService userSearchService, JimDtoMapper dtoMapper) {
+    public JimApiServiceImpl(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReadStateService readStateService, JimUserSearchService userSearchService, JimDtoMapper dtoMapper, JimMessageUserStateService userStateService) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
@@ -43,6 +44,7 @@ implements JimApiService {
         this.readStateService = readStateService;
         this.userSearchService = userSearchService;
         this.dtoMapper = dtoMapper;
+        this.userStateService = userStateService;
     }
 
     @Override
@@ -72,11 +74,16 @@ implements JimApiService {
 
     @Override
     public List<MessageDto> listMessages(int conversationId, int limit, Integer beforeMessageId) {
-        this.permissionService.requireAuthenticatedUserKey();
+        String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
         ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
         List<JimMessage> messages = this.messageService.listMessages(conversationId, limit, beforeMessageId);
+        // Sprint 12: hide messages the viewer chose "Delete for me" (per-user overlay).
+        java.util.Set<Integer> hidden = this.userStateService.hiddenMessageIds(currentUserKey, conversationId);
         ArrayList<MessageDto> result = new ArrayList<MessageDto>();
         for (JimMessage message : messages) {
+            if (hidden.contains(message.getID())) {
+                continue;
+            }
             result.add(this.dtoMapper.toMessageDto(message, viewer));
         }
         return result;

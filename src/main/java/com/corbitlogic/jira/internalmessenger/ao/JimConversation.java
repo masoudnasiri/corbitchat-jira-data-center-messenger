@@ -66,6 +66,20 @@ extends Entity {
 
     public void setLastMessagePreview(String var1);
 
+    /**
+     * Sender user key of the most recent non-system message in this
+     * conversation. Used by the sidebar to colour the last-message
+     * preview by ownership (light blue for the current user, light gray
+     * for others). Nullable on legacy rows that pre-date this column;
+     * the client renders the neutral style in that case.
+     */
+    @StringLength(value=255)
+    @Accessor(value="LAST_MESSAGE_SENDER_USER_KEY")
+    public String getLastMessageSenderUserKey();
+
+    @Mutator(value="LAST_MESSAGE_SENDER_USER_KEY")
+    public void setLastMessageSenderUserKey(String var1);
+
     @StringLength(value=255)
     @Accessor(value="GROUP_NAME")
     public String getGroupName();
@@ -87,5 +101,104 @@ extends Entity {
 
     @Mutator(value="PROJECT_KEY")
     public void setProjectKey(String var1);
+
+    /**
+     * Phase 8C group send policy. {@code null}/empty/"ALL_MEMBERS" = every active member may
+     * send (legacy behavior — existing groups are never restricted after upgrade).
+     * "ADMINS_AND_ALLOWED" = only OWNER/ADMIN or members flagged {@code allowedSender} may send.
+     * Additive/nullable → AO auto-migration; legacy rows read null = ALL_MEMBERS.
+     */
+    @StringLength(value=32)
+    @Accessor(value="SEND_POLICY")
+    public String getSendPolicy();
+
+    @Mutator(value="SEND_POLICY")
+    public void setSendPolicy(String var1);
+
+    /**
+     * Sprint 12 governance: 1 when a group has been soft-archived ("deleted" by
+     * its owner). Archived groups are hidden from normal users but ALL history
+     * (messages, members, attachments, reactions, audit) is retained for
+     * complaint review. Additive/nullable — legacy rows read as not-archived.
+     */
+    @Accessor(value="ARCHIVED")
+    public Integer getArchived();
+
+    @Mutator(value="ARCHIVED")
+    public void setArchived(Integer var1);
+
+    @Accessor(value="ARCHIVED_AT")
+    public Long getArchivedAt();
+
+    @Mutator(value="ARCHIVED_AT")
+    public void setArchivedAt(Long var1);
+
+    @StringLength(value=255)
+    @Accessor(value="ARCHIVED_BY_USER_KEY")
+    public String getArchivedByUserKey();
+
+    @Mutator(value="ARCHIVED_BY_USER_KEY")
+    public void setArchivedByUserKey(String var1);
+
+    /**
+     * Group/Project custom chat avatar (Phase 1 — group admin & avatars).
+     * All columns are additive and nullable so Active Objects migrates them
+     * automatically on existing rows; a null {@code avatarStoragePath} means
+     * "no custom avatar" and the client falls back to initials/glyph. The
+     * stored file lives under {JiraHome}/data/corbitchat/avatars/{id}/; only
+     * metadata is kept here — never the bytes.
+     */
+    @StringLength(value=450)
+    @Accessor(value="AVATAR_STORAGE_PATH")
+    public String getAvatarStoragePath();
+
+    @Mutator(value="AVATAR_STORAGE_PATH")
+    public void setAvatarStoragePath(String var1);
+
+    @StringLength(value=100)
+    @Accessor(value="AVATAR_CONTENT_TYPE")
+    public String getAvatarContentType();
+
+    @Mutator(value="AVATAR_CONTENT_TYPE")
+    public void setAvatarContentType(String var1);
+
+    @Accessor(value="AVATAR_SIZE")
+    public Long getAvatarSize();
+
+    @Mutator(value="AVATAR_SIZE")
+    public void setAvatarSize(Long var1);
+
+    @StringLength(value=128)
+    @Accessor(value="AVATAR_CHECKSUM")
+    public String getAvatarChecksum();
+
+    @Mutator(value="AVATAR_CHECKSUM")
+    public void setAvatarChecksum(String var1);
+
+    @StringLength(value=255)
+    @Accessor(value="AVATAR_FILENAME")
+    public String getAvatarFilename();
+
+    @Mutator(value="AVATAR_FILENAME")
+    public void setAvatarFilename(String var1);
+
+    @Accessor(value="AVATAR_UPDATED_AT")
+    public Long getAvatarUpdatedAt();
+
+    @Mutator(value="AVATAR_UPDATED_AT")
+    public void setAvatarUpdatedAt(Long var1);
+
+    @StringLength(value=255)
+    @Accessor(value="AVATAR_UPDATED_BY_USER_KEY")
+    public String getAvatarUpdatedByUserKey();
+
+    @Mutator(value="AVATAR_UPDATED_BY_USER_KEY")
+    public void setAvatarUpdatedByUserKey(String var1);
+
+    @Accessor(value="AVATAR_VERSION")
+    public Long getAvatarVersion();
+
+    @Mutator(value="AVATAR_VERSION")
+    public void setAvatarVersion(Long var1);
 }
 

@@ -1,0 +1,77 @@
+# Machine-readable chat release regression checklist.
+# id, group, check, automate (script or false), must_pass
+version: 1
+baseline_plugin: 1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat5a-shared-open-hotfix
+baseline_pwa: 1.0.0+88/figma-chat-shared-open-hotfix
+groups:
+  A:
+    title: Baseline / source safety
+    items:
+      - {id: A1, check: Build only from official plugin repo, automate: scripts/check-no-stale-repo.sh}
+      - {id: A2, check: Never build from /root/jira-dev/jira-issue-chat-panel, automate: scripts/check-no-stale-repo.sh}
+      - {id: A3, check: Mobile only from /root/jira-dev/corbitchat-mobile, automate: ../corbitchat-mobile/scripts/smoke-mobile-build.sh}
+      - {id: A4, check: No reportreplies-workdays1 lineage, automate: scripts/check-no-stale-repo.sh}
+      - {id: A5, check: No generated artifacts or secrets staged, automate: scripts/check-no-stale-repo.sh}
+  B:
+    title: WRM / static asset safety
+    items:
+      - {id: B1, check: No jim-*-min.js/css in src/main/resources, automate: scripts/check-release-assets.sh}
+      - {id: B2, check: Packaged JAR built from current JS/CSS, automate: scripts/check-release-assets.sh}
+      - {id: B3, check: Live WRM URL contains current plugin version, automate: scripts/check-wrm-regression.sh}
+      - {id: B4, check: Live WRM has openConversationAtMessage / jump path, automate: scripts/check-wrm-regression.sh}
+      - {id: B5, check: Live WRM has messagesAround, automate: scripts/check-wrm-regression.sh}
+      - {id: B6, check: Live WRM has data-goto-message, automate: scripts/check-wrm-regression.sh}
+      - {id: B7, check: Live WRM has jim-message-highlight, automate: scripts/check-wrm-regression.sh}
+      - {id: B8, check: Source has openForwardModalForMessages, automate: scripts/check-release-assets.sh}
+      - {id: B9, check: Live WRM has Assistant report filters, automate: scripts/check-wrm-regression.sh}
+      - {id: B10, check: Live WRM has mention badge handler, automate: scripts/check-wrm-regression.sh}
+  C:
+    title: Assistant filters
+    items:
+      - {id: C1, check: گزارش‌ها, automate: scripts/check-release-assets.sh}
+      - {id: C2, check: منشن گزارش, automate: scripts/check-release-assets.sh}
+      - {id: C3, check: گزارش‌های دریافتی, automate: scripts/check-release-assets.sh}
+      - {id: C4, check: REPORT_SUBMITTED / TO_ME / REPLY / MENTION, automate: scripts/check-release-assets.sh}
+      - {id: C5, check: Existing non-report filters preserved, automate: false}
+  D:
+    title: Chat search
+    items:
+      - {id: D1, check: Search endpoint 200, automate: scripts/smoke-chat-api.sh}
+      - {id: D2, check: Cursor pagination field present, automate: scripts/smoke-chat-api.sh}
+      - {id: D3, check: Result includes conversationId + messageId, automate: scripts/smoke-chat-api.sh}
+      - {id: D4, check: Click jumps and highlights, automate: false}
+      - {id: D5, check: Old/paginated message jump, automate: false}
+      - {id: D6, check: Project chat search, automate: false}
+      - {id: D7, check: Unauthorized search blocked, automate: false}
+      - {id: D8, check: Search listing does not mark read, automate: false}
+  E:
+    title: Shared galleries
+    items:
+      - {id: E1, check: Files/Media/Links tabs, automate: scripts/smoke-chat-api.sh}
+      - {id: E2, check: Open message uses openConversationAtMessage, automate: scripts/check-release-assets.sh}
+      - {id: E3, check: Off-page uses messagesAround, automate: scripts/smoke-chat-api.sh}
+      - {id: E4, check: Exact highlight, automate: false}
+      - {id: E5, check: Download/copy/open, automate: false}
+      - {id: E6, check: Profile/info and folder shortcut, automate: false}
+  F:
+    title: Message actions
+    items:
+      - {id: F1, check: Reply/Copy/Share/Forward/Save/Delete-for-me, automate: false}
+      - {id: F2, check: Multi-forward, automate: scripts/check-release-assets.sh}
+      - {id: F3, check: Selection does not mark read, automate: false}
+      - {id: F4, check: System/deleted hide unsafe actions, automate: false}
+  G:
+    title: Mobile / PWA
+    items:
+      - {id: G1, check: Build label +88 / figma-chat-shared-open-hotfix, automate: ../corbitchat-mobile/scripts/check-mobile-label.sh}
+      - {id: G2, check: 7G TECH on Production artifact, automate: ../corbitchat-mobile/scripts/check-branding.sh}
+      - {id: G3, check: No Hub leak on 7G artifact, automate: ../corbitchat-mobile/scripts/check-branding.sh}
+      - {id: G4, check: Search / jump / older cursor / @ badge / profile / tabs, automate: false}
+      - {id: G5, check: RTL/Jalali preserved, automate: false}
+  H:
+    title: Admin / health
+    items:
+      - {id: H1, check: jim + mobile health and ao-health 200, automate: scripts/smoke-chat-api.sh}
+      - {id: H2, check: Chat / admin / MCP admin pages, automate: scripts/smoke-chat-web.sh}
+      - {id: H3, check: Workspace Agent + report/calendar admin present, automate: false}
+      - {id: H4, check: Exactly one CorbitChat jar, automate: false}

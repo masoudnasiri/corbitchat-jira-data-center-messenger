@@ -21,6 +21,8 @@ import com.atlassian.jira.user.ApplicationUser;
 import com.atlassian.plugin.webresource.WebResourceManager;
 import com.atlassian.templaterenderer.TemplateRenderer;
 import com.corbitlogic.jira.internalmessenger.bootstrap.JimPluginBootstrap;
+import com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService;
+import com.corbitlogic.jira.internalmessenger.service.JimWebLocaleService;
 import java.io.IOException;
 import java.io.Writer;
 import java.net.URI;
@@ -32,20 +34,24 @@ import javax.servlet.http.HttpServletResponse;
 public class JimChatServlet
 extends HttpServlet {
     private static final String TEMPLATE_PATH = "templates/messenger.vm";
-    private static final String PLUGIN_KEY = "com.corbitlogic.jira.internalmessenger.jira-internal-messenger";
-    private static final String WEB_RESOURCE_KEY = "com.corbitlogic.jira.internalmessenger.jira-internal-messenger:jim-messenger-resources";
+    private static final String PLUGIN_KEY = "com.corbitlogic.corbitchat.jira.dc";
+    private static final String WEB_RESOURCE_KEY = "com.corbitlogic.corbitchat.jira.dc:jim-messenger-resources";
     private static final String LOGO_RESOURCE_NAME = "corbit-app-logo.png";
     private static final String LOGO_CLASSPATH = "images/corbit-app-logo.png";
     private final JiraAuthenticationContext authenticationContext;
     private final TemplateRenderer templateRenderer;
     private final WebResourceManager webResourceManager;
     private final AvatarService avatarService;
+    private final JimAdminSettingsService adminSettingsService;
+    private final JimWebLocaleService webLocaleService;
 
-    public JimChatServlet(JiraAuthenticationContext authenticationContext, TemplateRenderer templateRenderer, WebResourceManager webResourceManager, AvatarService avatarService, JimPluginBootstrap pluginBootstrap) {
+    public JimChatServlet(JiraAuthenticationContext authenticationContext, TemplateRenderer templateRenderer, WebResourceManager webResourceManager, AvatarService avatarService, JimPluginBootstrap pluginBootstrap, JimAdminSettingsService adminSettingsService, JimWebLocaleService webLocaleService) {
         this.authenticationContext = authenticationContext;
         this.templateRenderer = templateRenderer;
         this.webResourceManager = webResourceManager;
         this.avatarService = avatarService;
+        this.adminSettingsService = adminSettingsService;
+        this.webLocaleService = webLocaleService;
     }
 
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
@@ -59,7 +65,7 @@ extends HttpServlet {
         boolean logoAvailable = ((Object)((Object)this)).getClass().getClassLoader().getResource(LOGO_CLASSPATH) != null;
         String logoUrl = null;
         if (logoAvailable) {
-            logoUrl = request.getContextPath() + "/download/resources/com.corbitlogic.jira.internalmessenger.jira-internal-messenger:jim-messenger-resources/corbit-app-logo.png";
+            logoUrl = request.getContextPath() + "/download/resources/com.corbitlogic.corbitchat.jira.dc:jim-messenger-resources/corbit-app-logo.png";
         }
         HashMap<String, Object> context = new HashMap<String, Object>();
         context.put("currentUserKey", user.getKey());
@@ -69,7 +75,38 @@ extends HttpServlet {
         context.put("i18n", this.authenticationContext.getI18nHelper());
         context.put("logoAvailable", logoAvailable);
         context.put("logoUrl", logoUrl);
+        context.put("brandTitle", this.resolveBrandTitle());
+        context.put("brandLogoUrl", this.resolveBrandLogoUrl(logoAvailable, logoUrl));
+        // Web chat localization (Persian UI / Jalali dates): resolved effective
+        // values + raw prefs for the in-chat settings panel. Display-only.
+        context.put("effectiveLanguage", this.webLocaleService.effectiveLanguage(user.getKey()));
+        context.put("effectiveCalendar", this.webLocaleService.effectiveCalendar(user.getKey()));
+        context.put("userLanguagePref", this.webLocaleService.getUserLanguage(user.getKey()));
+        context.put("userCalendarPref", this.webLocaleService.getUserCalendar(user.getKey()));
         this.templateRenderer.render(TEMPLATE_PATH, context, (Writer)response.getWriter());
+    }
+
+    private String resolveBrandTitle() {
+        try {
+            String title = this.adminSettingsService.getBrandingTitle();
+            return title != null && !title.isEmpty() ? title : "CorbitChat";
+        }
+        catch (RuntimeException ex) {
+            return "CorbitChat";
+        }
+    }
+
+    private String resolveBrandLogoUrl(boolean logoAvailable, String defaultLogoUrl) {
+        try {
+            String url = this.adminSettingsService.getBrandingLogoUrl();
+            if (url != null && !url.isEmpty()) {
+                return url;
+            }
+        }
+        catch (RuntimeException ex) {
+            // fall back to bundled logo
+        }
+        return logoAvailable ? defaultLogoUrl : null;
     }
 
     private String resolveAvatarUrl(ApplicationUser user) {

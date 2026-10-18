@@ -78,6 +78,35 @@ extends Entity {
 
     public void setActorDisplayName(String var1);
 
+    /**
+     * Full text carried by a Jira Assistant / system card (Sprint 12 —
+     * notification enrichment). For a MENTION/COMMENT this is the FULL comment
+     * (or field) body where the user was mentioned, so the Assistant can show
+     * the whole message instead of a generic "mentioned you" line. Nullable and
+     * auto-migrated; legacy rows leave it null. NEVER returned to a viewer who
+     * cannot browse the referenced issue (re-gated in JimRestJsonMapper).
+     */
+    @StringLength(value=-1)
+    @Accessor(value="EVENT_TEXT")
+    public String getEventText();
+
+    @Mutator(value="EVENT_TEXT")
+    public void setEventText(String var1);
+
+    /**
+     * Structured JSON metadata for a system card (Sprint 12). For an
+     * ISSUE_ATTACHMENT card this is a JSON array of the attached files
+     * ({@code [{"id","fileName","fileSize","contentType"}]}) so the Assistant
+     * can list each file with a secure, permission-checked download link.
+     * Nullable/auto-migrated; only read for ISSUE_ATTACHMENT cards.
+     */
+    @StringLength(value=-1)
+    @Accessor(value="EVENT_DATA")
+    public String getEventData();
+
+    @Mutator(value="EVENT_DATA")
+    public void setEventData(String var1);
+
     @Indexed
     public Long getCreatedAt();
 
@@ -126,5 +155,61 @@ extends Entity {
 
     @Mutator(value="PINNED")
     public void setPinned(Integer var1);
+
+    /**
+     * 1 when the recipient of a Jira Assistant / system message has
+     * acknowledged or acted on it (clicked the issue link, clicked
+     * 'Mark as seen', etc.), otherwise 0/null. Used only for system
+     * messages, which are 1:1 per user (each user has their own system
+     * conversation), so storing this on the message row is effectively
+     * per-user. Auto-migrated as nullable; legacy rows render in the
+     * default (not-actioned) state.
+     */
+    @Accessor(value="ACTIONED")
+    public Integer getActioned();
+
+    @Mutator(value="ACTIONED")
+    public void setActioned(Integer var1);
+
+    @Accessor(value="ACTIONED_AT")
+    public Long getActionedAt();
+
+    @Mutator(value="ACTIONED_AT")
+    public void setActionedAt(Long var1);
+
+    /**
+     * Forward attribution (Sprint 06 Fix-1). When a message is forwarded, a NEW
+     * message row is created in the target conversation carrying the original
+     * author's identity so the receiver can see it was forwarded and who wrote
+     * it. All four columns are nullable and auto-migrated; legacy rows (and
+     * non-forwarded messages) leave them null and render as normal messages.
+     * The forwarded-from message id / user key chain to the ULTIMATE original
+     * so re-forwarding preserves the true author rather than the last relayer.
+     */
+    @Accessor(value="FORWARDED_FROM_MESSAGE_ID")
+    public Long getForwardedFromMessageId();
+
+    @Mutator(value="FORWARDED_FROM_MESSAGE_ID")
+    public void setForwardedFromMessageId(Long var1);
+
+    @StringLength(value=255)
+    @Accessor(value="FORWARDED_FROM_USER_KEY")
+    public String getForwardedFromUserKey();
+
+    @Mutator(value="FORWARDED_FROM_USER_KEY")
+    public void setForwardedFromUserKey(String var1);
+
+    @StringLength(value=255)
+    @Accessor(value="FORWARDED_FROM_NAME")
+    public String getForwardedFromDisplayName();
+
+    @Mutator(value="FORWARDED_FROM_NAME")
+    public void setForwardedFromDisplayName(String var1);
+
+    @Accessor(value="FORWARDED_AT")
+    public Long getForwardedAt();
+
+    @Mutator(value="FORWARDED_AT")
+    public void setForwardedAt(Long var1);
 }
 

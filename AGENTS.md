@@ -1,28 +1,66 @@
-# CorbitChat / Jira Internal Messenger — Agent Guide
+# CorbitChat — Team Messenger for Jira — Agent Guide
 
 P2 plugin for **Jira Data Center 9.17.x** running in the `jira-srv` Docker container.
 
-- **Workspace:** `/root/jira-dev/jira-issue-chat-panel`
-- **Plugin key (never change):** `com.corbitlogic.jira.internalmessenger.jira-internal-messenger`
+- **Workspace (ONLY):** `/root/jira-dev/jira-issue-chat-panel-mcp-control-plane`
+- **Do not use:** `/root/jira-dev/jira-issue-chat-panel` (stale; caused the figmachat4 P0 regression)
+- **Plugin key (never change):** `com.corbitlogic.corbitchat.jira.dc` (marketplace branch; internal branch uses `com.corbitlogic.jira.internalmessenger.jira-internal-messenger`)
 - **Jira URL:** `http://185.83.181.194:8080`
-- **Test user:** `m.nasiri` / `Man@782761`
+- **Test user:** `m.nasiri` (password from `JIM_PASS` in the environment only;
+  DEV password was rotated 2026-08-14 after history exposure)
 - **Chat page:** `http://185.83.181.194:8080/plugins/servlet/jim/chat`
+
+Set secrets through environment variables or secure server-side config only.
+Do not put passwords, tokens, PATs, or cookies in docs or scripts.
+- **Production baseline:** `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1`
+  (see `docs/production-baseline.md`)
+- **Production PWA:** `1.0.0+102 / figma-phase7h-functional1-prod` (7G TECH)
+- **Rollback plugin:** `figmachat7g-dashboard-metrics1`
+- **Rollback PWA:** `+101 / figma-phase7g-dashboard-copy-rtl1-prod`
+
+## Production baseline (Phase 5 and Phase 6 closed — 2026-08-14)
+
+Phase 5–7H are closed on Production
+(`figmachat7h-functional1` + 7G TECH PWA `+102`). Do not rollback
+unless a later blocking issue appears. Public basic-auth smoke may return
+`403 AUTHENTICATION_DENIED` (CAPTCHA / login lock) — that is not a
+plugin outage; do not retry the same credentials. Do not deploy
+Phase 7A to Production unless the owner approves a separate rollout.
+Production Gateway is `gateway-2.7-prod16` with MCP chat search shipped
+and closed after owner ChatGPT Scan Tools / Refresh
+(`corbit_chat_search`, `corbit_chat_search_messages`). Do not restart
+Jira or replace plugin/PWA for gateway-only work.
+
+Official Production plugin. Restore these before any new phase:
+
+- Assistant report filters (`گزارش‌ها`, `منشن گزارش`, `گزارش‌های دریافتی`)
+- `openConversationAtMessage` chat search jump-to-message
+- Shared gallery `باز کردن پیام` must use `openConversationAtMessage`
+  (never querySelector-only scroll)
+
+Never reuse versions `figmachat4c`, `figmachat4d`, `figmachat4e`,
+or `figmachat5-search-mentions`.
+
+Before every future `mvn ... package`, run the mandatory pre-package
+checklist in `docs/deployment-production.md` §2.1, including
+`scripts/check-no-secrets.sh`.
 
 ## Build (offline Maven — always use these flags)
 
 ```bash
-cd /root/jira-dev/jira-issue-chat-panel
+cd /root/jira-dev/jira-issue-chat-panel-mcp-control-plane
 mvn -s /root/.m2/settings.xml -Dmaven.repo.local=/root/maven-repos/atlassian-jira-offline -o clean package
 ```
 
 Plain `mvn clean package` will FAIL (no internet access to Maven Central / Atlassian repos).
-Build takes ~20–30 s. Artifact: `target/jira-internal-messenger-1.0.0-SNAPSHOT.jar`
+Build takes ~20–30 s. Artifact: `target/corbitchat-jira-dc-1.0.0.jar`
 
 ## Install
 
 ```bash
-docker cp target/jira-internal-messenger-1.0.0-SNAPSHOT.jar jira-srv:/var/jira/plugins/installed-plugins/
-docker exec -u 0 jira-srv bash -lc 'chmod 644 /var/jira/plugins/installed-plugins/jira-internal-messenger-1.0.0-SNAPSHOT.jar'
+docker exec -u 0 jira-srv bash -lc 'rm -f /var/jira/plugins/installed-plugins/jira-internal-messenger-*.jar /var/jira/plugins/installed-plugins/corbitchat-jira-dc-*.jar'
+docker cp target/corbitchat-jira-dc-1.0.0.jar jira-srv:/var/jira/plugins/installed-plugins/
+docker exec -u 0 jira-srv bash -lc 'chmod 644 /var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0.jar'
 docker restart jira-srv
 ```
 
@@ -33,7 +71,9 @@ Do NOT use `-it` with `docker exec` (no TTY in this environment).
 Jira returns 503 while starting, then 401/200 when ready. Poll like this:
 
 ```bash
-AUTH='m.nasiri:Man@782761'; BASE='http://185.83.181.194:8080'
+JIM_USER="${JIM_USER:-m.nasiri}"
+: "${JIM_PASS:?Set JIM_PASS in the environment}"
+AUTH="$JIM_USER:$JIM_PASS"; BASE='http://185.83.181.194:8080'
 for i in $(seq 1 50); do
   code=$(curl -s -u "$AUTH" -o /dev/null -w '%{http_code}' "$BASE/rest/jim/1.0/health" 2>/dev/null || echo 000)
   [ "$code" = "200" ] && echo ready && break
@@ -46,7 +86,9 @@ Use a shell timeout (`block_until_ms`) of at least 250–300 s for this poll.
 ## Test after every build/install
 
 ```bash
-AUTH='m.nasiri:Man@782761'; BASE='http://185.83.181.194:8080'
+JIM_USER="${JIM_USER:-m.nasiri}"
+: "${JIM_PASS:?Set JIM_PASS in the environment}"
+AUTH="$JIM_USER:$JIM_PASS"; BASE='http://185.83.181.194:8080'
 for p in /rest/jim/1.0/health /rest/jim/1.0/ao-health /rest/jim/1.0/conversations /plugins/servlet/jim/chat; do
   echo "$p => $(curl -s -u "$AUTH" -o /dev/null -w '%{http_code}' "$BASE$p")"
 done
@@ -72,10 +114,16 @@ because the WRM CDN hash changes.
 
 - Direct chat send/receive (Enter sends, Shift+Enter newline)
 - Jira Assistant (SYSTEM conversation, read-only composer bar)
+- Assistant report filters + report event cards (`REPORT_SUBMITTED`,
+  `REPORT_SUBMITTED_TO_ME`, `REPORT_REPLY`, `REPORT_MENTION`)
+- Chat search result click jumps via `openConversationAtMessage`
 - Assignment notification cards (eventType ASSIGNMENT)
 - Mention notification cards (eventType MENTION)
+- Compact sidebar, shared galleries, multi-forward, Saved Messages
+- Copy / Share / Forward / Delete / Save
 - Sidebar unread counts and selected state
 - Attachments upload/download/preview (if present in build)
+- MCP admin, report/calendar admin, Workspace Agent status
 
 ## Key files
 

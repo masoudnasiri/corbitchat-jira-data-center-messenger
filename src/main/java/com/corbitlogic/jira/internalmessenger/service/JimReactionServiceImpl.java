@@ -22,17 +22,22 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import net.java.ao.DBParam;
 import net.java.ao.Query;
 import net.java.ao.RawEntity;
 
 public class JimReactionServiceImpl
 implements JimReactionService {
-    private static final Set<String> ALLOWED_EMOJI = new HashSet<String>(Arrays.asList("\ud83d\udc4d", "\u2705", "\ud83d\ude04", "\ud83c\udf89", "\u2764\ufe0f", "\ud83d\udc40"));
+    /**
+     * Quick-preset palette (clients still show these first). Any other
+     * well-formed emoji is accepted so the full picker can persist the same
+     * {@code emoji} string the UI already sends. Length is capped to the
+     * AO column ({@code JimReaction.emoji} 64). Existing rows remain readable.
+     */
+    private static final int MAX_EMOJI_CHARS = 64;
+    private static final int MAX_EMOJI_CODEPOINTS = 10;
     private final ActiveObjects activeObjects;
     private final JimMessageService messageService;
     private final JimPermissionService permissionService;
@@ -49,16 +54,17 @@ implements JimReactionService {
         JimValidation.requireNonBlank(userKey, "userKey");
         String authenticatedUserKey = this.permissionService.requireAuthenticatedUserKey();
         this.permissionService.requireSameUser(authenticatedUserKey, userKey);
-        if (emoji == null || !ALLOWED_EMOJI.contains(emoji)) {
+        if (!isUsableReactionEmoji(emoji)) {
             throw JimMessengerException.badRequest("Unsupported reaction emoji");
         }
+        final String storedEmoji = emoji.trim();
         JimMessage message = this.messageService.getMessageForParticipant(messageId, userKey);
         if (JimMessageFlags.isDeleted(message)) {
             throw JimMessengerException.badRequest("Deleted messages cannot be reacted to");
         }
         long now = System.currentTimeMillis();
         return (Boolean)this.activeObjects.executeInTransaction(() -> {
-            JimReaction[] existing = (JimReaction[])this.activeObjects.find(JimReaction.class, Query.select().where("MESSAGE_ID = ? AND USER_KEY = ? AND EMOJI = ?", new Object[]{messageId, userKey, emoji}).limit(1));
+            JimReaction[] existing = (JimReaction[])this.activeObjects.find(JimReaction.class, Query.select().where("MESSAGE_ID = ? AND USER_KEY = ? AND EMOJI = ?", new Object[]{messageId, userKey, storedEmoji}).limit(1));
             if (existing.length > 0) {
                 this.activeObjects.delete((RawEntity[])existing);
                 return false;
@@ -66,7 +72,7 @@ implements JimReactionService {
             JimReaction reaction = (JimReaction)this.activeObjects.create(JimReaction.class, new DBParam[0]);
             reaction.setMessageId(messageId);
             reaction.setUserKey(userKey);
-            reaction.setEmoji(emoji);
+            reaction.setEmoji(storedEmoji);
             reaction.setCreatedAt(now);
             reaction.save();
             return true;
@@ -107,6 +113,26 @@ implements JimReactionService {
             grouped.computeIfAbsent(reaction.getMessageId(), key -> new ArrayList()).add(reaction);
         }
         return grouped;
+    }
+
+    static boolean isUsableReactionEmoji(String raw) {
+        if (raw == null) {
+            return false;
+        }
+        String emoji = raw.trim();
+        if (emoji.isEmpty() || emoji.length() > MAX_EMOJI_CHARS) {
+            return false;
+        }
+        int[] cps = emoji.codePoints().toArray();
+        if (cps.length == 0 || cps.length > MAX_EMOJI_CODEPOINTS) {
+            return false;
+        }
+        for (int cp : cps) {
+            if (Character.isISOControl(cp) || Character.isWhitespace(cp)) {
+                return false;
+            }
+        }
+        return true;
     }
 }
 

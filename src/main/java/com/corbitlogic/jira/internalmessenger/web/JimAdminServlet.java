@@ -31,8 +31,8 @@ import javax.servlet.http.HttpServletResponse;
 public class JimAdminServlet
 extends HttpServlet {
     private static final String TEMPLATE_PATH = "templates/admin.vm";
-    private static final String PLUGIN_KEY = "com.corbitlogic.jira.internalmessenger.jira-internal-messenger";
-    private static final String WEB_RESOURCE_KEY = "com.corbitlogic.jira.internalmessenger.jira-internal-messenger:jim-admin-resources";
+    private static final String PLUGIN_KEY = "com.corbitlogic.corbitchat.jira.dc";
+    private static final String WEB_RESOURCE_KEY = "com.corbitlogic.corbitchat.jira.dc:jim-admin-resources";
     private final JiraAuthenticationContext authenticationContext;
     private final GlobalPermissionManager globalPermissionManager;
     private final TemplateRenderer templateRenderer;

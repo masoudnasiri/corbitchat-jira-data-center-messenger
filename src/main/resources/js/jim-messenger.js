@@ -1,13 +1,256 @@
 (function () {
     'use strict';
 
-    var MESSAGE_POLL_MS = 5000;
+    // In-app chat delivery is the primary mechanism; push is best-effort
+    // on top. Poll aggressively so receivers see messages within ~2.5s
+    // even if push is broken on their browser/profile. Tuned so the
+    // poll cost is comparable to a typical Jira heartbeat.
+    var MESSAGE_POLL_MS = 2500;
     var CONVERSATION_POLL_MS = 10000;
+    // After the tab regains focus we trigger an immediate refresh
+    // (Chrome aggressively throttles setInterval in background tabs).
+    var FOCUS_REFRESH_DEBOUNCE_MS = 250;
     var SEARCH_DEBOUNCE_MS = 300;
     var MIN_SEARCH_LENGTH = 2;
-    var MAX_MESSAGE_LENGTH = 4000;
-    var MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+    // Per-message length cap (matches server-side JimValidation). Longer
+    // user input is split client-side into ordered chunks each <= this size.
+    var MAX_MESSAGE_LENGTH = 15000;
+    // Textarea hard cap (input attribute). Much larger than per-message
+    // cap so the user can keep typing freely; we split on send.
+    var MAX_TEXTAREA_LENGTH = 25000;
+    var MAX_UPLOAD_SIZE_BYTES = 200 * 1024 * 1024;
     var DELETE_WINDOW_MS = 10 * 60 * 1000;
+    var EDIT_WINDOW_MS = 30 * 60 * 1000;
+
+    // --- Localization (web chat only): Persian UI + Jalali dates -------------
+    // Effective language/calendar are resolved server-side (user pref → admin
+    // default → English/Gregorian) and injected as data-* attributes on the
+    // app root. This is display-only; stored dates/values never change.
+    var Locale = { lang: 'en', calendar: 'gregorian' };
+
+    var FA_DIGITS = ['\u06F0', '\u06F1', '\u06F2', '\u06F3', '\u06F4',
+        '\u06F5', '\u06F6', '\u06F7', '\u06F8', '\u06F9'];
+
+    // Localize ASCII digits to Persian when the effective language is Persian.
+    function locDigits(str) {
+        if (Locale.lang !== 'fa' || str == null) {
+            return str;
+        }
+        var s = String(str);
+        var out = '';
+        for (var i = 0; i < s.length; i++) {
+            var c = s.charCodeAt(i);
+            out += (c >= 48 && c <= 57) ? FA_DIGITS[c - 48] : s.charAt(i);
+        }
+        return out;
+    }
+
+    // Persian (fa) UI dictionary keyed by the English source string. Missing
+    // keys fall back to English, so partial coverage degrades gracefully.
+    var FA_STRINGS = {
+        'Send': 'ارسال', 'Reply': 'پاسخ', 'Forward': 'فوروارد', 'Copy': 'کپی',
+        'Share': 'اشتراک‌گذاری',
+        'Save to Saved Messages': 'ذخیره در پیام‌های ذخیره‌شده',
+        'Saved Messages': 'پیام‌های ذخیره‌شده',
+        'Shared': 'اشتراک‌ها',
+        'Files': 'فایل‌ها',
+        'Media': 'مدیا',
+        'Links': 'لینک‌ها',
+        'No shared files yet.': 'هنوز فایل مشترکی نیست.',
+        'No shared media yet.': 'هنوز مدیای مشترکی نیست.',
+        'No shared links yet.': 'هنوز لینک مشترکی نیست.',
+        'Unable to load shared content.': 'بارگذاری محتوای مشترک ممکن نشد.',
+        'Open message': 'باز کردن پیام',
+        'Copy link': 'کپی لینک',
+        'Unable to copy message.': 'کپی پیام ممکن نشد.',
+        'Unable to share': 'اشتراک‌گذاری ممکن نشد.',
+        'Unable to open Saved Messages.': 'باز کردن پیام‌های ذخیره‌شده ممکن نشد.',
+        'Message copied. Share is not available in this browser.':
+            'پیام کپی شد. اشتراک‌گذاری در این مرورگر در دسترس نیست.',
+        'Notes, links and forwards — only you': 'یادداشت‌ها، لینک‌ها و ارسال‌ها — فقط شما',
+        'Delete for me': 'حذف برای من', 'Select': 'انتخاب', 'Cancel': 'لغو',
+        'Save': 'ذخیره', 'Search': 'جستجو', 'Settings': 'تنظیمات',
+        'Open issue': 'مشاهده تسک', 'Open comment': 'مشاهده دیدگاه',
+        'Attach Jira issue': 'اتصال تسک Jira', 'Download': 'دانلود',
+        'Approve': 'تأیید', 'Reject': 'رد', 'Rejection reason': 'دلیل رد',
+        'React': 'واکنش', 'Pin': 'سنجاق', 'Unpin': 'برداشتن سنجاق',
+        'Info': 'اطلاعات', 'Edit': 'ویرایش', 'Delete': 'حذف', 'Delete?': 'حذف شود؟',
+        'Yes': 'بله', 'No': 'خیر', 'Deleted message': 'پیام حذف‌شده',
+        'Seen': 'دیده شد', 'Sent': 'ارسال شد', 'Draft': 'پیش‌نویس',
+        'Mark as seen': 'علامت‌گذاری به‌عنوان دیده‌شده', 'Acknowledged': 'تأیید شد',
+        'Loading...': 'در حال بارگذاری...', 'Loading conversations...': 'در حال بارگذاری گفتگوها...',
+        'Retry': 'تلاش دوباره',
+        'Loading messages...': 'در حال بارگذاری پیام‌ها...',
+        'Loading older messages\u2026': 'در حال بارگذاری پیام‌های قدیمی‌تر...',
+        'Sending\u2026': 'در حال ارسال...',
+        'Something went wrong. Please try again.': 'خطایی رخ داد. دوباره تلاش کنید.',
+        'No conversations yet': 'هنوز گفتگویی نیست',
+        'No messages yet': 'هنوز پیامی نیست',
+        'No results': 'نتیجه‌ای یافت نشد',
+        'Active now': 'آنلاین', 'Direct message': 'گفتگوی مستقیم',
+        'Back to conversations': 'بازگشت به گفتگوها',
+        'Project lead': 'راهبر پروژه', 'Owner': 'مالک',
+        'Pinned:': 'سنجاق‌شده:', 'Image': 'تصویر', 'Voice message': 'پیام صوتی',
+        'Video': 'ویدیو', 'File:': 'فایل:',
+        'Jira notifications and updates': 'اعلان‌ها و به‌روزرسانی‌های Jira',
+        'Assistant': 'دستیار', 'Jira Assistant': 'دستیار Jira',
+        'All': 'همه', 'Personal': 'شخصی', 'Groups': 'گروه‌ها',
+        'New chat': 'گفتگوی جدید', 'New group': 'گروه جدید', 'Create group': 'ایجاد گروه',
+        'Message info': 'اطلاعات پیام', 'Forward message': 'فوروارد پیام',
+        'Messages forwarded.': 'پیام‌ها فوروارد شدند.',
+        'Message forwarded.': 'پیام فوروارد شد.',
+        'Unable to forward message.': 'فوروارد پیام ممکن نشد.',
+        'Unable to forward messages.': 'فوروارد پیام‌ها ممکن نشد.',
+        'Could not forward attachment(s).': 'فوروارد پیوست ممکن نشد.',
+        'No conversations match.': 'گفتگویی پیدا نشد.',
+        'Direct': 'مستقیم',
+        'These messages will be forwarded in order.': 'چند پیام انتخاب شده‌اند. پیام‌ها به‌ترتیب فوروارد می‌شوند.',
+        'Some selected messages cannot be forwarded and will be skipped.': 'بعضی از پیام‌های انتخاب‌شده قابل فوروارد نیستند و رد می‌شوند.',
+        'For Forward, select only one message.': 'برای فوروارد، فقط یک پیام را انتخاب کنید.',
+        'Only messages with text can be copied': 'فقط پیام‌های متنی را می‌توان کپی کرد',
+        'Save is not available for this selection': 'ذخیره برای این انتخاب در دسترس نیست',
+        'Share is not available for this selection': 'اشتراک‌گذاری برای این انتخاب در دسترس نیست',
+        'Unable to delete the selected messages for you.': 'حذف پیام‌های انتخاب‌شده برای شما ممکن نشد.',
+        'Unable to save message.': 'ذخیره پیام ممکن نشد.',
+        'Unable to save messages.': 'ذخیره پیام‌ها ممکن نشد.',
+        'Message saved.': 'پیام در پیام‌های ذخیره‌شده ذخیره شد.',
+        'Messages saved.': 'پیام‌ها در پیام‌های ذخیره‌شده ذخیره شدند.',
+        'This message is already in Saved Messages.': 'این پیام از قبل در پیام‌های ذخیره‌شده است.',
+        'You do not have permission to perform this action.': 'اجازه انجام این کار را ندارید.',
+        'Forwarding…': 'در حال فوروارد…',
+        'Language and dates': 'زبان و تاریخ', 'Chat language': 'زبان گفتگو',
+        'Chat date format': 'قالب تاریخ گفتگو', 'Use admin default': 'پیش‌فرض مدیر',
+        'Persian': 'فارسی', 'English': 'انگلیسی', 'Jalali / Shamsi': 'جلالی / شمسی',
+        'Gregorian': 'میلادی', 'Saved. Reloading…': 'ذخیره شد. در حال بارگذاری مجدد…',
+        'Just now': 'همین حالا', 'Today': 'امروز', 'Yesterday': 'دیروز',
+        'Unavailable': 'در دسترس نیست', 'and': 'و', 'more': 'بیشتر',
+        'Active': 'آنلاین', 'Enable notifications': 'فعال‌سازی اعلان‌ها',
+        'Notifications on': 'اعلان‌ها روشن است', 'Notifications blocked': 'اعلان‌ها مسدود شده',
+        'Editing message': 'ویرایش پیام', 'Esc to cancel': 'برای لغو کلید Esc',
+        'Uploading...': 'در حال بارگذاری...', 'Uploading\u2026': 'در حال بارگذاری…',
+        'Recording voice message...': 'در حال ضبط پیام صوتی...',
+        'Search issues (key or text)...': 'جستجوی تسک (کلید یا متن)...',
+        'Search people': 'جستجوی افراد', 'Send to': 'ارسال به', 'Close': 'بستن',
+        'Select a conversation to start chatting': 'برای شروع گفتگو، یک مکالمه را انتخاب کنید',
+        'This conversation is read-only': 'این گفتگو فقط‌خواندنی است',
+        'Type a message': 'پیام بنویسید…', 'Group name': 'نام گروه',
+        'e.g. Dev Team': 'مثلاً تیم توسعه', 'Add people': 'افزودن افراد',
+        'Search teammates...': 'جستجوی هم‌تیمی‌ها...',
+        'Search conversations...': 'جستجوی گفتگوها...',
+        '0 unread messages': 'بدون پیام خوانده‌نشده',
+        'Members': 'اعضا', 'Group': 'گروه', 'Project chat': 'گفتگوی پروژه',
+        'You': 'شما', 'Online': 'آنلاین', 'Offline': 'آفلاین',
+        'Proposed date': 'تاریخ پیشنهادی', 'Requested by': 'درخواست‌دهنده',
+        'Decided by': 'تصمیم‌گیرنده', 'Status': 'وضعیت',
+        'Pending': 'در انتظار', 'Approved': 'تأیید شد', 'Rejected': 'رد شد',
+        'Approvals': 'تأییدها', 'Mentions': 'منشن‌ها', 'Assignments': 'ارجاع‌ها',
+        'Comments': 'دیدگاه‌ها', 'Attachments': 'پیوست‌ها',
+        'Reports': 'گزارش‌ها', 'Report mentions': 'منشن گزارش', 'Received reports': 'گزارش‌های دریافتی',
+        'submitted a report on': 'گزارش ثبت کرد روی', 'replied to a report on': 'به گزارش پاسخ داد روی',
+        'mentioned you in a report on': 'شما را در گزارش منشن کرد روی',
+        'Report': 'گزارش', 'Report reply': 'پاسخ گزارش', 'Report mention': 'منشن گزارش',
+        'Report received': 'گزارش دریافتی', 'View report': 'مشاهده گزارش',
+        'Searching…': 'در حال جستجو…', 'Search failed': 'جستجو ناموفق بود',
+        'No messages found': 'پیامی یافت نشد', 'Retry': 'تلاش دوباره',
+        'Matched filename': 'نام فایل', 'Matched issue': 'کلید مسئله',
+        'Mention': 'منشن', 'Open latest mention': 'باز کردن آخرین منشن',
+        'Message not available': 'این پیام در دسترس نیست یا حذف شده است.',
+        'Filter by type': 'فیلتر بر اساس نوع', 'Show all': 'نمایش همه',
+        'No messages in this category.': 'پیامی در این دسته نیست.',
+        'Admin': 'مدیر', 'Make admin': 'ارتقا به مدیر', 'Remove admin': 'حذف مدیر',
+        'Group settings': 'تنظیمات گروه', 'Project chat settings': 'تنظیمات گفتگوی پروژه',
+        'Change photo': 'تغییر عکس', 'Upload photo': 'بارگذاری عکس', 'Remove photo': 'حذف عکس',
+        'Chat name': 'نام گفتگو', 'Add member...': 'افزودن عضو...',
+        'Remove from group': 'حذف از گروه',
+        'Delete group': 'حذف گروه', 'Confirm: delete group?': 'تأیید: گروه حذف شود؟',
+        'Leave group': 'ترک گروه', 'Confirm: leave group?': 'تأیید: گروه ترک شود؟',
+        'Members are managed by the project lead.': 'اعضا توسط راهبر پروژه مدیریت می‌شوند.',
+        'Group name is required': 'نام گروه الزامی است',
+        'Avatar must be a PNG, JPEG or WebP image': 'عکس باید از نوع PNG، JPEG یا WebP باشد',
+        'Avatar image exceeds the maximum allowed size of 2 MB': 'حجم عکس بیش از حداکثر مجاز (۲ مگابایت) است',
+        'Unable to change the photo.': 'تغییر عکس ممکن نشد.',
+        'Unable to remove the photo.': 'حذف عکس ممکن نشد.',
+        'Unable to rename the group.': 'تغییر نام گروه ممکن نشد.',
+        'Unable to update the member role.': 'به‌روزرسانی نقش عضو ممکن نشد.'
+    };
+
+    // Translate a UI label to the effective language (English passthrough).
+    function t(s) {
+        if (Locale.lang === 'fa' && Object.prototype.hasOwnProperty.call(FA_STRINGS, s)) {
+            return FA_STRINGS[s];
+        }
+        return s;
+    }
+
+    // --- Jalali (Shamsi) calendar conversion (display only) ------------------
+    var JALALI_MONTHS_FA = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+        'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+    var GREG_MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var WEEKDAYS_FA = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه'];
+
+    function div(a, b) { return Math.floor(a / b); }
+
+    // Gregorian (gy, gm[1-12], gd) → Jalali {jy, jm[1-12], jd}. Borkowski
+    // algorithm — compact, well-known, and verified against boundary dates
+    // (Nowruz 1400/1403/1404/1405, leap years). Replaces an earlier
+    // JDN/break-table transcription that was off by one year and produced an
+    // out-of-range month (see git history).
+    var G_DAYS_IN_MONTH = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    function gregorianToJalali(gy, gm, gd) {
+        var jy, jm, jd;
+        var gy2 = (gm > 2) ? (gy + 1) : gy;
+        var days = 355666 + (365 * gy) + div(gy2 + 3, 4) - div(gy2 + 99, 100)
+            + div(gy2 + 399, 400) + gd + G_DAYS_IN_MONTH[gm - 1];
+        jy = -1595 + (33 * div(days, 12053));
+        days %= 12053;
+        jy += 4 * div(days, 1461);
+        days %= 1461;
+        if (days > 365) {
+            jy += div(days - 1, 365);
+            days = (days - 1) % 365;
+        }
+        if (days < 186) {
+            jm = 1 + div(days, 31);
+            jd = 1 + (days % 31);
+        } else {
+            jm = 7 + div(days - 186, 30);
+            jd = 1 + ((days - 186) % 30);
+        }
+        return { jy: jy, jm: jm, jd: jd };
+    }
+
+    function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+    // Effective-calendar date, e.g. "۱۴۰۵ مرداد ۲۴" (jalali fa) / "Aug 15, 2026".
+    function calDate(date, opts) {
+        opts = opts || {};
+        if (Locale.calendar === 'jalali') {
+            var j = gregorianToJalali(date.getFullYear(), date.getMonth() + 1, date.getDate());
+            var out = j.jd + ' ' + JALALI_MONTHS_FA[j.jm - 1] + ' ' + j.jy;
+            if (opts.weekday) { out = WEEKDAYS_FA[date.getDay()] + ' ' + out; }
+            return locDigits(out);
+        }
+        var g = GREG_MONTHS_EN[date.getMonth()] + ' ' + date.getDate() + ', ' + date.getFullYear();
+        return opts.weekday ? (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()] + ', ' + g) : g;
+    }
+
+    function calClock(date) {
+        return locDigits(pad2(date.getHours()) + ':' + pad2(date.getMinutes()));
+    }
+
+    // Format a date-only "YYYY-MM-DD" string in the effective calendar (Jalali
+    // when active, otherwise Gregorian). Parsed as local midnight — never via
+    // `new Date(str)` — so the day is never shifted by the timezone. Falls back
+    // to the raw string if it is not a plain Y-M-D value.
+    function calDateYmd(ymd) {
+        if (!ymd) { return ''; }
+        var m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(ymd));
+        if (!m) { return String(ymd); }
+        var d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+        if (isNaN(d.getTime())) { return String(ymd); }
+        return calDate(d);
+    }
 
     var EVENT_CARD_CONFIG = {
         MENTION: {
@@ -21,6 +264,42 @@
                 var actor = message.actorDisplayName || 'Someone';
                 var issue = message.issueKey || 'an issue';
                 return actor + ' mentioned you in ' + issue;
+            }
+        },
+        REPORT_SUBMITTED_TO_ME: {
+            label: 'REPORT',
+            tone: 'assignment',
+            title: function (message) {
+                var actor = message.actorDisplayName || 'Someone';
+                var issue = message.issueKey || 'an issue';
+                return actor + ' ' + t('submitted a report on') + ' ' + issue;
+            }
+        },
+        REPORT_SUBMITTED: {
+            label: 'REPORT',
+            tone: 'assignment',
+            title: function (message) {
+                var actor = message.actorDisplayName || 'Someone';
+                var issue = message.issueKey || 'an issue';
+                return actor + ' ' + t('submitted a report on') + ' ' + issue;
+            }
+        },
+        REPORT_REPLY: {
+            label: 'REPORT',
+            tone: 'info',
+            title: function (message) {
+                var actor = message.actorDisplayName || 'Someone';
+                var issue = message.issueKey || 'an issue';
+                return actor + ' ' + t('replied to a report on') + ' ' + issue;
+            }
+        },
+        REPORT_MENTION: {
+            label: 'REPORT',
+            tone: 'mention',
+            title: function (message) {
+                var actor = message.actorDisplayName || 'Someone';
+                var issue = message.issueKey || 'an issue';
+                return actor + ' ' + t('mentioned you in a report on') + ' ' + issue;
             }
         },
         ASSIGNMENT: {
@@ -59,30 +338,82 @@
                 var actor = message.ownMessage ? 'You' : (message.senderDisplayName || 'Someone');
                 return actor + ' shared ' + (message.issueKey || 'an issue');
             }
+        },
+        ISSUE_ATTACHMENT: {
+            label: 'ATTACHMENT',
+            tone: 'info',
+            title: function (message) {
+                var actor = message.actorDisplayName || 'Someone';
+                var issue = message.issueKey || 'an issue';
+                var count = (message.issueAttachments && message.issueAttachments.length) || 0;
+                if (count > 1) {
+                    return actor + ' attached ' + count + ' files to ' + issue;
+                }
+                return actor + ' attached a file to ' + issue;
+            }
+        },
+        SCHEDULE_APPROVAL: {
+            label: 'APPROVAL',
+            tone: 'warning',
+            title: function (message) {
+                var actor = message.actorDisplayName || 'Someone';
+                var issue = message.issueKey || 'an issue';
+                return actor + ' requested schedule approval for ' + issue;
+            }
+        },
+        SCHEDULE_APPROVAL_APPROVED: {
+            label: 'APPROVED',
+            tone: 'success',
+            title: function (message) {
+                var by = (message.scheduleApproval && message.scheduleApproval.approverName)
+                    || message.actorDisplayName || 'Someone';
+                return 'Schedule approved by ' + by;
+            }
+        },
+        SCHEDULE_APPROVAL_REJECTED: {
+            label: 'REJECTED',
+            tone: 'error',
+            title: function (message) {
+                var by = (message.scheduleApproval && message.scheduleApproval.approverName)
+                    || message.actorDisplayName || 'Someone';
+                return 'Schedule rejected by ' + by;
+            }
         }
     };
 
     var state = {
+        licenseBlocked: false,
         conversations: [],
         selectedConversationId: null,
         selectedConversation: null,
         messages: [],
+        // Drafts per conversation: maps conversationId -> raw textarea value.
+        // Saved when leaving a conversation and restored when returning, so
+        // typed text never bleeds into a different chat. Cleared on send.
+        drafts: {},
         currentUserKey: null,
         searchTimer: null,
         messagePollTimer: null,
         conversationPollTimer: null,
         sending: false,
         uploading: false,
-        selectedFile: null,
-        selectedFilePreviewUrl: null,
+        // Multi-file: parallel arrays. selectedFiles[i] is the File and
+        // selectedFilePreviewUrls[i] is its object URL (only for images,
+        // otherwise null) so we can revoke and free memory on remove.
+        selectedFiles: [],
+        selectedFilePreviewUrls: [],
         loadingConversations: false,
         loadingMessages: false,
         initialLoadComplete: false,
         replyToMessage: null,
         editingMessageId: null,
+        savedDraftBeforeEdit: '',
         deleteConfirmMessageId: null,
         reactionPickerMessageId: null,
         pinnedMessage: null,
+        // Sprint 12: multi-select mode for bulk "Delete for me".
+        selectionMode: false,
+        selectedIds: [],
         activeTab: 'all',
         groupSelectedMembers: [],
         groupSearchTimer: null,
@@ -104,11 +435,111 @@
         projectKey: null,
         projectLeadName: null,
         initiallyUnreadIds: {},
-        unreadSnapshotConversationId: null
+        unreadSnapshotConversationId: null,
+        // Jira Assistant event-type filter (display-only; see ASSISTANT_FILTERS).
+        // Persisted per browser session so the choice survives re-selecting the
+        // Assistant within the page.
+        assistantFilter: (function () {
+            try { return sessionStorage.getItem('jim.assistantFilter') || 'all'; }
+            catch (e) { return 'all'; }
+        })()
     };
 
+    // Guards the "auto-load older while a filtered Assistant category has no
+    // matches on the loaded pages" loop: only re-pull once per new base length.
+    var assistantAutoLoadGuard = -1;
+
+    // Jira Assistant event-type filters. Categories map to the SAME stable
+    // backend event types the mobile/PWA Assistant uses (JimEventType /
+    // JimMessage.getEventType, already present on each message as eventType).
+    // Report filters were present through figmachat3 and must stay — the
+    // backend still emits REPORT_SUBMITTED / REPORT_SUBMITTED_TO_ME /
+    // REPORT_REPLY / REPORT_MENTION Assistant cards.
+    var ASSISTANT_FILTERS = [
+        { key: 'all', label: 'All', types: null },
+        { key: 'approvals', label: 'Approvals', types: ['SCHEDULE_APPROVAL', 'SCHEDULE_APPROVAL_APPROVED', 'SCHEDULE_APPROVAL_REJECTED'] },
+        { key: 'mentions', label: 'Mentions', types: ['MENTION', 'REPORT_MENTION'] },
+        { key: 'reports', label: 'Reports', types: ['REPORT_SUBMITTED', 'REPORT_SUBMITTED_TO_ME', 'REPORT_REPLY', 'REPORT_MENTION'] },
+        { key: 'reportMentions', label: 'Report mentions', types: ['REPORT_MENTION'] },
+        { key: 'reportsReceived', label: 'Received reports', types: ['REPORT_SUBMITTED_TO_ME', 'REPORT_SUBMITTED'] },
+        { key: 'assignments', label: 'Assignments', types: ['ASSIGNMENT'] },
+        { key: 'comments', label: 'Comments', types: ['COMMENT'] },
+        { key: 'status', label: 'Status', types: ['STATUS_CHANGE'] },
+        { key: 'attachments', label: 'Attachments', types: ['ISSUE_ATTACHMENT'] }
+    ];
+
+    function assistantFilterByKey(key) {
+        for (var i = 0; i < ASSISTANT_FILTERS.length; i++) {
+            if (ASSISTANT_FILTERS[i].key === key) {
+                return ASSISTANT_FILTERS[i];
+            }
+        }
+        return ASSISTANT_FILTERS[0];
+    }
+
+    function assistantMessageMatchesFilter(message, filterKey) {
+        if (!filterKey || filterKey === 'all') {
+            return true;
+        }
+        var f = assistantFilterByKey(filterKey);
+        if (!f.types) {
+            return true;
+        }
+        var et = normalizeEventType(message);
+        for (var i = 0; i < f.types.length; i++) {
+            if (f.types[i] === et) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function setAssistantFilter(key) {
+        var f = assistantFilterByKey(key);
+        if (state.assistantFilter === f.key) {
+            return;
+        }
+        state.assistantFilter = f.key;
+        assistantAutoLoadGuard = -1;
+        try { sessionStorage.setItem('jim.assistantFilter', f.key); } catch (e) {}
+        state.renderedMessagesHtml = null;
+        // Land on the newest matching card, like opening the feed.
+        state.shouldAutoScroll = true;
+        renderMessages();
+    }
+
+    function renderAssistantFilterBar() {
+        var active = state.assistantFilter || 'all';
+        var chips = [];
+        for (var i = 0; i < ASSISTANT_FILTERS.length; i++) {
+            var f = ASSISTANT_FILTERS[i];
+            var isActive = active === f.key;
+            chips.push('<button type="button" class="jim-assistant-filter-chip' +
+                (isActive ? ' jim-assistant-filter-chip-active' : '') +
+                '" data-action="assistant-filter" data-filter="' + escapeHtml(f.key) + '"' +
+                ' aria-pressed="' + (isActive ? 'true' : 'false') + '">' +
+                escapeHtml(t(f.label)) + '</button>');
+        }
+        return '<div class="jim-assistant-filter-bar" role="group" aria-label="' +
+            escapeHtml(t('Filter by type')) + '">' + chips.join('') + '</div>';
+    }
+
     /* Must match the backend whitelist in JimReactionServiceImpl */
-    var REACTION_EMOJI = ['\uD83D\uDC4D', '\u2705', '\uD83D\uDE04', '\uD83C\uDF89', '\u2764\uFE0F', '\uD83D\uDC40'];
+    // Curated reaction palette: 10 modern emojis. No heart/love.
+    // 👍 😂 🙏 👏 🔥 ✅ 🎉 💡 🚀 🤔
+    var REACTION_EMOJI = [
+        '\uD83D\uDC4D', // 👍 Thumbs Up
+        '\uD83D\uDE02', // 😂 Laugh
+        '\uD83D\uDE4F', // 🙏 Thanks
+        '\uD83D\uDC4F', // 👏 Clap
+        '\uD83D\uDD25', // 🔥 Fire
+        '\u2705',       // ✅ Done
+        '\uD83C\uDF89', // 🎉 Celebrate
+        '\uD83D\uDCA1', // 💡 Idea
+        '\uD83D\uDE80', // 🚀 Rocket
+        '\uD83E\uDD14', // 🤔 Thinking
+        '\uD83C\uDF31'  // 🌱 Seedling
+    ];
 
     var els = {};
 
@@ -155,12 +586,21 @@
         els.composer = document.getElementById('jim-composer');
         els.composerError = document.getElementById('jim-composer-error');
         els.composerReadonly = document.getElementById('jim-composer-readonly');
+        if (els.composerReadonly && !els.composerReadonly.getAttribute('data-default-text')) {
+            // Phase 8C: remember the default read-only text so we can restore it after
+            // showing the group send-restricted message.
+            els.composerReadonly.setAttribute('data-default-text',
+                (els.composerReadonly.textContent || '').trim());
+        }
         els.composerInner = document.getElementById('jim-composer-inner');
         els.composerControls = document.getElementById('jim-composer-controls');
         els.composerReply = document.getElementById('jim-composer-reply');
         els.composerReplyAuthor = document.getElementById('jim-composer-reply-author');
         els.composerReplyText = document.getElementById('jim-composer-reply-text');
         els.composerReplyCancel = document.getElementById('jim-composer-reply-cancel');
+        els.composerEditing = document.getElementById('jim-composer-editing');
+        els.composerEditingPreview = document.getElementById('jim-composer-editing-preview');
+        els.composerEditingCancel = document.getElementById('jim-composer-editing-cancel');
         els.emojiButton = document.getElementById('jim-emoji-button');
         els.emojiPalette = document.getElementById('jim-emoji-palette');
         els.mentionButton = document.getElementById('jim-mention-button');
@@ -179,11 +619,18 @@
         els.voiceCancel = document.getElementById('jim-voice-cancel');
         els.voiceSend = document.getElementById('jim-voice-send');
         els.newConversationButton = document.getElementById('jim-new-conversation');
+        els.savedMessagesButton = document.getElementById('jim-saved-messages');
+        els.msgSearch = document.getElementById('jim-msg-search');
+        els.msgSearchResults = document.getElementById('jim-msg-search-results');
+        els.msgSearchToggle = document.getElementById('jim-msg-search-toggle');
+        els.msgSearchPanel = document.getElementById('jim-msg-search-panel');
+        els.messageMenu = document.getElementById('jim-message-menu');
         els.pinnedBanner = document.getElementById('jim-pinned-banner');
         els.errorBanner = document.getElementById('jim-error-banner');
         els.sidebarTabs = document.querySelectorAll('#jim-messenger-app .jim-sidebar-tab');
         els.newGroupButton = document.getElementById('jim-new-group');
         els.membersPanel = document.getElementById('jim-members-panel');
+        els.avatarInput = document.getElementById('jim-avatar-input');
         els.messageInfoModal = document.getElementById('jim-message-info-modal');
         els.messageInfoBody = document.getElementById('jim-message-info-body');
         els.messageInfoClose = document.getElementById('jim-message-info-close');
@@ -192,6 +639,16 @@
         els.imageLightboxName = document.getElementById('jim-image-lightbox-name');
         els.imageLightboxDownload = document.getElementById('jim-image-lightbox-download');
         els.imageLightboxClose = document.getElementById('jim-image-lightbox-close');
+        els.sharedModal = document.getElementById('jim-shared-modal');
+        els.sharedTabs = document.getElementById('jim-shared-tabs');
+        els.sharedBody = document.getElementById('jim-shared-body');
+        els.sharedClose = document.getElementById('jim-shared-close');
+        els.forwardModal = document.getElementById('jim-forward-modal');
+        els.forwardPreview = document.getElementById('jim-forward-preview');
+        els.forwardSearch = document.getElementById('jim-forward-search');
+        els.forwardTargets = document.getElementById('jim-forward-targets');
+        els.forwardCancel = document.getElementById('jim-forward-cancel');
+        els.forwardError = document.getElementById('jim-forward-error');
         els.groupModal = document.getElementById('jim-group-modal');
         els.groupName = document.getElementById('jim-group-name');
         els.groupMemberSearch = document.getElementById('jim-group-member-search');
@@ -202,9 +659,28 @@
         els.groupCreate = document.getElementById('jim-group-create');
     }
 
-    var EMOJI_SET = ['\uD83D\uDE00', '\uD83D\uDE04', '\uD83D\uDE02', '\uD83D\uDE0A', '\uD83D\uDE09', '\uD83D\uDE0D',
-        '\uD83D\uDC4D', '\uD83D\uDC4C', '\uD83D\uDE4F', '\uD83D\uDCAA', '\uD83C\uDF89', '\u2705',
-        '\u274C', '\u2764\uFE0F', '\uD83D\uDD25', '\uD83D\uDC40'];
+    // Composer's emoji-insertion palette. Aligned with the modern reaction set
+    // (no heart/love), but slightly larger so users can also insert common
+    // typing emojis like 😀 😎 ✨ that don't belong in reactions.
+    var EMOJI_SET = [
+        '\uD83D\uDE00', // 😀
+        '\uD83D\uDE04', // 😄
+        '\uD83D\uDE02', // 😂
+        '\uD83D\uDE09', // 😉
+        '\uD83D\uDE0A', // 😊
+        '\uD83D\uDE0E', // 😎
+        '\uD83E\uDD14', // 🤔
+        '\uD83D\uDC4D', // 👍
+        '\uD83D\uDC4F', // 👏
+        '\uD83D\uDE4F', // 🙏
+        '\uD83D\uDD25', // 🔥
+        '\u2705',       // ✅
+        '\uD83C\uDF89', // 🎉
+        '\uD83D\uDCA1', // 💡
+        '\uD83D\uDE80', // 🚀
+        '\u2728',       // ✨
+        '\uD83C\uDF31'  // 🌱
+    ];
 
     function renderEmojiPalette() {
         if (!els.emojiPalette || els.emojiPalette.childNodes.length) {
@@ -435,6 +911,9 @@
             state.voiceStream = stream;
             state.voiceChunks = [];
             state.voiceSeconds = 0;
+            if (state.selectedConversationId) {
+                JimApi.postActivity(state.selectedConversationId, 'recording').catch(function () {});
+            }
             state.voiceDiscard = false;
 
             recorder.ondataavailable = function (event) {
@@ -586,26 +1065,150 @@
         return result;
     }
 
+    /**
+     * Picks the text direction for a single message body based on which
+     * script dominates (count of RTL chars vs strong-LTR chars). This is
+     * stricter than HTML's dir="auto" which only looks at the first strong
+     * character — for chat messages like "Hello and سلام دنیا" the first
+     * char shouldn't override what's predominantly there.
+     *
+     * Unicode ranges covered (RTL): Hebrew, Arabic + supplements,
+     * Syriac, Thaana, Arabic Presentation Forms-A/B.
+     * Strong-LTR: Latin (basic + extended A/B + IPA extensions).
+     *
+     * Returns 'rtl' when strictly more RTL chars are present, otherwise 'ltr'
+     * (so empty / digits-only / punctuation-only stays LTR by default).
+     */
+    var RTL_CHAR_PATTERN = /[\u0590-\u05FF\u0600-\u06FF\u0700-\u074F\u0750-\u077F\u0780-\u07BF\u08A0-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/g;
+    var STRONG_LTR_CHAR_PATTERN = /[A-Za-z\u00C0-\u024F\u0250-\u02AF]/g;
+
+    function detectTextDirection(text) {
+        if (!text) {
+            return 'ltr';
+        }
+        var rtlMatches = text.match(RTL_CHAR_PATTERN);
+        var ltrMatches = text.match(STRONG_LTR_CHAR_PATTERN);
+        var rtl = rtlMatches ? rtlMatches.length : 0;
+        var ltr = ltrMatches ? ltrMatches.length : 0;
+        return rtl > ltr ? 'rtl' : 'ltr';
+    }
+
     function renderMessageTextHtml(body) {
         var html = escapeHtml(body);
-        if (!isGroupConversation(state.selectedConversation)) {
+        // Mentions are processed BEFORE linkify so the literal-string split
+        // operates on a tag-free string (otherwise an @name appearing inside
+        // an href attribute could be split-replaced and corrupt the URL).
+        if (isGroupConversation(state.selectedConversation)) {
+            var members = mentionableMembers().slice().sort(function (a, b) {
+                return b.displayName.length - a.displayName.length;
+            });
+            for (var i = 0; i < members.length; i++) {
+                var member = members[i];
+                var token = '@' + escapeHtml(member.displayName);
+                if (html.indexOf(token) < 0) {
+                    continue;
+                }
+                var mentionClass = member.userKey === state.currentUserKey
+                    ? 'jim-mention jim-mention-self'
+                    : 'jim-mention';
+                html = html.split(token).join('<span class="' + mentionClass + '">' + token + '</span>');
+            }
+        }
+        var out = linkifyHtml(html);
+        // Sprint 12: phone numbers become tel: links (outside existing anchors),
+        // then the Corbit Easter-egg glow decorates trigger words (including
+        // inside links so corbitlogic.com stays clickable AND glows). Both run
+        // only on text between tags, so escaping/attributes are never touched.
+        out = mapTextSegments(out, decoratePhonesText, true);
+        out = mapTextSegments(out, decorateEasterEggText, false);
+        return out;
+    }
+
+    /**
+     * Applies fn to the visible TEXT segments of an HTML string only (never to
+     * tags/attributes). When skipAnchors is true, text inside <a>...</a> is left
+     * untouched (used for phone detection so URLs are not re-parsed).
+     */
+    function mapTextSegments(html, fn, skipAnchors) {
+        if (!html) {
             return html;
         }
-        var members = mentionableMembers().slice().sort(function (a, b) {
-            return b.displayName.length - a.displayName.length;
-        });
-        for (var i = 0; i < members.length; i++) {
-            var member = members[i];
-            var token = '@' + escapeHtml(member.displayName);
-            if (html.indexOf(token) < 0) {
-                continue;
+        var parts = html.split(/(<[^>]+>)/g);
+        var insideAnchor = false;
+        var result = '';
+        for (var k = 0; k < parts.length; k++) {
+            var part = parts[k];
+            if (part.charAt(0) === '<' && part.charAt(part.length - 1) === '>') {
+                if (/^<a\b/i.test(part)) {
+                    insideAnchor = true;
+                } else if (/^<\/a>/i.test(part)) {
+                    insideAnchor = false;
+                }
+                result += part;
+            } else if (part) {
+                result += (skipAnchors && insideAnchor) ? part : fn(part);
             }
-            var mentionClass = member.userKey === state.currentUserKey
-                ? 'jim-mention jim-mention-self'
-                : 'jim-mention';
-            html = html.split(token).join('<span class="' + mentionClass + '">' + token + '</span>');
         }
-        return html;
+        return result;
+    }
+
+    // Conservative phone matcher: a boundary (start / space / open paren), then
+    // an optional + and 6+ phone characters ending in a digit. Digit count and
+    // date-shape checks reject issue keys, dates, times and long numeric IDs.
+    var PHONE_RE = /(^|[\s(])(\+?\d[\d\s().\-]{5,}\d)/g;
+    function decoratePhonesText(text) {
+        return text.replace(PHONE_RE, function (whole, pre, num) {
+            var trimmed = num.replace(/\s+$/, '');
+            var digits = trimmed.replace(/\D/g, '');
+            if (digits.length < 7 || digits.length > 15) {
+                return whole;
+            }
+            // Reject date shapes (YYYY-MM-DD, DD-MM-YYYY, D/M/YY...) and plain
+            // long IDs (12+ digits with no +).
+            if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(trimmed) || /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/.test(trimmed)) {
+                return whole;
+            }
+            if (trimmed.charAt(0) !== '+' && digits.length > 12) {
+                return whole;
+            }
+            var tel = (trimmed.charAt(0) === '+' ? '+' : '') + digits;
+            return pre + '<a href="tel:' + tel + '" class="jim-phone-link">' + trimmed + '</a>';
+        });
+    }
+
+    // Corbit Easter egg: case-insensitive trigger words get a glow span. Render-
+    // time only; the stored body is never modified.
+    var EASTER_RE = /(corbit\s*logic|corbitlogic\.com|corbitlogic|corbit)/gi;
+    function decorateEasterEggText(text) {
+        return text.replace(EASTER_RE, function (match) {
+            return '<span class="jim-easter-egg">' + match + '</span>';
+        });
+    }
+
+    /**
+     * Wraps bare http/https URLs in the already-escaped message HTML with
+     * <a> tags. Trailing punctuation (., , ; : ! ? ) ] }) is left outside the
+     * link so "see https://example.com." renders without the trailing dot
+     * being part of the clickable target. The regex stops at < to avoid
+     * crossing into any tags added earlier (e.g. mention spans).
+     */
+    function linkifyHtml(html) {
+        if (!html) {
+            return html;
+        }
+        return html.replace(/https?:\/\/[^\s<]+/g, function (match) {
+            var trailing = '';
+            var trailingChars = '.,;:!?)]}\'"';
+            while (match.length > 0 && trailingChars.indexOf(match.charAt(match.length - 1)) >= 0) {
+                trailing = match.charAt(match.length - 1) + trailing;
+                match = match.substring(0, match.length - 1);
+            }
+            if (!match) {
+                return trailing;
+            }
+            return '<a href="' + match + '" target="_blank" rel="noopener noreferrer nofollow" class="jim-link">'
+                + match + '</a>' + trailing;
+        });
     }
 
     function toggleMentionPalette(forceHide) {
@@ -625,21 +1228,116 @@
 
     function renderMentionPalette() {
         var members = mentionableMembers();
-        var items = [];
+        var mentionables = [];
         for (var i = 0; i < members.length; i++) {
-            var member = members[i];
-            if (member.userKey === state.currentUserKey) {
+            if (members[i].userKey === state.currentUserKey) {
                 continue;
             }
-            items.push('' +
-                '<button type="button" class="jim-mention-option" data-mention-name="' + escapeHtml(member.displayName) + '">' +
-                renderAvatar(member.avatarUrl, member.displayName, 'jim-avatar-sm') +
-                '<span class="jim-mention-option-name">' + escapeHtml(member.displayName) + '</span>' +
-                '</button>');
+            mentionables.push(members[i]);
         }
-        els.mentionPalette.innerHTML = items.length
-            ? items.join('')
-            : '<div class="jim-search-empty">No other members to mention</div>';
+
+        if (!mentionables.length) {
+            els.mentionPalette.innerHTML =
+                '<div class="jim-search-empty">No other members to mention</div>';
+            return;
+        }
+
+        // Layout:
+        //   [Mention all members]            <-- single click, inserts everyone
+        //   --- list ----------------------
+        //   [ ] <avatar> Alice                <-- tick to multi-select OR
+        //                                          click name area for quick single-mention
+        //   [x] <avatar> Bob
+        //   ...
+        //   [Clear] [Insert N selected]      <-- footer, only enabled when >=1 ticked
+        var html = [];
+        html.push(
+            '<button type="button" class="jim-mention-all" data-mention-all>' +
+            '<span class="jim-mention-all-icon" aria-hidden="true">@</span>' +
+            '<span class="jim-mention-all-text">Mention all members</span>' +
+            '<span class="jim-mention-all-count">' + mentionables.length + '</span>' +
+            '</button>'
+        );
+        html.push('<div class="jim-mention-list" role="listbox" aria-label="Members">');
+        for (var j = 0; j < mentionables.length; j++) {
+            var member = mentionables[j];
+            var name = member.displayName;
+            html.push(
+                '<div class="jim-mention-option" data-mention-row="' + escapeHtml(name) + '">' +
+                '<label class="jim-mention-checkbox-wrap" title="Add to selection">' +
+                '<input type="checkbox" class="jim-mention-checkbox" ' +
+                'data-mention-checkbox="' + escapeHtml(name) + '" ' +
+                'aria-label="Select ' + escapeHtml(name) + '"/>' +
+                '</label>' +
+                '<button type="button" class="jim-mention-option-body" ' +
+                'data-mention-name="' + escapeHtml(name) + '" ' +
+                'aria-label="Mention ' + escapeHtml(name) + '">' +
+                renderAvatar(member.avatarUrl, name, 'jim-avatar-sm') +
+                '<span class="jim-mention-option-name" dir="auto">' + escapeHtml(name) + '</span>' +
+                '</button>' +
+                '</div>'
+            );
+        }
+        html.push('</div>');
+        html.push(
+            '<div class="jim-mention-footer">' +
+            '<button type="button" class="jim-mention-clear" data-mention-clear>Clear</button>' +
+            '<button type="button" class="jim-mention-insert" data-mention-insert disabled>' +
+            'Insert <span class="jim-mention-insert-count">0</span> selected' +
+            '</button>' +
+            '</div>'
+        );
+        els.mentionPalette.innerHTML = html.join('');
+    }
+
+    /**
+     * Reads every checked .jim-mention-checkbox and returns the names so we
+     * can build the @-mention string for the composer. Names with spaces
+     * are still acceptable - the mention parser matches the longest
+     * display-name match per group member.
+     */
+    function selectedMentionNames() {
+        if (!els.mentionPalette) {
+            return [];
+        }
+        var checked = els.mentionPalette.querySelectorAll('.jim-mention-checkbox:checked');
+        var names = [];
+        for (var i = 0; i < checked.length; i++) {
+            var n = checked[i].getAttribute('data-mention-checkbox');
+            if (n) {
+                names.push(n);
+            }
+        }
+        return names;
+    }
+
+    function updateMentionInsertButton() {
+        if (!els.mentionPalette) {
+            return;
+        }
+        var btn = els.mentionPalette.querySelector('[data-mention-insert]');
+        var counter = els.mentionPalette.querySelector('.jim-mention-insert-count');
+        if (!btn) {
+            return;
+        }
+        var count = selectedMentionNames().length;
+        btn.disabled = count === 0;
+        if (counter) {
+            counter.textContent = String(count);
+        }
+    }
+
+    function insertMentionsAndClose(names) {
+        if (!names || !names.length || !els.messageInput) {
+            return;
+        }
+        var text = '';
+        for (var i = 0; i < names.length; i++) {
+            text += '@' + names[i] + ' ';
+        }
+        insertAtCursor(els.messageInput, text);
+        toggleMentionPalette(true);
+        updateComposerState();
     }
 
     /* ----- Issue linking ----- */
@@ -813,12 +1511,20 @@
         return contextPath() + url;
     }
 
+    /** Returns true if any file is staged for upload. */
+    function hasSelectedFiles() {
+        return state.selectedFiles && state.selectedFiles.length > 0;
+    }
+
+    /** Clears the entire selected-file queue and revokes any preview blob URLs. */
     function clearSelectedFile() {
-        if (state.selectedFilePreviewUrl) {
-            URL.revokeObjectURL(state.selectedFilePreviewUrl);
+        for (var i = 0; i < state.selectedFilePreviewUrls.length; i++) {
+            if (state.selectedFilePreviewUrls[i]) {
+                URL.revokeObjectURL(state.selectedFilePreviewUrls[i]);
+            }
         }
-        state.selectedFile = null;
-        state.selectedFilePreviewUrl = null;
+        state.selectedFiles = [];
+        state.selectedFilePreviewUrls = [];
         if (els.fileInput) {
             els.fileInput.value = '';
         }
@@ -826,70 +1532,151 @@
         updateComposerState();
     }
 
+    /** Removes one specific file (and its preview URL) from the queue. */
+    function removeSelectedFileAt(index) {
+        if (index < 0 || index >= state.selectedFiles.length) {
+            return;
+        }
+        if (state.selectedFilePreviewUrls[index]) {
+            URL.revokeObjectURL(state.selectedFilePreviewUrls[index]);
+        }
+        state.selectedFiles.splice(index, 1);
+        state.selectedFilePreviewUrls.splice(index, 1);
+        if (els.fileInput) {
+            els.fileInput.value = '';
+        }
+        renderSelectedAttachment();
+        updateComposerState();
+    }
+
+    /**
+     * Renders the staged-attachment area as a list of chips, one per
+     * selected file. Each chip has an inline remove button so the user can
+     * drop a single file without clearing the whole queue. The existing
+     * single-slot DOM is reused as the container for backward compat.
+     */
     function renderSelectedAttachment() {
         if (!els.selectedAttachment) {
             return;
         }
-
-        if (!state.selectedFile) {
+        if (!hasSelectedFiles()) {
             setHidden(els.selectedAttachment, true);
-            if (els.selectedAttachmentPreview) {
-                els.selectedAttachmentPreview.innerHTML = '';
-                setHidden(els.selectedAttachmentPreview, true);
-            }
+            els.selectedAttachment.innerHTML = '';
             return;
         }
-
+        els.selectedAttachment.classList.add('jim-selected-attachments-multi');
+        var chips = [];
+        for (var i = 0; i < state.selectedFiles.length; i++) {
+            var file = state.selectedFiles[i];
+            var previewUrl = state.selectedFilePreviewUrls[i];
+            var name = file.name || 'attachment';
+            var size = formatFileSize(file.size);
+            var thumbHtml = previewUrl
+                ? '<span class="jim-selected-attachment-preview">' +
+                  '<img src="' + escapeHtml(previewUrl) + '" alt="" class="jim-selected-attachment-thumb" />' +
+                  '</span>'
+                : '<span class="jim-selected-attachment-icon" aria-hidden="true">&#128206;</span>';
+            chips.push(
+                '<span class="jim-selected-attachment-chip">' +
+                thumbHtml +
+                '<span class="jim-selected-attachment-meta">' +
+                '<span class="jim-selected-attachment-name" dir="auto">' + escapeHtml(name) + '</span>' +
+                '<span class="jim-selected-attachment-size">' + escapeHtml(size) + '</span>' +
+                '</span>' +
+                '<button type="button" class="jim-composer-chip-remove" data-action="remove-file" ' +
+                'data-file-index="' + i + '" aria-label="Remove attachment">&times;</button>' +
+                '</span>'
+            );
+        }
+        els.selectedAttachment.innerHTML = chips.join('');
         setHidden(els.selectedAttachment, false);
-        if (els.selectedAttachmentName) {
-            els.selectedAttachmentName.textContent = state.selectedFile.name || 'attachment';
-        }
-        if (els.selectedAttachmentSize) {
-            els.selectedAttachmentSize.textContent = formatFileSize(state.selectedFile.size);
-        }
-
-        if (els.selectedAttachmentPreview) {
-            if (state.selectedFile.type && state.selectedFile.type.indexOf('image/') === 0 && state.selectedFilePreviewUrl) {
-                els.selectedAttachmentPreview.innerHTML =
-                    '<img src="' + escapeHtml(state.selectedFilePreviewUrl) + '" alt="" class="jim-selected-attachment-thumb" />';
-                setHidden(els.selectedAttachmentPreview, false);
-            } else {
-                els.selectedAttachmentPreview.innerHTML = '';
-                setHidden(els.selectedAttachmentPreview, true);
-            }
-        }
     }
 
     function onFileInputChange() {
         if (!els.fileInput || !els.fileInput.files || !els.fileInput.files.length) {
-            clearSelectedFile();
             return;
         }
+        acceptIncomingFiles(els.fileInput.files);
+    }
 
-        var file = els.fileInput.files[0];
-        if (!file) {
-            clearSelectedFile();
-            return;
-        }
-
-        if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-            showComposerError('File exceeds the maximum allowed size of 10 MB.');
-            clearSelectedFile();
-            return;
-        }
-
-        if (state.selectedFilePreviewUrl) {
-            URL.revokeObjectURL(state.selectedFilePreviewUrl);
-            state.selectedFilePreviewUrl = null;
+    /**
+     * Common entry point for staging multiple files (attach button,
+     * drag-and-drop, paste). Each file is independently validated and
+     * appended to the queue; a file that fails (e.g. too big) is reported
+     * but does not abort the others. Always call this with a FileList or
+     * an array; for a single file, pass [file].
+     */
+    function acceptIncomingFiles(files) {
+        if (!files || !files.length) {
+            return false;
         }
         clearSelectedIssue();
-        state.selectedFile = file;
-        if (file.type && file.type.indexOf('image/') === 0) {
-            state.selectedFilePreviewUrl = URL.createObjectURL(file);
+        var accepted = 0;
+        var rejected = [];
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            if (!file) {
+                continue;
+            }
+            if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+                rejected.push(file.name || 'file');
+                continue;
+            }
+            state.selectedFiles.push(file);
+            state.selectedFilePreviewUrls.push(
+                file.type && file.type.indexOf('image/') === 0
+                    ? URL.createObjectURL(file)
+                    : null
+            );
+            accepted++;
+        }
+        if (accepted === 0) {
+            showComposerError(rejected.length
+                ? 'No files added (all exceed the 200 MB limit).'
+                : 'No files added.');
+            return false;
         }
         renderSelectedAttachment();
         updateComposerState();
-        showComposerError(null);
+        if (rejected.length) {
+            showComposerError(
+                rejected.length + ' file(s) skipped (over 200 MB): ' + rejected.join(', ')
+            );
+        } else {
+            showComposerError(null);
+        }
+        focusMessageInput();
+        return true;
+    }
+
+    /**
+     * Single-file convenience wrapper for callers that still pass a single
+     * File (paste handler, programmatic flows).
+     */
+    function acceptIncomingFile(file) {
+        if (!file) {
+            return false;
+        }
+        return acceptIncomingFiles([file]);
+    }
+
+    function focusMessageInput() {
+        if (!els.messageInput) {
+            return;
+        }
+        // Skip when the composer is hidden/read-only so we don't steal focus
+        // away from the recipient picker on the empty state.
+        if (els.composer && els.composer.classList.contains('jim-composer-is-readonly')) {
+            return;
+        }
+        if (els.messageInput.disabled || els.messageInput.readOnly) {
+            return;
+        }
+        try {
+            els.messageInput.focus({ preventScroll: true });
+        } catch (e) {
+            els.messageInput.focus();
+        }
     }
 
     function resolveIssueUrl(url) {
@@ -924,19 +1711,28 @@
         }
 
         if (diff < 60000) {
-            return 'Just now';
+            return t('Just now');
         }
         if (diff < 3600000) {
-            return Math.floor(diff / 60000) + 'm ago';
+            return relAgo(Math.floor(diff / 60000), 'm');
         }
         if (diff < 86400000) {
-            return Math.floor(diff / 3600000) + 'h ago';
+            return relAgo(Math.floor(diff / 3600000), 'h');
         }
         if (diff < 604800000) {
-            return Math.floor(diff / 86400000) + 'd ago';
+            return relAgo(Math.floor(diff / 86400000), 'd');
         }
 
-        return date.toLocaleString();
+        return calDate(date) + ' ' + calClock(date);
+    }
+
+    // Relative "N unit ago" localized (fa: "۵ دقیقه پیش" etc.).
+    function relAgo(n, unit) {
+        if (Locale.lang === 'fa') {
+            var u = unit === 'm' ? 'دقیقه' : (unit === 'h' ? 'ساعت' : 'روز');
+            return locDigits('' + n) + ' ' + u + ' پیش';
+        }
+        return n + unit + ' ago';
     }
 
     function formatAbsoluteDateTime(timestamp) {
@@ -944,17 +1740,10 @@
         if (isNaN(date.getTime())) {
             return '';
         }
-
-        return new Intl.DateTimeFormat(undefined, {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit'
-        }).format(date);
+        return calDate(date) + ' ' + calClock(date);
     }
 
-    /** Exact wall-clock time: "14:32" today, "yesterday 14:32", or "11 Jun 14:32". */
+    /** Exact wall-clock time: "14:32" today, "yesterday 14:32", or a dated clock. */
     function formatExactTime(timestamp) {
         if (!timestamp) {
             return '';
@@ -963,17 +1752,16 @@
         if (isNaN(date.getTime())) {
             return '';
         }
-        var clock = ('0' + date.getHours()).slice(-2) + ':' + ('0' + date.getMinutes()).slice(-2);
+        var clock = calClock(date);
         var now = new Date();
         if (date.toDateString() === now.toDateString()) {
             return clock;
         }
         var yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
         if (date.toDateString() === yesterday.toDateString()) {
-            return 'yesterday ' + clock;
+            return t('Yesterday') + ' ' + clock;
         }
-        var day = date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-        return day + ' ' + clock;
+        return calDate(date) + ' ' + clock;
     }
 
     function formatMessageTime(timestamp) {
@@ -993,12 +1781,12 @@
 
         if (diff <= MESSAGE_ABSOLUTE_TIME_MS) {
             if (diff < 60000) {
-                return 'Just now';
+                return t('Just now');
             }
             if (diff < 3600000) {
-                return Math.floor(diff / 60000) + 'm ago';
+                return relAgo(Math.floor(diff / 60000), 'm');
             }
-            return Math.floor(diff / 3600000) + 'h ago';
+            return relAgo(Math.floor(diff / 3600000), 'h');
         }
 
         return formatAbsoluteDateTime(timestamp);
@@ -1026,25 +1814,16 @@
         var messageStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
         var diffDays = Math.round((todayStart - messageStart) / 86400000);
 
-        var fullDate = date.toLocaleDateString(undefined, {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric'
-        });
+        var fullDate = calDate(date);
 
         if (diffDays === 0) {
-            return 'Today \u2014 ' + fullDate;
+            return t('Today') + ' \u2014 ' + fullDate;
         }
         if (diffDays === 1) {
-            return 'Yesterday \u2014 ' + fullDate;
+            return t('Yesterday') + ' \u2014 ' + fullDate;
         }
 
-        return date.toLocaleDateString(undefined, {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric'
-        });
+        return calDate(date, { weekday: true });
     }
 
     function renderDateDivider(label) {
@@ -1054,6 +1833,86 @@
         return '<div class="jim-date-divider" role="separator" aria-label="' + escapeHtml(label) + '">' +
             '<span class="jim-date-divider-text">' + escapeHtml(label) + '</span>' +
             '</div>';
+    }
+
+    // Apply the effective language to the shell: RTL direction + a language
+    // class, and localize any static element tagged with data-i18n /
+    // data-i18n-ph (placeholder). Dynamic JS-rendered strings use t() directly.
+    function applyLocaleToDom() {
+        if (!els.app) {
+            return;
+        }
+        if (Locale.lang === 'fa') {
+            els.app.classList.add('jim-lang-fa');
+            els.app.setAttribute('dir', 'rtl');
+        } else {
+            els.app.classList.remove('jim-lang-fa');
+            els.app.setAttribute('dir', 'ltr');
+        }
+        var nodes = els.app.querySelectorAll('[data-i18n]');
+        for (var i = 0; i < nodes.length; i++) {
+            var key = nodes[i].getAttribute('data-i18n');
+            var tr = t(key);
+            if (tr !== key) {
+                nodes[i].textContent = tr;
+            }
+        }
+        var phs = els.app.querySelectorAll('[data-i18n-ph]');
+        for (var j = 0; j < phs.length; j++) {
+            var pk = phs[j].getAttribute('data-i18n-ph');
+            var ptr = t(pk);
+            if (ptr !== pk) {
+                phs[j].setAttribute('placeholder', ptr);
+            }
+        }
+        var titles = els.app.querySelectorAll('[data-i18n-title]');
+        for (var k = 0; k < titles.length; k++) {
+            var tk = titles[k].getAttribute('data-i18n-title');
+            var ttr = t(tk);
+            if (ttr !== tk) {
+                titles[k].setAttribute('title', ttr);
+                titles[k].setAttribute('aria-label', ttr);
+            }
+        }
+    }
+
+    // In-chat "Language and dates" settings: opens a modal, saves the per-user
+    // web preference, then reloads so the effective language/calendar re-apply.
+    function setupSettingsPanel() {
+        var btn = document.getElementById('jim-settings-btn');
+        var modal = document.getElementById('jim-settings-modal');
+        if (!btn || !modal || !els.app) {
+            return;
+        }
+        var langSel = document.getElementById('jim-setting-language');
+        var calSel = document.getElementById('jim-setting-calendar');
+        var msg = document.getElementById('jim-settings-message');
+        var save = document.getElementById('jim-settings-save');
+        var cancel = document.getElementById('jim-settings-cancel');
+        function open() {
+            if (langSel) { langSel.value = els.app.getAttribute('data-user-lang-pref') || 'default'; }
+            if (calSel) { calSel.value = els.app.getAttribute('data-user-calendar-pref') || 'default'; }
+            if (msg) { setHidden(msg, true); msg.textContent = ''; }
+            setHidden(modal, false);
+        }
+        function close() { setHidden(modal, true); }
+        btn.addEventListener('click', open);
+        if (cancel) { cancel.addEventListener('click', close); }
+        modal.addEventListener('click', function (e) { if (e.target === modal) { close(); } });
+        if (save) {
+            save.addEventListener('click', function () {
+                save.setAttribute('disabled', 'disabled');
+                JimApi.saveWebPreferences(langSel ? langSel.value : 'default', calSel ? calSel.value : 'default')
+                    .then(function () {
+                        if (msg) { msg.className = 'jim-inline-success'; msg.textContent = t('Saved. Reloading\u2026'); setHidden(msg, false); }
+                        window.setTimeout(function () { window.location.reload(); }, 500);
+                    })
+                    .catch(function (error) {
+                        save.removeAttribute('disabled');
+                        if (msg) { msg.className = 'jim-inline-error'; msg.textContent = (error && error.message) || t('Something went wrong. Please try again.'); setHidden(msg, false); }
+                    });
+            });
+        }
     }
 
     function logError(context, error) {
@@ -1146,6 +2005,20 @@
         return !!(conversation && (conversation.isGroup || conversation.type === 'GROUP'));
     }
 
+    function isSelfConversation(conversation) {
+        return !!(conversation && conversation.self === true);
+    }
+
+    function conversationTitle(conversation) {
+        if (!conversation) {
+            return '';
+        }
+        if (isSelfConversation(conversation)) {
+            return t('Saved Messages');
+        }
+        return conversation.displayName || '';
+    }
+
     function normalizeEventType(message) {
         if (!message || message.eventType == null || message.eventType === '') {
             return null;
@@ -1170,6 +2043,11 @@
 
     function sortConversations(conversations) {
         return conversations.slice().sort(function (a, b) {
+            var aSelf = isSelfConversation(a) ? 1 : 0;
+            var bSelf = isSelfConversation(b) ? 1 : 0;
+            if (aSelf !== bSelf) {
+                return bSelf - aSelf;
+            }
             return (b.lastMessageAt || 0) - (a.lastMessageAt || 0);
         });
     }
@@ -1260,7 +2138,11 @@
         if (!els.sidebarUnreadSummary) {
             return;
         }
-        if (total === 1) {
+        if (Locale.lang === 'fa') {
+            els.sidebarUnreadSummary.textContent = total === 0
+                ? t('0 unread messages')
+                : locDigits(String(total)) + ' پیام خوانده‌نشده';
+        } else if (total === 1) {
             els.sidebarUnreadSummary.textContent = '1 unread message';
         } else {
             els.sidebarUnreadSummary.textContent = total + ' unread messages';
@@ -1275,11 +2157,25 @@
             escapeHtml(String(count)) + '</span>';
     }
 
-    function renderConversationMetaRight(timeText, unreadCount) {
+    function renderMentionBadge(conversation) {
+        var count = Number(conversation && conversation.unreadMentionCount) || 0;
+        if (!count && !(conversation && conversation.hasMention)) {
+            return '';
+        }
+        var mid = conversation.latestMentionMessageId || '';
+        return '<span class="jim-mention-badge" data-action="open-mention"' +
+            ' data-conversation-id="' + conversation.id + '"' +
+            ' data-message-id="' + escapeHtml(String(mid)) + '"' +
+            ' title="' + escapeHtml(t('Open latest mention')) + '"' +
+            ' aria-label="' + escapeHtml(t('Mention')) + '">@</span>';
+    }
+
+    function renderConversationMetaRight(timeText, unreadCount, conversation) {
         var parts = [];
         if (timeText) {
             parts.push('<span class="jim-conversation-time">' + escapeHtml(timeText) + '</span>');
         }
+        parts.push(renderMentionBadge(conversation || {}));
         parts.push(renderUnreadBadge(unreadCount));
         if (!parts.join('').trim()) {
             return '';
@@ -1289,6 +2185,7 @@
 
     function conversationItemAttrs(conversation, selected) {
         var attrs = ' type="button" class="jim-conversation-item jim-conversation-row' +
+            (isSelfConversation(conversation) ? ' jim-conversation-self' : '') +
             (selected ? ' jim-conversation-item-selected is-selected' : '') + '" ' +
             ' data-conversation-id="' + conversation.id + '"';
         if (selected) {
@@ -1297,27 +2194,57 @@
         return attrs;
     }
 
+    /**
+     * Renders the bottom-row preview text for a sidebar conversation.
+     * Three visual states (controlled by class):
+     *   - draft   : 'Draft' label + the unsent text the user typed
+     *   - own     : light blue background, last message was sent by me
+     *   - other   : light gray background, last message was someone else's
+     * Drafts are local-only client state and take priority over server-side
+     * last-message metadata, so the user always sees the unsent text first.
+     */
+    function renderConversationPreview(conversation) {
+        if (hasDraftFor(conversation.id)) {
+            var draftText = state.drafts[conversation.id].trim();
+            return '<span class="jim-conversation-preview jim-conversation-preview-draft" dir="auto">' +
+                '<span class="jim-conversation-preview-draft-label">Draft</span>' +
+                escapeHtml(draftText) + '</span>';
+        }
+        var className = 'jim-conversation-preview';
+        if (conversation.lastMessageOwn) {
+            className += ' jim-conversation-preview-own';
+        } else if (conversation.lastMessagePreview) {
+            className += ' jim-conversation-preview-other';
+        }
+        return '<span class="' + className + '" dir="auto">' +
+            escapeHtml(conversation.lastMessagePreview || '') + '</span>';
+    }
+
     function renderConversationItem(conversation) {
         var selected = conversation.id === state.selectedConversationId;
 
         var groupMark = isGroupConversation(conversation)
             ? '<span class="jim-conversation-group-mark" aria-hidden="true">&#128101;</span>'
             : '';
+        var selfMark = isSelfConversation(conversation)
+            ? '<span class="jim-conversation-self-mark" aria-hidden="true">&#128278;</span>'
+            : '';
+        var title = conversationTitle(conversation);
 
         return '' +
             '<button' + conversationItemAttrs(conversation, selected) + '>' +
             renderAvatarWithPresence(
                 conversation.avatarUrl,
-                conversation.displayName,
+                title,
                 'jim-avatar-sm',
                 !!conversation.otherUserActive) +
             '  <div class="jim-conversation-main">' +
             '    <div class="jim-conversation-item-top">' +
-            '      <span class="jim-conversation-title">' + groupMark + escapeHtml(conversation.displayName) + '</span>' +
-            renderConversationMetaRight(formatTime(conversation.lastMessageAt), conversation.unreadCount) +
+            '      <span class="jim-conversation-title" dir="auto">' + selfMark + groupMark + escapeHtml(title) + '</span>' +
+            renderConversationMetaRight(formatTime(conversation.lastMessageAt), conversation.unreadCount, conversation) +
             '    </div>' +
             '    <div class="jim-conversation-item-bottom">' +
-            '      <span class="jim-conversation-preview">' + escapeHtml(conversation.lastMessagePreview || '') + '</span>' +
+            renderConversationPreview(conversation) +
             '    </div>' +
             '  </div>' +
             '</button>';
@@ -1341,12 +2268,12 @@
             '  <div class="jim-assistant-icon jim-conversation-avatar" aria-hidden="true">&#9889;</div>' +
             '  <div class="jim-conversation-main">' +
             '    <div class="jim-conversation-item-top">' +
-            '      <span class="jim-conversation-title">' + escapeHtml(conversation.displayName) + '</span>' +
+            '      <span class="jim-conversation-title" dir="auto">' + escapeHtml(conversation.displayName) + '</span>' +
             '      <span class="jim-assistant-badge">BOT</span>' +
             '    </div>' +
             '    <div class="jim-conversation-item-bottom">' +
-            '      <span class="jim-conversation-preview">' + escapeHtml(conversation.lastMessagePreview || '') + '</span>' +
-            renderConversationMetaRight(formatTime(conversation.lastMessageAt), conversation.unreadCount) +
+            renderConversationPreview(conversation) +
+            renderConversationMetaRight(formatTime(conversation.lastMessageAt), conversation.unreadCount, conversation) +
             '    </div>' +
             '  </div>' +
             '</button>';
@@ -1435,7 +2362,7 @@
         return '<div class="jim-chat-header-avatar">' +
             renderAvatarWithPresence(
                 conversation.avatarUrl,
-                conversation.displayName,
+                conversationTitle(conversation),
                 'jim-avatar-md',
                 !!conversation.otherUserActive) +
             '</div>';
@@ -1449,10 +2376,13 @@
 
         var isSystem = isSystemConversation(conversation);
         var isGroup = isGroupConversation(conversation);
-        var isActive = !isSystem && !isGroup && !!conversation.otherUserActive;
+        var isSelf = isSelfConversation(conversation);
+        var isActive = !isSystem && !isGroup && !isSelf && !!conversation.otherUserActive;
         var subtitle;
         if (isSystem) {
             subtitle = 'Jira notifications and updates';
+        } else if (isSelf) {
+            subtitle = t('Notes, links and forwards — only you');
         } else if (isGroup) {
             var memberCount = Number(conversation.memberCount) || 0;
             subtitle = memberCount === 1 ? '1 member' : memberCount + ' members';
@@ -1468,11 +2398,19 @@
         var badge = isSystem
             ? '<span class="jim-chat-header-badge">BOT</span>'
             : '';
-        var actionsHtml = isGroup
-            ? '<div class="jim-chat-header-actions">' +
-              '<button id="jim-members-button" type="button" class="jim-header-button' +
-              (state.membersPanelOpen ? ' is-active' : '') + '">Members</button>' +
-              '</div>'
+        var sharedButton = !isSystem
+            ? '<button id="jim-shared-button" type="button" class="jim-header-button" title="' + t('Shared') + '" aria-label="' + t('Shared') + '">' +
+              escapeHtml(t('Shared')) + '</button>'
+            : '';
+        var settingsButton = isGroup
+            ? '<button id="jim-members-button" type="button" class="jim-header-button jim-settings-gear' +
+              (state.membersPanelOpen ? ' is-active' : '') + '" title="' + t('Group settings') + '" aria-label="' + t('Group settings') + '">' +
+              '<span class="jim-settings-gear-icon" aria-hidden="true">&#9881;</span>' +
+              '<span class="jim-settings-gear-label">' + t('Settings') + '</span>' +
+              '</button>'
+            : '';
+        var actionsHtml = (sharedButton || settingsButton)
+            ? '<div class="jim-chat-header-actions">' + sharedButton + settingsButton + '</div>'
             : '';
 
         els.chatHeader.innerHTML = '' +
@@ -1480,7 +2418,7 @@
             renderHeaderAvatar(conversation) +
             '<div class="jim-chat-header-main">' +
             '  <div class="jim-chat-header-title-row">' +
-            '    <h2 class="jim-chat-header-title">' + escapeHtml(conversation.displayName) + '</h2>' +
+            '    <h2 class="jim-chat-header-title">' + escapeHtml(conversationTitle(conversation)) + '</h2>' +
             badge +
             '  </div>' +
             '  <p class="jim-chat-header-subtitle' + (isActive ? ' jim-chat-header-subtitle-active' : '') + '">' +
@@ -1491,6 +2429,12 @@
         var membersButton = document.getElementById('jim-members-button');
         if (membersButton) {
             membersButton.addEventListener('click', toggleMembersPanel);
+        }
+        var sharedButtonEl = document.getElementById('jim-shared-button');
+        if (sharedButtonEl) {
+            sharedButtonEl.addEventListener('click', function () {
+                openSharedGallery('files');
+            });
         }
         var backButton = document.getElementById('jim-back-button');
         if (backButton) {
@@ -1547,27 +2491,115 @@
         }
 
         var canManage = !!conversation.canManage;
+        var isOwnerViewer = !!conversation.isOwner;
         var isProjectChat = !!conversation.isProjectChat;
-        var ownerLabel = isProjectChat ? 'Project lead' : 'Owner';
+        var ownerLabel = isProjectChat ? t('Project lead') : t('Owner');
+        var adminLabel = t('Admin');
+
+        // --- Avatar block ----------------------------------------------------
+        var avatarPreview = conversation.avatarUrl
+            ? '<img class="jim-avatar jim-avatar-lg jim-settings-avatar-img" src="' + escapeHtml(conversation.avatarUrl) + '" alt="" />'
+            : '<span class="jim-avatar jim-avatar-lg jim-settings-avatar-img jim-avatar-fallback" style="background:' +
+              avatarColor(conversation.displayName) + '" aria-hidden="true">' + escapeHtml(avatarInitials(conversation.displayName)) + '</span>';
+        var avatarControls = '';
+        if (canManage) {
+            avatarControls = '<div class="jim-settings-avatar-controls">' +
+                '<button type="button" id="jim-avatar-change" class="jim-modal-button">' +
+                (conversation.avatarUrl ? t('Change photo') : t('Upload photo')) + '</button>' +
+                (conversation.avatarUrl
+                    ? '<button type="button" id="jim-avatar-remove" class="jim-modal-button">' + t('Remove photo') + '</button>'
+                    : '') +
+                '</div>' +
+                '<div id="jim-avatar-progress" class="jim-settings-avatar-progress" hidden>' + t('Uploading...') + '</div>' +
+                '<div id="jim-avatar-error" class="jim-inline-error" role="alert" hidden></div>';
+        }
+        var avatarHtml = '<div class="jim-settings-section jim-settings-avatar">' +
+            avatarPreview + avatarControls + '</div>';
+
+        // --- Rename block ----------------------------------------------------
+        var renameHtml = '';
+        if (canManage) {
+            renameHtml = '<div class="jim-settings-section jim-settings-rename">' +
+                '<label class="jim-settings-label" for="jim-rename-input">' +
+                (isProjectChat ? t('Chat name') : t('Group name')) + '</label>' +
+                '<div class="jim-settings-rename-row">' +
+                '<input id="jim-rename-input" class="jim-search-input" type="text" maxlength="120" ' +
+                'value="' + escapeHtml(conversation.displayName || '') + '" />' +
+                '<button type="button" id="jim-rename-save" class="jim-modal-button jim-modal-button-primary">' + t('Save') + '</button>' +
+                '</div>' +
+                '<div id="jim-rename-error" class="jim-inline-error" role="alert" hidden></div>' +
+                '</div>';
+        }
+
+        // --- Phase 8C: send policy (admins only) -----------------------------
+        var restricted = conversation.sendPolicy === 'ADMINS_AND_ALLOWED';
+        var sendPolicyHtml = '';
+        if (canManage) {
+            sendPolicyHtml = '<div class="jim-settings-section jim-settings-sendpolicy" dir="rtl" lang="fa">' +
+                '<label class="jim-settings-label">\u0627\u0645\u06a9\u0627\u0646 \u0627\u0631\u0633\u0627\u0644 \u067e\u06cc\u0627\u0645</label>' +
+                '<label class="jim-sendpolicy-option"><input type="radio" name="jim-sendpolicy" value="ALL_MEMBERS"' +
+                (restricted ? '' : ' checked') + ' /> \u0647\u0645\u0647 \u0627\u0639\u0636\u0627 \u0627\u0645\u06a9\u0627\u0646 \u0627\u0631\u0633\u0627\u0644 \u067e\u06cc\u0627\u0645 \u062f\u0627\u0631\u0646\u062f</label>' +
+                '<label class="jim-sendpolicy-option"><input type="radio" name="jim-sendpolicy" value="ADMINS_AND_ALLOWED"' +
+                (restricted ? ' checked' : '') + ' /> \u0645\u062d\u062f\u0648\u062f \u06a9\u0631\u062f\u0646 \u0627\u0631\u0633\u0627\u0644 \u067e\u06cc\u0627\u0645 \u0628\u0647 \u0645\u062f\u06cc\u0631\u0627\u0646 \u0648 \u0627\u0641\u0631\u0627\u062f \u0645\u062c\u0627\u0632</label>' +
+                '<div id="jim-sendpolicy-error" class="jim-inline-error" role="alert" hidden></div>' +
+                '</div>';
+        }
+
+        // --- Members list with admin badges + promote/demote -----------------
         var rows = [];
         for (var i = 0; i < state.groupMembers.length; i++) {
             var member = state.groupMembers[i];
-            var isOwner = member.role === 'OWNER';
-            var removeButton = canManage && !isOwner
+            var role = member.role;
+            var isOwnerMember = role === 'OWNER';
+            var isAdminMember = role === 'ADMIN';
+            var badge = '';
+            if (isOwnerMember) {
+                badge = '<span class="jim-member-role">' + ownerLabel + '</span>';
+            } else if (isAdminMember) {
+                badge = '<span class="jim-member-role jim-member-role-admin">' + adminLabel + '</span>';
+            }
+            // Remove: owner can remove anyone but the owner; an admin (non-owner)
+            // may only remove plain members. Server enforces this regardless.
+            var showRemove = canManage && !isOwnerMember && (isOwnerViewer || !isAdminMember);
+            var removeButton = showRemove
                 ? '<button type="button" class="jim-member-remove" data-member-key="' + escapeHtml(member.userKey) +
-                  '" aria-label="Remove ' + escapeHtml(member.displayName) + '" title="Remove from group">&times;</button>'
+                  '" aria-label="Remove ' + escapeHtml(member.displayName) + '" title="' + t('Remove from group') + '">&times;</button>'
                 : '';
+            // Promote/demote: OWNER only, never on the owner row.
+            var roleButton = '';
+            if (isOwnerViewer && !isOwnerMember) {
+                if (isAdminMember) {
+                    roleButton = '<button type="button" class="jim-member-role-btn" data-role-action="MEMBER" data-member-key="' +
+                        escapeHtml(member.userKey) + '">' + t('Remove admin') + '</button>';
+                } else {
+                    roleButton = '<button type="button" class="jim-member-role-btn" data-role-action="ADMIN" data-member-key="' +
+                        escapeHtml(member.userKey) + '">' + t('Make admin') + '</button>';
+                }
+            }
+            // Phase 8C: when restricted, admins can allow/revoke each non-admin member's sending.
+            var allowButton = '';
+            if (canManage && restricted && !isOwnerMember && !isAdminMember) {
+                var memberAllowed = member.allowedSender === true;
+                allowButton = '<button type="button" class="jim-member-allow-btn' +
+                    (memberAllowed ? ' is-allowed' : '') + '" data-allow-action="' +
+                    (memberAllowed ? 'revoke' : 'allow') + '" data-member-key="' + escapeHtml(member.userKey) + '">' +
+                    (memberAllowed
+                        ? '\u0645\u062c\u0627\u0632 \u0628\u0647 \u0627\u0631\u0633\u0627\u0644'
+                        : '\u0627\u062c\u0627\u0632\u0647 \u0627\u0631\u0633\u0627\u0644') + '</button>';
+            }
             rows.push('<div class="jim-member-row">' +
                 renderAvatar(member.avatarUrl, member.displayName, 'jim-avatar-sm') +
                 '<span class="jim-member-name">' + escapeHtml(member.displayName) + '</span>' +
-                (isOwner ? '<span class="jim-member-role">' + ownerLabel + '</span>' : '') +
+                badge +
+                allowButton +
+                roleButton +
                 removeButton +
                 '</div>');
         }
 
         var addHtml = canManage
             ? '<div class="jim-member-add">' +
-              '<input id="jim-member-add-search" class="jim-search-input" type="search" autocomplete="off" placeholder="Add member..." />' +
+              '<input id="jim-member-add-search" class="jim-search-input" type="search" autocomplete="off" placeholder="' + t('Add member...') + '" />' +
               '<div id="jim-member-add-results" class="jim-search-results jim-member-add-results" hidden role="listbox"></div>' +
               '</div>'
             : '';
@@ -1577,14 +2609,14 @@
             // Project chats cannot be deleted and members cannot leave;
             // only the project lead manages membership.
             footerHtml = '<div class="jim-members-panel-footer">' +
-                '<div class="jim-members-panel-note">Members are managed by the project lead.</div>' +
+                '<div class="jim-members-panel-note">' + t('Members are managed by the project lead.') + '</div>' +
                 '</div>';
         } else {
             var dangerLabel;
-            if (canManage) {
-                dangerLabel = state.confirmGroupDanger ? 'Confirm: delete group?' : 'Delete group';
+            if (isOwnerViewer) {
+                dangerLabel = state.confirmGroupDanger ? t('Confirm: delete group?') : t('Delete group');
             } else {
-                dangerLabel = state.confirmGroupDanger ? 'Confirm: leave group?' : 'Leave group';
+                dangerLabel = state.confirmGroupDanger ? t('Confirm: leave group?') : t('Leave group');
             }
             footerHtml = '<div class="jim-members-panel-footer">' +
                 '<button type="button" id="jim-group-danger" class="jim-member-danger' +
@@ -1593,7 +2625,11 @@
         }
 
         els.membersPanel.innerHTML =
-            '<div class="jim-members-panel-header">Members (' + state.groupMembers.length + ')</div>' +
+            '<div class="jim-members-panel-header">' + (isProjectChat ? t('Project chat settings') : t('Group settings')) + '</div>' +
+            avatarHtml +
+            renameHtml +
+            sendPolicyHtml +
+            '<div class="jim-settings-section-label">' + t('Members') + ' (' + state.groupMembers.length + ')</div>' +
             '<div class="jim-members-list">' + rows.join('') + '</div>' +
             addHtml +
             footerHtml;
@@ -1637,6 +2673,249 @@
         if (dangerButton) {
             dangerButton.addEventListener('click', handleGroupDangerAction);
         }
+
+        // Promote / demote (owner only).
+        var roleButtons = els.membersPanel.querySelectorAll('.jim-member-role-btn');
+        for (var r = 0; r < roleButtons.length; r++) {
+            roleButtons[r].addEventListener('click', function (event) {
+                var target = event.currentTarget;
+                setMemberRole(target.getAttribute('data-member-key'), target.getAttribute('data-role-action'));
+            });
+        }
+
+        // Phase 8C: send-policy radios (owner/admin).
+        var policyRadios = els.membersPanel.querySelectorAll('input[name="jim-sendpolicy"]');
+        for (var p = 0; p < policyRadios.length; p++) {
+            policyRadios[p].addEventListener('change', function (event) {
+                if (event.currentTarget.checked) {
+                    submitGroupSendPolicy(event.currentTarget.value);
+                }
+            });
+        }
+
+        // Phase 8C: allow/revoke a member's sending (owner/admin).
+        var allowButtons = els.membersPanel.querySelectorAll('.jim-member-allow-btn');
+        for (var a = 0; a < allowButtons.length; a++) {
+            allowButtons[a].addEventListener('click', function (event) {
+                var target = event.currentTarget;
+                submitAllowedSender(target.getAttribute('data-member-key'),
+                    target.getAttribute('data-allow-action') === 'allow');
+            });
+        }
+
+        // Rename (owner/admin).
+        var renameSave = document.getElementById('jim-rename-save');
+        var renameInput = document.getElementById('jim-rename-input');
+        if (renameSave && renameInput) {
+            renameSave.addEventListener('click', function () {
+                submitGroupRename(renameInput.value);
+            });
+            renameInput.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    submitGroupRename(renameInput.value);
+                }
+            });
+        }
+
+        // Avatar change / remove (owner/admin).
+        var avatarChange = document.getElementById('jim-avatar-change');
+        if (avatarChange && els.avatarInput) {
+            avatarChange.addEventListener('click', function () {
+                els.avatarInput.value = '';
+                els.avatarInput.click();
+            });
+        }
+        var avatarRemove = document.getElementById('jim-avatar-remove');
+        if (avatarRemove) {
+            avatarRemove.addEventListener('click', removeConversationAvatar);
+        }
+    }
+
+    function showAvatarError(message) {
+        var box = document.getElementById('jim-avatar-error');
+        if (!box) {
+            return;
+        }
+        if (message) {
+            box.textContent = message;
+            setHidden(box, false);
+        } else {
+            box.textContent = '';
+            setHidden(box, true);
+        }
+    }
+
+    function handleAvatarFileSelected() {
+        if (!els.avatarInput || !els.avatarInput.files || !els.avatarInput.files.length) {
+            return;
+        }
+        var file = els.avatarInput.files[0];
+        els.avatarInput.value = '';
+        var conversationId = state.selectedConversationId;
+        if (!conversationId || !file) {
+            return;
+        }
+        // Client-side guard mirrors the server policy (2 MB, raster types only);
+        // the server re-validates and is the source of truth.
+        if (file.size > 2 * 1024 * 1024) {
+            showAvatarError(t('Avatar image exceeds the maximum allowed size of 2 MB'));
+            return;
+        }
+        var allowed = { 'image/png': 1, 'image/jpeg': 1, 'image/webp': 1 };
+        if (file.type && !allowed[file.type]) {
+            showAvatarError(t('Avatar must be a PNG, JPEG or WebP image'));
+            return;
+        }
+        showAvatarError(null);
+        var progress = document.getElementById('jim-avatar-progress');
+        if (progress) {
+            setHidden(progress, false);
+        }
+        JimApi.uploadConversationAvatar(conversationId, file).then(function () {
+            if (state.selectedConversationId !== conversationId) {
+                return null;
+            }
+            return loadConversations(false);
+        }).then(function () {
+            renderMembersPanel();
+        }).catch(function (error) {
+            logError('uploadConversationAvatar', error);
+            showAvatarError(error && error.message ? error.message : t('Unable to change the photo.'));
+            if (progress) {
+                setHidden(progress, true);
+            }
+        });
+    }
+
+    function removeConversationAvatar() {
+        var conversationId = state.selectedConversationId;
+        if (!conversationId) {
+            return;
+        }
+        showAvatarError(null);
+        JimApi.deleteConversationAvatar(conversationId).then(function () {
+            if (state.selectedConversationId !== conversationId) {
+                return null;
+            }
+            return loadConversations(false);
+        }).then(function () {
+            renderMembersPanel();
+        }).catch(function (error) {
+            logError('deleteConversationAvatar', error);
+            showAvatarError(error && error.message ? error.message : t('Unable to remove the photo.'));
+        });
+    }
+
+    function submitGroupRename(name) {
+        var conversationId = state.selectedConversationId;
+        var trimmed = (name || '').trim();
+        var errorBox = document.getElementById('jim-rename-error');
+        if (!trimmed) {
+            if (errorBox) {
+                errorBox.textContent = t('Group name is required');
+                setHidden(errorBox, false);
+            }
+            return;
+        }
+        if (errorBox) {
+            setHidden(errorBox, true);
+        }
+        JimApi.renameGroup(conversationId, trimmed).then(function () {
+            if (state.selectedConversationId !== conversationId) {
+                return null;
+            }
+            return loadConversations(false);
+        }).then(function () {
+            renderMembersPanel();
+        }).catch(function (error) {
+            logError('renameGroup', error);
+            if (errorBox) {
+                errorBox.textContent = error && error.message ? error.message : t('Unable to rename the group.');
+                setHidden(errorBox, false);
+            }
+        });
+    }
+
+    function setMemberRole(userKey, role) {
+        var conversationId = state.selectedConversationId;
+        if (!conversationId || !userKey) {
+            return;
+        }
+        JimApi.setMemberRole(conversationId, userKey, role).then(function (response) {
+            if (state.selectedConversationId !== conversationId) {
+                return null;
+            }
+            state.groupMembers = response.members || [];
+            renderMembersPanel();
+            return loadConversations(false);
+        }).then(function () {
+            renderMembersPanel();
+        }).catch(function (error) {
+            logError('setMemberRole', error);
+            showError(error && error.message ? error.message : t('Unable to update the member role.'));
+        });
+    }
+
+    // Phase 8C: change the group send policy (owner/admin).
+    function submitGroupSendPolicy(policy) {
+        var conversationId = state.selectedConversationId;
+        if (!conversationId || !policy) {
+            return;
+        }
+        var errorBox = document.getElementById('jim-sendpolicy-error');
+        if (errorBox) {
+            setHidden(errorBox, true);
+        }
+        JimApi.setGroupSendPolicy(conversationId, policy).then(function (conversation) {
+            if (state.selectedConversationId !== conversationId) {
+                return null;
+            }
+            if (conversation && state.selectedConversation) {
+                state.selectedConversation.sendPolicy = conversation.sendPolicy;
+                state.selectedConversation.canSendMessage = conversation.canSendMessage;
+                state.selectedConversation.canManageSendPolicy = conversation.canManageSendPolicy;
+                state.selectedConversation.memberSendRestricted = conversation.memberSendRestricted;
+            }
+            updateComposerState();
+            return loadConversations(false);
+        }).then(function () {
+            // Refresh members so per-member allow toggles appear/disappear with the policy.
+            return JimApi.listGroupMembers(conversationId);
+        }).then(function (response) {
+            if (response && state.selectedConversationId === conversationId) {
+                state.groupMembers = response.members || state.groupMembers;
+            }
+            renderMembersPanel();
+        }).catch(function (error) {
+            logError('setGroupSendPolicy', error);
+            if (errorBox) {
+                errorBox.textContent = error && error.message ? error.message : t('Unable to update the send policy.');
+                setHidden(errorBox, false);
+            }
+            renderMembersPanel();
+        });
+    }
+
+    // Phase 8C: allow/revoke a non-admin member's sending (owner/admin).
+    function submitAllowedSender(userKey, allowed) {
+        var conversationId = state.selectedConversationId;
+        if (!conversationId || !userKey) {
+            return;
+        }
+        JimApi.setGroupAllowedSender(conversationId, userKey, allowed).then(function (response) {
+            if (state.selectedConversationId !== conversationId) {
+                return null;
+            }
+            state.groupMembers = (response && response.members) || state.groupMembers;
+            renderMembersPanel();
+            return loadConversations(false);
+        }).then(function () {
+            updateComposerState();
+        }).catch(function (error) {
+            logError('setGroupAllowedSender', error);
+            showError(error && error.message ? error.message : t('Unable to update allowed senders.'));
+        });
     }
 
     function renderMemberAddResults(container, users) {
@@ -1714,7 +2993,7 @@
         var conversationId = state.selectedConversationId;
         state.confirmGroupDanger = false;
 
-        var action = conversation && conversation.canManage
+        var action = conversation && conversation.isOwner
             ? JimApi.deleteGroup(conversationId)
             : JimApi.removeGroupMember(conversationId, state.currentUserKey);
 
@@ -1817,8 +3096,13 @@
         if (attachment.fileKind === 'IMAGE') {
             return 'Image';
         }
-        if (attachment.fileKind === 'AUDIO') {
+        // Sprint 07 Fix-2: `voice` distinguishes a recorded voice note from a
+        // picked/shared audio file. Missing field (older server) = voice.
+        if (attachment.fileKind === 'AUDIO' && attachment.voice !== false) {
             return 'Voice message';
+        }
+        if (attachment.fileKind === 'VIDEO') {
+            return 'Video';
         }
         return 'File: ' + (attachment.fileName || 'attachment');
     }
@@ -1834,12 +3118,32 @@
 
         if (attachment.fileKind === 'AUDIO' && (previewUrl || downloadUrl)) {
             var audioSrc = previewUrl || downloadUrl;
+            // Voice notes keep the "Voice message" label; picked/shared audio
+            // files show their real file name (still with the inline player).
+            var audioLabel = attachment.voice !== false ? 'Voice message' : fileName;
             return '' +
                 '<div class="jim-audio-attachment">' +
                 '  <audio class="jim-audio-player" controls preload="metadata" src="' + escapeHtml(audioSrc) + '"></audio>' +
                 '  <div class="jim-audio-meta">' +
-                '    <span class="jim-audio-label">Voice message</span>' +
+                '    <span class="jim-audio-label">' + escapeHtml(audioLabel) + '</span>' +
                 '    <span class="jim-attachment-caption-size">' + escapeHtml(formatFileSize(attachment.fileSize)) + '</span>' +
+                '  </div>' +
+                '</div>';
+        }
+
+        // Sprint 07 Fix-3: inline video playback via the same Range-capable
+        // preview stream the audio player uses.
+        if (attachment.fileKind === 'VIDEO' && (previewUrl || downloadUrl)) {
+            var videoSrc = previewUrl || downloadUrl;
+            return '' +
+                '<div class="jim-video-attachment">' +
+                '  <video class="jim-video-player" controls preload="metadata" src="' + escapeHtml(videoSrc) + '" style="max-width:320px;max-height:240px;border-radius:8px;"></video>' +
+                '  <div class="jim-audio-meta">' +
+                '    <span class="jim-audio-label">' + escapeHtml(fileName) + '</span>' +
+                '    <span class="jim-attachment-caption-size">' + escapeHtml(formatFileSize(attachment.fileSize)) + '</span>' +
+                (downloadUrl
+                    ? ' <a class="jim-image-download aui-button aui-button-link" href="' + escapeHtml(downloadUrl) + '" target="_blank" rel="noopener noreferrer">Download</a>'
+                    : '') +
                 '  </div>' +
                 '</div>';
         }
@@ -1887,7 +3191,43 @@
             return false;
         }
         var createdAt = Number(message.createdAt || 0);
-        return createdAt > 0 && (Date.now() - createdAt) <= DELETE_WINDOW_MS;
+        return createdAt > 0 && (serverNow() - createdAt) <= DELETE_WINDOW_MS;
+    }
+
+    /**
+     * Server time anchoring: messages responses carry `serverNowMs`. We store
+     * the offset (server - browser) so edit/delete-window countdowns use the
+     * SERVER clock, never the browser wall clock. This makes the Edit button
+     * immune to a skewed/mis-timezoned client machine (the root cause of "can't
+     * edit a message I just sent"). Timezone is irrelevant — all values are
+     * epoch millis.
+     */
+    function captureServerNow(response) {
+        if (response && typeof response.serverNowMs === 'number' && response.serverNowMs > 0) {
+            state.serverTimeSkewMs = response.serverNowMs - Date.now();
+        }
+    }
+    function serverNow() {
+        return Date.now() + (state.serverTimeSkewMs || 0);
+    }
+
+    /**
+     * Edit-window check, anchored to the SERVER clock. Prefers the server's
+     * `editableUntilMs` (createdAt + window, null when not edit-eligible by
+     * type); falls back to createdAt + window. The server is the source of
+     * truth and rejects expired edits with 403; this only lets the Edit button
+     * disappear promptly when the window lapses, without relying on browser
+     * local time.
+     */
+    function isWithinEditWindow(message) {
+        if (!message || message.deleted || !isOwnMessage(message)) {
+            return false;
+        }
+        if (message.editableUntilMs != null) {
+            return serverNow() <= Number(message.editableUntilMs);
+        }
+        var createdAt = Number(message.createdAt || 0);
+        return createdAt > 0 && (serverNow() - createdAt) <= EDIT_WINDOW_MS;
     }
 
     function replyPreviewText(message) {
@@ -1915,7 +3255,7 @@
         return '' +
             '<button type="button" class="jim-reply-preview" data-reply-target-id="' + message.replyTo.id + '">' +
             '  <span class="jim-reply-preview-author">' + escapeHtml(author) + '</span>' +
-            '  <span class="jim-reply-preview-text">' + escapeHtml(text) + '</span>' +
+            '  <span class="jim-reply-preview-text" dir="auto">' + escapeHtml(text) + '</span>' +
             '</button>';
     }
 
@@ -1943,12 +3283,15 @@
         var chips = [];
         for (var i = 0; i < reactions.length; i++) {
             var reaction = reactions[i];
+            var count = Number(reaction.count) || 0;
             chips.push('<button type="button" class="jim-reaction-chip' +
                 (reaction.reactedByMe ? ' jim-reaction-chip-mine' : '') +
                 '" data-action="react-pick" data-message-id="' + message.id +
-                '" data-emoji="' + escapeHtml(reaction.emoji) + '" aria-label="Toggle reaction">' +
-                escapeHtml(reaction.emoji) +
-                ' <span class="jim-reaction-count">' + (Number(reaction.count) || 0) + '</span></button>');
+                '" data-emoji="' + escapeHtml(reaction.emoji) +
+                '" data-count="' + count +
+                '" aria-label="Toggle reaction">' +
+                '<span class="jim-reaction-emoji">' + escapeHtml(reaction.emoji) + '</span>' +
+                '<span class="jim-reaction-count">' + count + '</span></button>');
         }
 
         if (isPicking) {
@@ -1970,31 +3313,62 @@
         }
 
         var actions = [];
-        actions.push('<button type="button" class="jim-message-action jim-react-action" data-action="react" data-message-id="' + message.id + '">React</button>');
-        actions.push('<button type="button" class="jim-message-action jim-reply-action" data-action="reply" data-message-id="' + message.id + '">Reply</button>');
+        actions.push('<button type="button" class="jim-message-action jim-react-action" data-action="react" data-message-id="' + message.id + '">' + escapeHtml(t('React')) + '</button>');
+        actions.push('<button type="button" class="jim-message-action jim-reply-action" data-action="reply" data-message-id="' + message.id + '">' + escapeHtml(t('Reply')) + '</button>');
+        actions.push('<button type="button" class="jim-message-action jim-copy-action" data-action="copy" data-message-id="' + message.id + '">' + escapeHtml(t('Copy')) + '</button>');
+        if (message.body) {
+            actions.push('<button type="button" class="jim-message-action jim-share-action" data-action="share" data-message-id="' + message.id + '">' + escapeHtml(t('Share')) + '</button>');
+        }
+        // Forwarding is text-only for safety (attachments would need a server-side
+        // copy endpoint that doesn't exist yet, and forwarding a download URL
+        // would 401 in the recipient's account).
+        if (isForwardableMessage(message)) {
+            actions.push('<button type="button" class="jim-message-action jim-forward-action" data-action="forward" data-message-id="' + message.id + '">' + escapeHtml(t('Forward')) + '</button>');
+        }
         actions.push('<button type="button" class="jim-message-action jim-pin-action" data-action="' +
             (message.pinned ? 'unpin' : 'pin') + '" data-message-id="' + message.id + '">' +
-            (message.pinned ? 'Unpin' : 'Pin') + '</button>');
+            escapeHtml(message.pinned ? t('Unpin') : t('Pin')) + '</button>');
+
+        // Sprint 12: Delete-for-me (any message, own or others') + enter
+        // multi-select mode. These never hard-delete; they hide per-user only.
+        actions.push('<button type="button" class="jim-message-action jim-hide-action" data-action="hide-for-me" data-message-id="' + message.id + '">' + escapeHtml(t('Delete for me')) + '</button>');
+        if (!isSelfConversation(state.selectedConversation)) {
+            actions.push('<button type="button" class="jim-message-action jim-save-action" data-action="save-saved" data-message-id="' + message.id + '">' + escapeHtml(t('Save to Saved Messages')) + '</button>');
+        }
+        if (firstMessageUrl(message)) {
+            actions.push('<button type="button" class="jim-message-action jim-copy-link-action" data-action="copy-link" data-message-id="' + message.id + '">' + escapeHtml(t('Copy link')) + '</button>');
+        }
+        if (message.attachments && message.attachments.length && message.attachments[0].downloadUrl) {
+            actions.push('<a class="jim-message-action jim-download-action" href="' + escapeHtml(resolveAttachmentUrl(message.attachments[0].downloadUrl)) + '" target="_blank" rel="noopener">' + escapeHtml(t('Download')) + '</a>');
+        }
+        actions.push('<button type="button" class="jim-message-action jim-select-action" data-action="select-msg" data-message-id="' + message.id + '">' + escapeHtml(t('Select')) + '</button>');
 
         if (isOwnMessage(message)) {
             var conversationForInfo = state.selectedConversation;
             if (conversationForInfo && (isGroupConversation(conversationForInfo) || conversationForInfo.isProjectChat)) {
-                actions.push('<button type="button" class="jim-message-action jim-info-action" data-action="info" data-message-id="' + message.id + '">Info</button>');
+                actions.push('<button type="button" class="jim-message-action jim-info-action" data-action="info" data-message-id="' + message.id + '">' + escapeHtml(t('Info')) + '</button>');
             }
-            if (message.canEdit !== false && normalizeEventType(message) !== 'ISSUE_LINK') {
-                actions.push('<button type="button" class="jim-message-action jim-edit-action" data-action="edit" data-message-id="' + message.id + '">Edit</button>');
+            // Edit is only offered for the message owner, on user (non-system,
+            // non-issue-link) messages, and only within the 30-minute edit
+            // window. The server's canEdit flag already enforces this, but
+            // we re-check the time window locally so the button disappears
+            // immediately when the window lapses, not only on the next poll.
+            if (message.canEdit !== false
+                    && normalizeEventType(message) !== 'ISSUE_LINK'
+                    && isWithinEditWindow(message)) {
+                actions.push('<button type="button" class="jim-message-action jim-edit-action" data-action="edit" data-message-id="' + message.id + '">' + escapeHtml(t('Edit')) + '</button>');
             }
             if (canDeleteMessage(message)) {
                 if (state.deleteConfirmMessageId === message.id) {
                     actions.push(
                         '<span class="jim-delete-confirm">' +
-                        'Delete? ' +
-                        '<button type="button" class="jim-message-action jim-delete-action" data-action="delete-confirm" data-message-id="' + message.id + '">Yes</button>' +
-                        '<button type="button" class="jim-message-action" data-action="delete-cancel" data-message-id="' + message.id + '">No</button>' +
+                        escapeHtml(t('Delete?')) + ' ' +
+                        '<button type="button" class="jim-message-action jim-delete-action" data-action="delete-confirm" data-message-id="' + message.id + '">' + escapeHtml(t('Yes')) + '</button>' +
+                        '<button type="button" class="jim-message-action" data-action="delete-cancel" data-message-id="' + message.id + '">' + escapeHtml(t('No')) + '</button>' +
                         '</span>'
                     );
                 } else {
-                    actions.push('<button type="button" class="jim-message-action jim-delete-action" data-action="delete" data-message-id="' + message.id + '">Delete</button>');
+                    actions.push('<button type="button" class="jim-message-action jim-delete-action" data-action="delete" data-message-id="' + message.id + '">' + escapeHtml(t('Delete')) + '</button>');
                 }
             }
         }
@@ -2023,6 +3397,348 @@
         if (els.messageInfoModal) {
             setHidden(els.messageInfoModal, true);
         }
+    }
+
+    function copyMessageBody(message) {
+        var text = message && message.body ? String(message.body) : '';
+        if (!text) {
+            return;
+        }
+        function onCopied() { /* clipboard success is silent — no fake toast */ }
+        function onFailed() {
+            showError(t('Unable to copy message.'));
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(onCopied).catch(onFailed);
+            return;
+        }
+        try {
+            var area = document.createElement('textarea');
+            area.value = text;
+            area.setAttribute('readonly', '');
+            area.style.position = 'fixed';
+            area.style.left = '-9999px';
+            document.body.appendChild(area);
+            area.select();
+            var ok = document.execCommand('copy');
+            document.body.removeChild(area);
+            if (!ok) {
+                onFailed();
+            }
+        } catch (e) {
+            onFailed();
+        }
+    }
+
+    // OS / browser share of the visible message body. Not a second Forward:
+    // conversation-to-conversation send stays on the existing Forward action.
+    function shareMessageBody(message) {
+        var text = message && message.body ? String(message.body) : '';
+        if (!text) {
+            showError(t('Unable to share'));
+            return;
+        }
+        if (navigator.share) {
+            navigator.share({ text: text }).catch(function () { /* user cancelled */ });
+            return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () {
+                showError(t('Message copied. Share is not available in this browser.'));
+            }).catch(function () {
+                showError(t('Unable to share'));
+            });
+            return;
+        }
+        copyMessageBody(message);
+        showError(t('Message copied. Share is not available in this browser.'));
+    }
+
+    // ===== Message forwarding =====
+    //
+    // Text-only by design. Attachments are deliberately not forwardable for
+    // this iteration: forwarding a download URL would 401 in another user's
+    // session, and copying the underlying file requires a server-side
+    // endpoint we don't have. Issue-link messages forward the rendered body
+    // (Jira will re-render the smart link in the target conversation).
+
+    function isForwardableMessage(message) {
+        if (!message || message.deleted) {
+            return false;
+        }
+        if (isSystemMessage(message)) {
+            return false;
+        }
+        // Forwardable when there's text, an attachment (file/image/voice),
+        // or both. Issue-link cards forward as text — their body already
+        // contains the smart link.
+        var hasBody = message.body && String(message.body).trim().length > 0;
+        var hasAttachments = !!(message.attachments && message.attachments.length);
+        return hasBody || hasAttachments;
+    }
+
+    function buildForwardedBody(message) {
+        var sender = (message.senderDisplayName || message.senderUserKey || 'a user').trim();
+        var body = String(message.body || '').trim();
+        var header = '[Forwarded from ' + sender + ']';
+        return body ? header + '\n' + body : header;
+    }
+
+    /**
+     * For attachment forwarding we download the original bytes (the current
+     * user already has access — the server-side ACL check on the original
+     * conversation succeeded for them) and re-upload as a fresh attachment
+     * to the target conversation. The caption carries the forwarded marker.
+     */
+    function fetchAttachmentAsFile(attachment) {
+        var url = resolveAttachmentUrl(attachment.downloadUrl);
+        if (!url) {
+            return Promise.reject(new Error('Attachment download URL is missing'));
+        }
+        return fetch(url, { credentials: 'same-origin' }).then(function (response) {
+            if (!response.ok) {
+                throw new Error('Could not download original attachment (HTTP ' + response.status + ')');
+            }
+            return response.blob().then(function (blob) {
+                var name = attachment.fileName || 'attachment';
+                var type = attachment.contentType || blob.type || 'application/octet-stream';
+                // File constructor isn't universally supported in older IE, but
+                // any browser that runs CorbitChat has it (Edge 18+ / FF / Chrome).
+                return new File([blob], name, { type: type });
+            });
+        });
+    }
+
+    function chronologicalMessages(messages) {
+        return (messages || []).slice().sort(function (a, b) {
+            var ta = Number(a && a.createdAt || 0);
+            var tb = Number(b && b.createdAt || 0);
+            if (ta !== tb) {
+                return ta - tb;
+            }
+            return Number(a && a.id || 0) - Number(b && b.id || 0);
+        });
+    }
+
+    function selectionCountLabel(count) {
+        if (Locale.lang === 'fa') {
+            return locDigits(String(count)) + ' پیام انتخاب شده';
+        }
+        return count === 1 ? '1 selected' : (count + ' selected');
+    }
+
+    function openForwardModal(messageId) {
+        openForwardModalForMessages(messageId ? [findMessageById(messageId)] : []);
+    }
+
+    function openForwardModalForMessages(messages) {
+        if (!els.forwardModal) {
+            return;
+        }
+        var all = (messages || []).filter(Boolean);
+        var forwardable = chronologicalMessages(all.filter(isForwardableMessage));
+        if (!forwardable.length) {
+            return;
+        }
+        state.forwardingMessageIds = forwardable.map(function (m) { return m.id; });
+        state.forwardingMessageId = forwardable[0].id;
+        state.forwardedIds = [];
+        state.forwardingInProgress = false;
+        if (els.forwardPreview) {
+            if (forwardable.length === 1) {
+                els.forwardPreview.textContent = String(forwardable[0].body || '').slice(0, 240);
+            } else {
+                els.forwardPreview.textContent = t('These messages will be forwarded in order.') +
+                    ' (' + locDigits(String(forwardable.length)) + ')';
+            }
+        }
+        if (els.forwardSearch) {
+            els.forwardSearch.value = '';
+        }
+        if (els.forwardError) {
+            if (all.length > forwardable.length) {
+                els.forwardError.textContent = t('Some selected messages cannot be forwarded and will be skipped.');
+                setHidden(els.forwardError, false);
+            } else {
+                setHidden(els.forwardError, true);
+                els.forwardError.textContent = '';
+            }
+        }
+        renderForwardTargets('');
+        setHidden(els.forwardModal, false);
+        if (els.forwardSearch) {
+            try { els.forwardSearch.focus(); } catch (e) { /* ignore */ }
+        }
+    }
+
+    function closeForwardModal() {
+        state.forwardingMessageId = null;
+        state.forwardingMessageIds = [];
+        state.forwardingInProgress = false;
+        if (els.forwardModal) {
+            setHidden(els.forwardModal, true);
+        }
+    }
+
+    function eligibleForwardTargets() {
+        // Anything the user can already send a message into:
+        // direct chats, group chats and project group chats. Exclude system /
+        // assistant conversations.
+        var targets = [];
+        for (var i = 0; i < state.conversations.length; i++) {
+            var c = state.conversations[i];
+            if (!c || c.isSystem || c.type === 'SYSTEM') {
+                continue;
+            }
+            targets.push(c);
+        }
+        return targets;
+    }
+
+    function renderForwardTargets(query) {
+        if (!els.forwardTargets) {
+            return;
+        }
+        var q = (query || '').trim().toLowerCase();
+        var targets = eligibleForwardTargets();
+        if (q) {
+            targets = targets.filter(function (c) {
+                var name = String(c.displayName || '').toLowerCase();
+                return name.indexOf(q) !== -1;
+            });
+        }
+        if (!targets.length) {
+            els.forwardTargets.innerHTML = '<div class="jim-empty-state">' + escapeHtml(t('No conversations match.')) + '</div>';
+            return;
+        }
+        var rows = [];
+        for (var i = 0; i < targets.length; i++) {
+            var c = targets[i];
+            var kindLabel = c.isProjectChat ? t('Project chat') : (isSelfConversation(c) ? t('Saved Messages') : (isGroupConversation(c) ? t('Group') : t('Direct')));
+            rows.push(
+                '<button type="button" class="jim-forward-target" data-forward-target="' + c.id + '">' +
+                '<span class="jim-forward-target-name" dir="auto">' + escapeHtml(conversationTitle(c) || 'Conversation') + '</span>' +
+                '<span class="jim-forward-target-kind">' + escapeHtml(kindLabel) + '</span>' +
+                '</button>'
+            );
+        }
+        els.forwardTargets.innerHTML = rows.join('');
+    }
+
+    function forwardOneMessage(message, targetConversationId) {
+        if (!message || !isForwardableMessage(message) || !targetConversationId) {
+            return Promise.reject(new Error(t('Unable to forward message.')));
+        }
+        var bodyToSend = buildForwardedBody(message);
+        var attachments = message.attachments || [];
+        var hadBody = message.body && String(message.body).trim().length > 0;
+        if (!attachments.length) {
+            return JimApi.sendMessage(targetConversationId, bodyToSend, null);
+        }
+        // Same attachment path as single-message Forward: download bytes the
+        // current user can already read, then re-upload into the target.
+        var captionForFirst = hadBody ? bodyToSend : '[Forwarded attachment]';
+        var failed = [];
+        var chain = Promise.resolve();
+        attachments.forEach(function (att, idx) {
+            chain = chain.then(function () {
+                return fetchAttachmentAsFile(att).then(function (file) {
+                    var capForThis = idx === 0 ? captionForFirst : null;
+                    return JimApi.uploadAttachment(targetConversationId, file, capForThis);
+                }).catch(function (error) {
+                    logError('forwardAttachment', error);
+                    failed.push(att.fileName || 'attachment');
+                });
+            });
+        });
+        return chain.then(function () {
+            if (failed.length === attachments.length) {
+                throw new Error(t('Could not forward attachment(s).'));
+            }
+            return { skippedAttachments: failed };
+        });
+    }
+
+    function submitForward(targetConversationId) {
+        var ids = (state.forwardingMessageIds && state.forwardingMessageIds.length)
+            ? state.forwardingMessageIds.slice()
+            : (state.forwardingMessageId ? [state.forwardingMessageId] : []);
+        if (!ids.length || !targetConversationId || state.forwardingInProgress) {
+            return;
+        }
+        var already = {};
+        (state.forwardedIds || []).forEach(function (id) { already[id] = true; });
+        var remaining = ids.filter(function (id) { return !already[id]; });
+        if (!remaining.length) {
+            closeForwardModal();
+            exitSelectionMode();
+            showError(t('Messages forwarded.'));
+            return;
+        }
+        if (els.forwardError) {
+            els.forwardError.textContent = t('Forwarding…');
+            setHidden(els.forwardError, false);
+        }
+        state.forwardingInProgress = true;
+        var failed = [];
+        var skippedAttachments = [];
+        var chain = Promise.resolve();
+        remaining.forEach(function (id) {
+            chain = chain.then(function () {
+                var message = findMessageById(id);
+                if (!message || !isForwardableMessage(message)) {
+                    failed.push(id);
+                    return;
+                }
+                return forwardOneMessage(message, targetConversationId).then(function (result) {
+                    state.forwardedIds = (state.forwardedIds || []).concat([id]);
+                    if (result && result.skippedAttachments && result.skippedAttachments.length) {
+                        skippedAttachments = skippedAttachments.concat(result.skippedAttachments);
+                    }
+                }).catch(function (error) {
+                    logError('forwardMessage', error);
+                    var status = error && error.status;
+                    if (status === 401 || status === 403) {
+                        var perm = new Error(t('You do not have permission to perform this action.'));
+                        perm.status = status;
+                        throw perm;
+                    }
+                    failed.push(id);
+                });
+            });
+        });
+        chain.then(function () {
+            state.forwardingInProgress = false;
+            var done = (state.forwardedIds || []).length;
+            if (!done && failed.length) {
+                if (els.forwardError) {
+                    els.forwardError.textContent = t('Unable to forward messages.');
+                    setHidden(els.forwardError, false);
+                }
+                return;
+            }
+            closeForwardModal();
+            exitSelectionMode();
+            if (state.selectedConversationId === targetConversationId) {
+                loadMessages(state.selectedConversationId, false, true);
+            }
+            loadConversations(false);
+            if (failed.length) {
+                showError(t('Unable to forward messages.') + ' (' + locDigits(String(done)) + '/' + locDigits(String(done + failed.length)) + ')');
+            } else if (skippedAttachments.length) {
+                showError(t('Messages forwarded.') + ' — ' + t('Could not forward attachment(s).'));
+            } else {
+                showError(done > 1 ? t('Messages forwarded.') : t('Message forwarded.'));
+            }
+        }).catch(function (error) {
+            state.forwardingInProgress = false;
+            logError('forwardMessage', error);
+            var detail = error && error.message ? error.message : t('Unable to forward message.');
+            if (els.forwardError) {
+                els.forwardError.textContent = detail;
+                setHidden(els.forwardError, false);
+            }
+        });
     }
 
     function renderMessageInfo(receipts) {
@@ -2095,18 +3811,10 @@
         els.imageLightboxImg.setAttribute('src', '');
     }
 
-    function renderEditForm(message) {
-        var body = message.body ? String(message.body) : '';
-        return '' +
-            '<form class="jim-message-edit-form" data-message-id="' + message.id + '">' +
-            '  <textarea class="jim-message-edit-textarea" rows="3" maxlength="' + MAX_MESSAGE_LENGTH + '">' + escapeHtml(body) + '</textarea>' +
-            '  <div class="jim-message-edit-error" hidden></div>' +
-            '  <div class="jim-message-edit-actions">' +
-            '    <button type="button" class="aui-button aui-button-link" data-action="edit-cancel" data-message-id="' + message.id + '">Cancel</button>' +
-            '    <button type="submit" class="aui-button aui-button-primary" data-action="edit-save" data-message-id="' + message.id + '">Save</button>' +
-            '  </div>' +
-            '</form>';
-    }
+    // renderEditForm() (which rendered an inline edit form inside the
+    // message bubble) has been removed. The edit textarea now lives
+    // in the main composer at the bottom of the chat; see
+    // enterEditMode() / cancelEditMode() / submitComposerEdit().
 
     function renderIssueChatCard(message) {
         if (!message || !message.issueKey) {
@@ -2143,7 +3851,9 @@
                 : '') +
             '<div class="jim-issue-chat-card-main">' +
             keyHtml +
-            '<span class="jim-issue-chat-card-summary">' + escapeHtml(message.issueSummary || '') + '</span>' +
+            (message.issueAccessible === false
+                ? '<span class="jim-issue-chat-card-summary jim-issue-chat-card-noperm">You don\u2019t have permission to view this issue.</span>'
+                : '<span class="jim-issue-chat-card-summary">' + escapeHtml(message.issueSummary || '') + '</span>') +
             '</div>' +
             (url
                 ? '<a class="jim-issue-chat-card-open" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">Open issue &#8594;</a>'
@@ -2161,10 +3871,20 @@
         if (message.deleted) {
             contentHtml = '<div class="jim-message-deleted">This message was deleted.</div>';
         } else if (isEditing) {
-            contentHtml = renderEditForm(message);
+            // The actual edit textarea lives in the main composer at
+            // the bottom of the chat (Slack/Telegram style). The
+            // original bubble just shows a faint placeholder so the
+            // user can see which message they are editing.
+            contentHtml = '<div class="jim-message-editing-placeholder">' +
+                '<span class="jim-message-editing-icon" aria-hidden="true">&#9998;</span>' +
+                'Editing this message&hellip;' +
+                '</div>';
         } else {
             var body = message.body ? String(message.body).trim() : '';
-            contentHtml = body ? '<div class="jim-message-text">' + renderMessageTextHtml(body) + '</div>' : '';
+            var textDir = detectTextDirection(body);
+            contentHtml = body
+                ? '<div class="jim-message-text jim-message-text-' + textDir + '">' + renderMessageTextHtml(body) + '</div>'
+                : '';
             if (normalizeEventType(message) === 'ISSUE_LINK') {
                 contentHtml += renderIssueChatCard(message);
             }
@@ -2175,12 +3895,30 @@
             ? '<span class="jim-message-edited">(edited)</span>'
             : '';
 
+        // Every bubble carries its own exact send/receive time so users
+        // can see when each individual message was sent, not just the
+        // group header. Hidden for deleted bubbles and while editing.
+        var bubbleTime = !message.deleted && !isEditing
+            ? '<span class="jim-message-bubble-time" title="' +
+              escapeHtml(formatTime(message.createdAt)) + '">' +
+              escapeHtml(formatExactTime(message.createdAt)) + '</span>'
+            : '';
+
+        var metaHtml = (bubbleTime || editedLabel)
+            ? '<div class="jim-message-meta">' + editedLabel + bubbleTime + '</div>'
+            : '';
+
+        // Sprint 12: mark selected bubbles in multi-select mode.
+        var selectedClass = (state.selectionMode && state.selectedIds
+            && state.selectedIds.indexOf(message.id) >= 0)
+            ? ' jim-message-bubble-selected' : '';
+
         return '' +
-            '<div class="jim-message-bubble-wrapper" data-message-id="' + message.id + '">' +
+            '<div class="jim-message-bubble-wrapper' + selectedClass + '" data-message-id="' + message.id + '">' +
             '  <div class="' + bubbleClass + '">' +
             (!message.deleted && !isEditing ? renderReplyPreview(message) : '') +
             contentHtml +
-            (editedLabel ? '<div class="jim-message-meta">' + editedLabel + '</div>' : '') +
+            metaHtml +
             '  </div>' +
             (!isEditing ? renderReactions(message) : '') +
             (!isEditing ? renderMessageActions(message) : '') +
@@ -2212,29 +3950,202 @@
         return body;
     }
 
+    // Human-readable file size for Assistant attachment rows.
+    function formatSystemFileSize(bytes) {
+        if (bytes == null || isNaN(bytes) || bytes < 0) {
+            return '';
+        }
+        var units = ['B', 'KB', 'MB', 'GB'];
+        var size = Number(bytes);
+        var unit = 0;
+        while (size >= 1024 && unit < units.length - 1) {
+            size /= 1024;
+            unit++;
+        }
+        var rounded = unit === 0 ? size : Math.round(size * 10) / 10;
+        return rounded + ' ' + units[unit];
+    }
+
+    // Full mention/comment text on an Assistant card. Preserves line breaks
+    // (CSS white-space: pre-wrap) and HTML-escapes so no markup/script renders.
+    // Long text collapses behind a native <details> so the card stays compact
+    // while the FULL text remains readable on expand (never truncated away).
+    function renderSystemMentionText(message) {
+        var text = message.eventText;
+        if (!text) {
+            return '';
+        }
+        var escaped = escapeHtml(text);
+        if (text.length <= 280) {
+            return '<div class="jim-system-card-mention-text">' + escaped + '</div>';
+        }
+        var preview = escapeHtml(text.substring(0, 200).replace(/\s+/g, ' ').trim()) + '…';
+        return '' +
+            '<details class="jim-system-card-mention">' +
+            '<summary class="jim-system-card-mention-preview">' + preview + '</summary>' +
+            '<div class="jim-system-card-mention-text">' + escaped + '</div>' +
+            '</details>';
+    }
+
+    function renderSystemAttachmentRow(file, messageId) {
+        var name = escapeHtml(file.fileName || 'attachment');
+        var size = formatSystemFileSize(file.fileSize);
+        var sizeSpan = size ? '<span class="jim-att-size">' + escapeHtml(size) + '</span>' : '';
+        var action;
+        if (file.available && file.downloadUrl) {
+            var url = resolveAttachmentUrl(file.downloadUrl);
+            // Opening/downloading a file counts as acknowledging the card.
+            action = '<a class="jim-att-download aui-button aui-button-link" href="' + escapeHtml(url) +
+                '" target="_blank" rel="noopener noreferrer" data-action="ack-system" data-message-id="' +
+                messageId + '">Download</a>';
+        } else {
+            action = '<span class="jim-att-unavailable">Unavailable</span>';
+        }
+        return '' +
+            '<div class="jim-system-card-attachment">' +
+            '<span class="jim-att-icon" aria-hidden="true">&#128206;</span>' +
+            '<span class="jim-att-name" title="' + name + '">' + name + '</span>' +
+            sizeSpan +
+            action +
+            '</div>';
+    }
+
+    // Attachment rows for a combined mention+attachment or standalone
+    // attachment Assistant card. Shows the first few inline; any extras collapse
+    // behind an "and N more" <details> so many files stay readable.
+    function renderSystemAttachments(message) {
+        var files = message.issueAttachments;
+        if (!files || !files.length) {
+            return '';
+        }
+        var maxInline = 3;
+        var inline = files.slice(0, maxInline);
+        var rest = files.slice(maxInline);
+        var html = '<div class="jim-system-card-attachments">';
+        for (var i = 0; i < inline.length; i++) {
+            html += renderSystemAttachmentRow(inline[i], message.id);
+        }
+        if (rest.length) {
+            html += '<details class="jim-system-card-attachments-more">' +
+                '<summary>and ' + rest.length + ' more</summary>';
+            for (var j = 0; j < rest.length; j++) {
+                html += renderSystemAttachmentRow(rest[j], message.id);
+            }
+            html += '</details>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    // Schedule-approval info block: proposed date, requester and a live status
+    // badge. `scheduleApproval` is only present (permission-gated) for the
+    // approver's card on an accessible issue.
+    function renderScheduleApproval(message) {
+        var sa = message.scheduleApproval;
+        if (!sa) {
+            return '';
+        }
+        var rows = '';
+        if (sa.proposedDateYmd) {
+            rows += '<div class="jim-approval-row"><span class="jim-approval-label">' + escapeHtml(t('Proposed date')) + '</span>' +
+                '<span class="jim-approval-value">' + escapeHtml(calDateYmd(sa.proposedDateYmd)) + '</span></div>';
+        }
+        if (sa.requesterName) {
+            rows += '<div class="jim-approval-row"><span class="jim-approval-label">' + escapeHtml(t('Requested by')) + '</span>' +
+                '<span class="jim-approval-value">' + escapeHtml(String(sa.requesterName)) + '</span></div>';
+        }
+        if (sa.approverName) {
+            rows += '<div class="jim-approval-row"><span class="jim-approval-label">' + escapeHtml(t('Decided by')) + '</span>' +
+                '<span class="jim-approval-value">' + escapeHtml(String(sa.approverName)) + '</span></div>';
+        }
+        var status = sa.status || 'Pending';
+        var tone = status.toLowerCase() === 'approved' ? 'approved'
+            : (status.toLowerCase() === 'rejected' ? 'rejected' : 'pending');
+        rows += '<div class="jim-approval-row"><span class="jim-approval-label">' + escapeHtml(t('Status')) + '</span>' +
+            '<span class="jim-approval-status jim-approval-status-' + tone + '">' + escapeHtml(t(status)) + '</span></div>';
+        if (sa.reason) {
+            rows += '<div class="jim-approval-reason"><span class="jim-approval-label">' + escapeHtml(t('Rejection reason')) + '</span>' +
+                '<div class="jim-approval-reason-text">' + escapeHtml(String(sa.reason)) + '</div></div>';
+        }
+        return '<div class="jim-system-card-approval">' + rows + '</div>';
+    }
+
+    // Approve / Reject buttons — only for the selected approver while Pending.
+    function approvalActionButtons(message) {
+        var sa = message.scheduleApproval;
+        if (!sa || !sa.isApprover) {
+            return '';
+        }
+        var status = (sa.status || 'Pending').toLowerCase();
+        if (status !== 'pending') {
+            return '';
+        }
+        return '' +
+            '<button type="button" class="jim-approval-btn jim-approval-approve aui-button" ' +
+            'data-action="schedule-approve" data-message-id="' + message.id + '">' + escapeHtml(t('Approve')) + '</button>' +
+            '<button type="button" class="jim-approval-btn jim-approval-reject aui-button" ' +
+            'data-action="schedule-reject" data-message-id="' + message.id + '">' + escapeHtml(t('Reject')) + '</button>';
+    }
+
     function renderSystemMessage(message) {
         var config = getEventCardConfig(message);
         var titleText = config.title(message);
         var bodyText = systemCardBodyText(message, titleText);
         var issueUrl = resolveIssueUrl(message.issueUrl);
-        var issueLink = '';
+        var actioned = !!message.actioned;
+        // Issue-referencing system card whose viewer lost browse permission:
+        // the server redacted summary/text/files; show a safe notice only.
+        var unavailable = !!message.issueUnavailable;
+        var mentionTextHtml = unavailable ? '' : renderSystemMentionText(message);
+        var attachmentsHtml = unavailable ? '' : renderSystemAttachments(message);
+        var approvalHtml = unavailable ? '' : renderScheduleApproval(message);
+        var approvalButtons = unavailable ? '' : approvalActionButtons(message);
+        // Summary-first title correction: when the issue summary is available,
+        // it is the primary label and the event phrase becomes the subtitle;
+        // the issue key stays visible as metadata.
+        var hasSummary = !unavailable && !!message.issueSummary;
+        var primaryTitle = hasSummary ? message.issueSummary : titleText;
+        var subtitle = hasSummary ? titleText : '';
 
+        // Issue link counts as an action: clicking it marks the card as
+        // acknowledged. data-action="ack-system" is delegated through the
+        // existing message-list click handler. The link still navigates
+        // normally (target=_blank) so the user reaches the issue.
+        var issueLink = '';
         if (issueUrl) {
-            issueLink = '<a class="jim-system-card-link jim-issue-link-button aui-button aui-button-link" href="' +
-                escapeHtml(issueUrl) + '" target="_blank" rel="noopener noreferrer">Open issue</a>';
+            issueLink = '<a class="jim-system-card-link jim-issue-link-button aui-button aui-button-link" ' +
+                'href="' + escapeHtml(issueUrl) + '" target="_blank" rel="noopener noreferrer" ' +
+                'data-action="ack-system" data-message-id="' + message.id + '">' + escapeHtml(t('Open issue')) + '</a>';
         }
+
+        // Manual acknowledge button. Present for every assistant message
+        // (link or not) so the user can always confirm "I saw this".
+        // Hidden once actioned (the Acknowledged pill takes its place).
+        var ackButton = !actioned
+            ? '<button type="button" class="jim-system-card-ack-btn aui-button aui-button-link" ' +
+              'data-action="ack-system" data-message-id="' + message.id + '">' +
+              '<span aria-hidden="true">&#10003;</span> ' + escapeHtml(t('Mark as seen')) + '</button>'
+            : '<span class="jim-system-card-actioned-pill" title="You marked this as seen">' +
+              '<span aria-hidden="true">&#10003;</span> ' + escapeHtml(t('Acknowledged')) + '</span>';
+        // Sprint 12: hide this Assistant item for me only (per-user; auditable).
+        ackButton += '<button type="button" class="jim-system-card-ack-btn aui-button aui-button-link" ' +
+            'data-action="hide-for-me" data-message-id="' + message.id + '">' + escapeHtml(t('Delete for me')) + '</button>';
 
         var eventType = normalizeEventType(message) || 'system';
         var isUnread = !!(message.id && state.initiallyUnreadIds[message.id]);
-        var unreadBadge = isUnread
+        var unreadBadge = isUnread && !actioned
             ? '<span class="jim-system-card-new-badge">NEW</span>'
             : '';
 
+        var cardClass = 'jim-system-card jim-issue-card' +
+            ' jim-system-card-tone-' + escapeHtml(config.tone) +
+            ' jim-system-card-event-' + escapeHtml(eventType.toLowerCase()) +
+            (isUnread && !actioned ? ' jim-system-card-new' : '') +
+            (actioned ? ' jim-system-card-actioned' : '');
+
         return '' +
             '<div class="jim-message-row jim-message-row-system">' +
-            '  <article class="jim-system-card jim-issue-card jim-system-card-tone-' + escapeHtml(config.tone) +
-            ' jim-system-card-event-' + escapeHtml(eventType.toLowerCase()) +
-            (isUnread ? ' jim-system-card-new' : '') + '">' +
+            '  <article class="' + cardClass + '" data-message-id="' + message.id + '">' +
             '    <header class="jim-system-card-header">' +
             '      <span class="jim-system-card-lozenge jim-system-card-lozenge-' + escapeHtml(config.tone) + '">' +
             escapeHtml(config.label) + '</span>' +
@@ -2242,14 +4153,114 @@
             '      <span class="jim-system-card-time">' + escapeHtml(formatMessageTime(message.createdAt)) + '</span>' +
             '    </header>' +
             '    <div class="jim-system-card-body">' +
-            '      <div class="jim-system-card-title">' + escapeHtml(titleText) + '</div>' +
+            '      <div class="jim-system-card-title">' + escapeHtml(primaryTitle) + '</div>' +
+            (subtitle ? '<div class="jim-system-card-subtitle">' + escapeHtml(subtitle) + '</div>' : '') +
             (message.issueKey ? '<div class="jim-system-card-issue-key">' + escapeHtml(message.issueKey) + '</div>' : '') +
-            (message.issueSummary ? '<div class="jim-system-card-summary">' + escapeHtml(message.issueSummary) + '</div>' : '') +
-            (bodyText ? '<div class="jim-system-card-text">' + escapeHtml(bodyText) + '</div>' : '') +
+            (!unavailable && bodyText ? '<div class="jim-system-card-text">' + escapeHtml(bodyText) + '</div>' : '') +
+            approvalHtml +
+            mentionTextHtml +
+            attachmentsHtml +
+            (unavailable ? '<div class="jim-system-card-unavailable">You no longer have access to this issue.</div>' : '') +
             '    </div>' +
-            (issueLink ? '<footer class="jim-system-card-actions">' + issueLink + '</footer>' : '') +
+            '    <footer class="jim-system-card-actions">' +
+            issueLink +
+            approvalButtons +
+            ackButton +
+            '    </footer>' +
             '  </article>' +
             '</div>';
+    }
+
+    /**
+     * Marks a Jira Assistant / system message as actioned for the current
+     * user. Used by:
+     *   - clicking the issue link inside the card (data-action="ack-system")
+     *   - clicking the manual "Mark as seen" button
+     * The local message state is updated optimistically so the actioned
+     * style appears immediately; on REST failure we roll back.
+     */
+    // Approve / reject a schedule-approval card. Reject prompts for a required
+    // reason. On success the server returns the updated (actioned) message,
+    // which we merge so the card flips to its handled/approved/rejected state.
+    function submitScheduleDecision(messageId, action, buttonEl) {
+        var reason = null;
+        if (action === 'reject') {
+            reason = window.prompt('Enter a reason for rejecting the proposed completion date:');
+            if (reason === null) {
+                return; // cancelled
+            }
+            reason = reason.trim();
+            if (!reason) {
+                showError('A rejection reason is required.');
+                return;
+            }
+        }
+        var card = buttonEl && buttonEl.closest ? buttonEl.closest('.jim-system-card') : null;
+        if (card) {
+            var btns = card.querySelectorAll('.jim-approval-btn');
+            for (var i = 0; i < btns.length; i++) {
+                btns[i].setAttribute('disabled', 'disabled');
+            }
+        }
+        JimApi.scheduleApprovalDecision(messageId, action, reason).then(function (updated) {
+            var msg = findMessageById(messageId);
+            if (msg && updated) {
+                msg.actioned = true;
+                if (updated.scheduleApproval) {
+                    msg.scheduleApproval = updated.scheduleApproval;
+                }
+            }
+            state.renderedMessagesHtml = null;
+            renderMessages();
+            loadMessages(state.selectedConversationId, false, false);
+        }).catch(function (error) {
+            if (card) {
+                var b2 = card.querySelectorAll('.jim-approval-btn');
+                for (var j = 0; j < b2.length; j++) {
+                    b2[j].removeAttribute('disabled');
+                }
+            }
+            showError(error && error.message ? error.message : 'Could not submit the decision.');
+        });
+    }
+
+    function markSystemMessageActioned(messageId) {
+        if (!messageId) {
+            return;
+        }
+        var message = findMessageById(messageId);
+        if (!message || message.actioned) {
+            return;
+        }
+        // Optimistic update.
+        message.actioned = true;
+        state.renderedMessagesHtml = null;
+        renderMessages();
+        JimApi.markMessageActioned(messageId).catch(function (error) {
+            logError('markMessageActioned', error);
+            // Rollback the optimistic flag on failure.
+            message.actioned = false;
+            state.renderedMessagesHtml = null;
+            renderMessages();
+            showError(error && error.message
+                ? error.message
+                : 'Could not mark the message as seen.');
+        });
+    }
+
+    // Minimal, always-safe Assistant card used when the rich renderer throws on
+    // a single item (missing/odd data). Shows the key facts so the feed survives.
+    function renderSystemFallback(message) {
+        var safeBody = '';
+        try { safeBody = escapeHtml(String((message && (message.body || message.issueKey)) || 'Jira Assistant notification')); } catch (e) { safeBody = 'Jira Assistant notification'; }
+        var t2 = '';
+        try { t2 = escapeHtml(formatMessageTime(message && message.createdAt)); } catch (e) { t2 = ''; }
+        return '<div class="jim-message-row jim-message-row-system">' +
+            '<article class="jim-system-card jim-issue-card jim-system-card-tone-info" data-message-id="' + (message && message.id ? escapeHtml(String(message.id)) : '') + '">' +
+            '<header class="jim-system-card-header"><span class="jim-system-card-lozenge jim-system-card-lozenge-info">NOTICE</span>' +
+            '<span class="jim-system-card-time">' + t2 + '</span></header>' +
+            '<div class="jim-system-card-body"><div class="jim-system-card-text">' + safeBody + '</div></div>' +
+            '</article></div>';
     }
 
     function renderMessageGroups(messages) {
@@ -2274,7 +4285,14 @@
             }
 
             if (isSystemMessage(message)) {
-                html.push(renderSystemMessage(message));
+                // Resilience: a single malformed Assistant card must never blank
+                // the whole feed. Render a safe fallback for it and continue.
+                try {
+                    html.push(renderSystemMessage(message));
+                } catch (sysErr) {
+                    logError('renderSystemMessage', sysErr);
+                    html.push(renderSystemFallback(message));
+                }
                 index++;
                 continue;
             }
@@ -2315,9 +4333,24 @@
 
             var avatarHtml = '';
             if (!isOwn) {
-                var avatarUrl = conversation && !isSystemConversation(conversation) ? conversation.avatarUrl : null;
+                // Use the SENDER's avatar (every message JSON includes
+                // senderAvatarUrl now). Falling back to the conversation
+                // avatar would be wrong in group / project chats where
+                // the conversation does not have a per-user avatar - all
+                // bubbles ended up rendering the same initials.
+                var firstMessage = group[0];
+                var senderAvatar = (firstMessage && firstMessage.senderAvatarUrl) || null;
+                // Last-resort fallback for old (pre-this-build) message
+                // rows where senderAvatarUrl wasn't populated by the
+                // server: in a DIRECT conversation we can safely use the
+                // conversation avatar; in any other case we let
+                // renderAvatar() draw the coloured initials.
+                if (!senderAvatar && conversation && !isSystemConversation(conversation)
+                        && !isGroupConversation(conversation) && !conversation.isProjectChat) {
+                    senderAvatar = conversation.avatarUrl || null;
+                }
                 avatarHtml = '<div class="jim-message-avatar">' +
-                    renderAvatar(avatarUrl, senderName, 'jim-avatar-sm') +
+                    renderAvatar(senderAvatar, senderName, 'jim-avatar-sm') +
                     '</div>';
             }
 
@@ -2375,6 +4408,13 @@
         if (!message || message.deleted) {
             return;
         }
+        // Replying and editing are mutually exclusive in the composer.
+        // If the user is currently editing a message and clicks Reply
+        // on another, cancel the edit first (restoring whatever draft
+        // they had before they started editing).
+        if (state.editingMessageId) {
+            cancelEditMode();
+        }
         state.replyToMessage = {
             id: message.id,
             senderDisplayName: message.senderDisplayName || message.senderUserKey || 'User',
@@ -2390,11 +4430,282 @@
         if (!state.replyToMessage.bodyPreview && attachments.length) {
             state.replyToMessage.attachmentPreview = attachmentPreviewLabel(attachments[0]);
         }
-        state.editingMessageId = null;
         renderComposerReply();
         if (els.messageInput) {
             els.messageInput.focus();
         }
+    }
+
+    /**
+     * Renders the "Editing message" chip above the composer. The chip
+     * sits next to the reply chip so the user has a clear visual cue
+     * that the composer is now in edit mode rather than send mode.
+     * Hidden when no edit is in progress.
+     */
+    function renderComposerEditing() {
+        if (!els.composerEditing) {
+            return;
+        }
+        if (!state.editingMessageId) {
+            setHidden(els.composerEditing, true);
+            if (els.composerEditingPreview) {
+                els.composerEditingPreview.textContent = '';
+            }
+            return;
+        }
+        var msg = findMessageById(state.editingMessageId);
+        if (els.composerEditingPreview) {
+            var preview = msg && msg.body ? String(msg.body) : '';
+            // Single-line preview - just enough so the user knows
+            // which message they're editing without re-rendering
+            // the whole body inside the chip.
+            els.composerEditingPreview.textContent = preview.replace(/\s+/g, ' ').slice(0, 80);
+        }
+        setHidden(els.composerEditing, false);
+    }
+
+    /**
+     * Enters edit mode for the given message:
+     *   - saves whatever the user has currently typed (so cancelling
+     *     restores it exactly)
+     *   - drops any reply/issue/file/voice context that would conflict
+     *     with editing
+     *   - loads the message body into the main composer textarea
+     *   - shows the "Editing message" chip above the composer
+     *   - re-renders the message list so the original bubble shows the
+     *     "Editing this message..." placeholder
+     */
+    function enterEditMode(message) {
+        if (!message || message.deleted) {
+            return;
+        }
+        if (!isWithinEditWindow(message)) {
+            showError('Messages can only be edited within 30 minutes.');
+            return;
+        }
+        // Leaving an existing edit? Discard its in-progress edits but
+        // keep the original pre-edit draft (the user was editing, not
+        // composing).
+        if (state.editingMessageId && state.editingMessageId !== message.id) {
+            // We're switching the edit target - drop the in-progress
+            // edited text but keep the pre-edit draft so cancel still
+            // restores the right thing.
+        } else if (!state.editingMessageId) {
+            // First edit entry - snapshot whatever they had typed.
+            state.savedDraftBeforeEdit = (els.messageInput && els.messageInput.value) || '';
+        }
+        // Edit mode and reply/issue/file are mutually exclusive in the
+        // composer for clarity. Clear them.
+        if (state.replyToMessage) {
+            clearReplyTarget();
+        }
+        clearSelectedIssue();
+        clearSelectedFile();
+        cancelVoiceRecording();
+
+        state.editingMessageId = message.id;
+        state.deleteConfirmMessageId = null;
+
+        if (els.messageInput) {
+            els.messageInput.value = message.body || '';
+            // Move cursor to the end so the user can keep typing.
+            try {
+                var n = els.messageInput.value.length;
+                els.messageInput.setSelectionRange(n, n);
+            } catch (e) { /* ignore - unsupported on some browsers */ }
+        }
+        renderComposerEditing();
+        renderMessages();
+        updateComposerState();
+        focusMessageInput();
+    }
+
+    /**
+     * Exits edit mode, restoring the user's original draft (whatever
+     * they had typed in the composer before they clicked Edit). Safe
+     * to call when no edit is in progress.
+     */
+    function cancelEditMode() {
+        if (!state.editingMessageId) {
+            return;
+        }
+        state.editingMessageId = null;
+        if (els.messageInput) {
+            els.messageInput.value = state.savedDraftBeforeEdit || '';
+        }
+        state.savedDraftBeforeEdit = '';
+        renderComposerEditing();
+        renderMessages();
+        updateComposerState();
+        focusMessageInput();
+    }
+
+    // --- Sprint 12: multi-select + bulk delete-for-me -----------------------
+
+    function enterSelectionMode(messageId) {
+        state.selectionMode = true;
+        state.selectedIds = messageId ? [messageId] : [];
+        state.reactionPickerMessageId = null;
+        renderMessages();
+    }
+
+    function exitSelectionMode() {
+        state.selectionMode = false;
+        state.selectedIds = [];
+        renderMessages();
+    }
+
+    function toggleSelectMessage(messageId) {
+        if (!messageId) {
+            return;
+        }
+        var idx = state.selectedIds.indexOf(messageId);
+        if (idx >= 0) {
+            state.selectedIds.splice(idx, 1);
+        } else {
+            state.selectedIds.push(messageId);
+        }
+        if (state.selectedIds.length === 0) {
+            state.selectionMode = false;
+        }
+        renderMessages();
+    }
+
+    // Sprint 12 fix2: drop messages from the in-memory list immediately after a
+    // "Delete for me" so they vanish at once. Required because loadMessages()
+    // MERGES the server response into state.messages (to preserve lazy-loaded
+    // older pages across polls), which would otherwise retain a message the
+    // server has now filtered out for this viewer.
+    function removeMessagesFromState(ids) {
+        if (!ids || !ids.length || !state.messages || !state.messages.length) {
+            return;
+        }
+        var remove = {};
+        for (var r = 0; r < ids.length; r++) {
+            remove[ids[r]] = true;
+        }
+        var kept = [];
+        for (var m = 0; m < state.messages.length; m++) {
+            if (!state.messages[m] || !remove[state.messages[m].id]) {
+                kept.push(state.messages[m]);
+            }
+        }
+        state.messages = kept;
+    }
+
+    function bulkHideForMe() {
+        if (!state.selectedIds || state.selectedIds.length === 0) {
+            return;
+        }
+        var ids = state.selectedIds.slice();
+        JimApi.hideMessages(ids).then(function () {
+            removeMessagesFromState(ids);
+            exitSelectionMode();
+            renderMessages();
+            return loadMessages(state.selectedConversationId, false, false);
+        }).then(function () {
+            loadConversations();
+        }).catch(function (error) {
+            logError('bulkHideForMe', error);
+            showError(error && error.message ? error.message : t('Unable to delete the selected messages for you.'));
+        });
+    }
+
+    function renderSelectionToolbarHtml() {
+        if (!state.selectionMode) {
+            return '';
+        }
+        var count = state.selectedIds ? state.selectedIds.length : 0;
+        var selected = selectedMessages();
+        var anyForwardable = selected.some(isForwardableMessage);
+        var allCopyable = count > 0 && selected.every(function (m) { return m && m.body; });
+        var anyShareable = selected.some(function (m) { return m && m.body; });
+        var allSavable = count > 0 && !isSelfConversation(state.selectedConversation)
+            && selected.every(function (m) { return m && !m.deleted && !isSystemMessage(m); });
+        return '<div class="jim-selection-toolbar" role="toolbar" aria-label="' + escapeHtml(t('Select')) + '">' +
+            '<button type="button" class="jim-selection-cancel" data-action="selection-cancel" aria-label="' + escapeHtml(t('Cancel')) + '">✕</button>' +
+            '<span class="jim-selection-count">' + escapeHtml(selectionCountLabel(count)) + '</span>' +
+            '<button type="button" class="jim-selection-copy" data-action="bulk-copy"' +
+            (allCopyable ? '' : ' disabled title="' + escapeHtml(t('Only messages with text can be copied')) + '"') + '>' + escapeHtml(t('Copy')) + '</button>' +
+            '<button type="button" class="jim-selection-share" data-action="bulk-share"' +
+            (anyShareable ? '' : ' disabled title="' + escapeHtml(t('Share is not available for this selection')) + '"') + '>' + escapeHtml(t('Share')) + '</button>' +
+            '<button type="button" class="jim-selection-forward" data-action="bulk-forward"' +
+            (anyForwardable ? '' : ' disabled title="' + escapeHtml(t('For Forward, select only one message.')) + '"') + '>' + escapeHtml(t('Forward')) + '</button>' +
+            '<button type="button" class="jim-selection-save" data-action="bulk-save"' +
+            (allSavable ? '' : ' disabled title="' + escapeHtml(t('Save is not available for this selection')) + '"') + '>' + escapeHtml(t('Save to Saved Messages')) + '</button>' +
+            '<button type="button" class="jim-selection-delete" data-action="bulk-hide-for-me"' +
+            (count === 0 ? ' disabled' : '') + '>' + escapeHtml(t('Delete for me')) + '</button>' +
+            '</div>';
+    }
+
+    function mergeAroundMessages(page) {
+        var incoming = (page && page.messages) || [];
+        if (!incoming.length) {
+            return;
+        }
+        var byId = {};
+        var i;
+        for (i = 0; i < state.messages.length; i++) {
+            byId[state.messages[i].id] = state.messages[i];
+        }
+        for (i = 0; i < incoming.length; i++) {
+            byId[incoming[i].id] = incoming[i];
+        }
+        var merged = [];
+        for (var id in byId) {
+            if (Object.prototype.hasOwnProperty.call(byId, id)) {
+                merged.push(byId[id]);
+            }
+        }
+        merged.sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
+        state.messages = merged;
+        if (page.hasMoreOlder === false) {
+            state.hasMoreOlder = false;
+        }
+        state.renderedMessagesHtml = null;
+        renderMessages();
+    }
+
+    function openConversationAtMessage(conversationId, messageId) {
+        hideMessageSearchResults();
+        if (els.msgSearch) {
+            els.msgSearch.value = '';
+        }
+        if (!conversationId || !messageId) {
+            return;
+        }
+        if (state.selectedConversationId !== conversationId) {
+            selectConversation(conversationId);
+        }
+        var attempts = 0;
+        var aroundTried = false;
+        (function tryJump() {
+            attempts++;
+            var target = els.messageList
+                ? els.messageList.querySelector('[data-message-id="' + messageId + '"]') : null;
+            if (target) {
+                scrollToReplyTarget(messageId);
+                return;
+            }
+            if (attempts > 14) {
+                showError(t('Message not available'));
+                return;
+            }
+            if (!aroundTried && JimApi.messagesAround && attempts > 1) {
+                aroundTried = true;
+                JimApi.messagesAround(conversationId, messageId, 25, 25).then(function (page) {
+                    mergeAroundMessages(page);
+                    window.setTimeout(tryJump, 80);
+                }).catch(function () {
+                    window.setTimeout(tryJump, 200);
+                });
+                return;
+            }
+            if (attempts > 2 && state.hasMoreOlder !== false && !state.loadingOlder) {
+                loadOlderMessages();
+            }
+            window.setTimeout(tryJump, 350);
+        })();
     }
 
     function scrollToReplyTarget(messageId) {
@@ -2476,11 +4787,25 @@
             }
 
             var replyPreview = target.closest('.jim-reply-preview');
-            if (replyPreview) {
+            if (replyPreview && !state.selectionMode) {
                 event.preventDefault();
                 var replyTargetId = parseInt(replyPreview.getAttribute('data-reply-target-id'), 10);
                 scrollToReplyTarget(replyTargetId);
                 return;
+            }
+
+            // Sprint 12: in multi-select mode a click toggles the message's
+            // selection (except clicks on the selection toolbar's own buttons).
+            if (state.selectionMode) {
+                var toolbarBtn = target.closest('[data-action="bulk-hide-for-me"], [data-action="bulk-copy"], [data-action="bulk-share"], [data-action="bulk-forward"], [data-action="bulk-save"], [data-action="selection-cancel"]');
+                if (!toolbarBtn) {
+                    var selRow = target.closest('[data-message-id]');
+                    if (selRow) {
+                        event.preventDefault();
+                        toggleSelectMessage(parseInt(selRow.getAttribute('data-message-id'), 10));
+                        return;
+                    }
+                }
             }
 
             var actionEl = target.closest('[data-action]');
@@ -2488,6 +4813,78 @@
                 return;
             }
             var action = actionEl.getAttribute('data-action');
+
+            // Lazy-load older messages. Uses data-action delegation so the
+            // button can be re-rendered freely by renderMessages without
+            // losing its handler.
+            if (action === 'load-older') {
+                event.preventDefault();
+                loadOlderMessages();
+                return;
+            }
+
+            // Jira Assistant event-type filter chip (no message id).
+            if (action === 'assistant-filter') {
+                event.preventDefault();
+                setAssistantFilter(actionEl.getAttribute('data-filter'));
+                return;
+            }
+
+            // Sprint 12: selection-toolbar buttons (no message id).
+            if (action === 'selection-cancel') {
+                event.preventDefault();
+                exitSelectionMode();
+                return;
+            }
+            if (action === 'bulk-hide-for-me') {
+                event.preventDefault();
+                bulkHideForMe();
+                return;
+            }
+            if (action === 'bulk-copy') {
+                event.preventDefault();
+                copySelectedMessages();
+                return;
+            }
+            if (action === 'bulk-share') {
+                event.preventDefault();
+                shareSelectedMessages();
+                return;
+            }
+            if (action === 'bulk-forward') {
+                event.preventDefault();
+                forwardSelectedMessages();
+                return;
+            }
+            if (action === 'bulk-save') {
+                event.preventDefault();
+                saveSelectedMessages();
+                return;
+            }
+
+            // Jira Assistant message acknowledgement. The click can come
+            // from either the manual 'Mark as seen' button OR the issue
+            // link; in the issue-link case we DO NOT preventDefault so the
+            // link still navigates to the issue, we just fire the action
+            // call alongside.
+            if (action === 'ack-system') {
+                var ackId = parseInt(actionEl.getAttribute('data-message-id'), 10);
+                if (!isNaN(ackId)) {
+                    markSystemMessageActioned(ackId);
+                }
+                if (actionEl.tagName === 'BUTTON') {
+                    event.preventDefault();
+                }
+                return;
+            }
+            if (action === 'schedule-approve' || action === 'schedule-reject') {
+                event.preventDefault();
+                var saId = parseInt(actionEl.getAttribute('data-message-id'), 10);
+                if (!isNaN(saId)) {
+                    submitScheduleDecision(saId, action === 'schedule-approve' ? 'approve' : 'reject', actionEl);
+                }
+                return;
+            }
 
             var messageId = parseInt(actionEl.getAttribute('data-message-id'), 10);
             if (!messageId) {
@@ -2497,6 +4894,25 @@
             if (action === 'react') {
                 state.reactionPickerMessageId = state.reactionPickerMessageId === messageId ? null : messageId;
                 renderMessages();
+                return;
+            }
+            // Sprint 12: Delete-for-me (single) — hide this message for me only.
+            if (action === 'hide-for-me') {
+                JimApi.hideMessage(messageId).then(function () {
+                    removeMessagesFromState([messageId]);
+                    renderMessages();
+                    return loadMessages(state.selectedConversationId, false, false);
+                }).then(function () {
+                    loadConversations();
+                }).catch(function (error) {
+                    logError('hideMessage', error);
+                    showError(error && error.message ? error.message : 'Unable to hide message.');
+                });
+                return;
+            }
+            // Sprint 12: enter multi-select mode starting with this message.
+            if (action === 'select-msg') {
+                enterSelectionMode(messageId);
                 return;
             }
             if (action === 'pin' || action === 'unpin') {
@@ -2529,19 +4945,41 @@
                 setReplyTarget(findMessageById(messageId));
                 return;
             }
+            if (action === 'copy') {
+                copyMessageBody(findMessageById(messageId));
+                return;
+            }
+            if (action === 'share') {
+                shareMessageBody(findMessageById(messageId));
+                return;
+            }
+            if (action === 'forward') {
+                openForwardModal(messageId);
+                return;
+            }
+            if (action === 'save-saved') {
+                saveMessageToSaved(findMessageById(messageId));
+                return;
+            }
+            if (action === 'copy-link') {
+                copyMessageLink(findMessageById(messageId));
+                return;
+            }
             if (action === 'info') {
                 openMessageInfo(messageId);
                 return;
             }
             if (action === 'edit') {
-                state.editingMessageId = messageId;
-                state.deleteConfirmMessageId = null;
-                renderMessages();
+                // The edit textarea lives in the main composer at the
+                // bottom of the chat now. enterEditMode() handles the
+                // 30-minute window check, snapshots the current draft
+                // so cancel can restore it, and loads the message body
+                // into the composer for the user to edit there.
+                enterEditMode(findMessageById(messageId));
                 return;
             }
             if (action === 'edit-cancel') {
-                state.editingMessageId = null;
-                renderMessages();
+                cancelEditMode();
                 return;
             }
             if (action === 'delete') {
@@ -2564,38 +5002,11 @@
             }
         });
 
-        els.messageList.addEventListener('submit', function (event) {
-            var form = event.target;
-            if (!form || !form.classList || !form.classList.contains('jim-message-edit-form')) {
-                return;
-            }
-            event.preventDefault();
-
-            var messageId = parseInt(form.getAttribute('data-message-id'), 10);
-            var textarea = form.querySelector('.jim-message-edit-textarea');
-            var errorEl = form.querySelector('.jim-message-edit-error');
-            var body = textarea ? normalizeMessageBody(textarea.value) : '';
-
-            if (!body) {
-                if (errorEl) {
-                    errorEl.textContent = 'Message cannot be empty.';
-                    setHidden(errorEl, false);
-                }
-                return;
-            }
-
-            if (errorEl) {
-                setHidden(errorEl, true);
-            }
-
-            saveEditedMessage(messageId, body).catch(function (error) {
-                logError('editMessage', error);
-                if (errorEl) {
-                    errorEl.textContent = error && error.message ? error.message : 'Unable to save changes.';
-                    setHidden(errorEl, false);
-                }
-            });
-        });
+        // The edit form is no longer rendered inside the bubble - the
+        // edit textarea lives in the main composer at the bottom of
+        // the chat (see enterEditMode / submitComposerEdit). The
+        // inline-form submit handler that used to live here is gone
+        // intentionally.
     }
 
     var messageActionsBound = false;
@@ -2670,14 +5081,73 @@
             return;
         }
 
+        // The Jira Assistant (per-user SYSTEM conversation) gets an event-type
+        // filter bar. Filtering is display-only: it narrows which already
+        // permission-gated cards are shown and never touches unread counts,
+        // seen/actioned state or the underlying message set.
+        var isSystem = !!(state.selectedConversation && isSystemConversation(state.selectedConversation));
+        var filterKey = isSystem ? (state.assistantFilter || 'all') : 'all';
+        var filterBarHtml = isSystem ? renderAssistantFilterBar() : '';
+
         if (!state.messages.length) {
             state.renderedMessagesHtml = null;
             els.messageList.innerHTML =
-                '<div class="jim-message-list-inner"><div class="jim-empty-state">No messages yet. Start the conversation.</div></div>';
+                '<div class="jim-message-list-inner">' + filterBarHtml +
+                '<div class="jim-empty-state">' +
+                escapeHtml(t('No messages yet. Start the conversation.')) +
+                '</div></div>';
             return;
         }
 
-        var html = '<div class="jim-message-list-inner">' + renderMessageGroups(state.messages) + '</div>';
+        var messagesToRender = state.messages;
+        if (isSystem && filterKey !== 'all') {
+            messagesToRender = [];
+            for (var mi = 0; mi < state.messages.length; mi++) {
+                if (assistantMessageMatchesFilter(state.messages[mi], filterKey)) {
+                    messagesToRender.push(state.messages[mi]);
+                }
+            }
+        }
+
+        // Filtered category has no matches on the loaded pages. If older pages
+        // exist, keep pulling them so a category whose cards live further back
+        // still surfaces (guarded so it stops once exhausted); otherwise show a
+        // clear, filter-aware empty state with a shortcut back to All.
+        if (isSystem && filterKey !== 'all' && !messagesToRender.length) {
+            if (state.hasMoreOlder && !state.loadingOlder
+                    && assistantAutoLoadGuard !== state.messages.length) {
+                assistantAutoLoadGuard = state.messages.length;
+                els.messageList.innerHTML =
+                    '<div class="jim-message-list-inner">' + filterBarHtml +
+                    '<div class="jim-empty-state">' +
+                    escapeHtml(t('Loading older messages\u2026')) +
+                    '</div></div>';
+                state.renderedMessagesHtml = null;
+                loadOlderMessages();
+                return;
+            }
+            var emptyHtml = '<div class="jim-message-list-inner">' + filterBarHtml +
+                '<div class="jim-empty-state jim-assistant-filter-empty">' +
+                escapeHtml(t('No messages in this category.')) +
+                ' <button type="button" class="jim-assistant-filter-showall" ' +
+                'data-action="assistant-filter" data-filter="all">' +
+                escapeHtml(t('Show all')) + '</button></div></div>';
+            els.messageList.innerHTML = emptyHtml;
+            state.renderedMessagesHtml = emptyHtml;
+            return;
+        }
+
+        // Lazy-load older trigger: visible whenever the server might have
+        // older messages we haven't fetched yet. Removed by loadOlderMessages
+        // once an empty / short page comes back.
+        var loadOlderHtml = state.hasMoreOlder
+            ? '<div class="jim-load-older-wrap">' +
+              '<button id="jim-load-older-btn" class="jim-load-older-btn" type="button" data-action="load-older">' +
+              'Load older messages' +
+              '</button>' +
+              '</div>'
+            : '';
+        var html = '<div class="jim-message-list-inner">' + filterBarHtml + renderSelectionToolbarHtml() + loadOlderHtml + renderMessageGroups(messagesToRender) + '</div>';
         if (html !== state.renderedMessagesHtml) {
             var savedAudio = captureAudioPlayback();
             els.messageList.innerHTML = html;
@@ -2699,7 +5169,7 @@
     }
 
     function hasComposerPayload() {
-        return hasComposerText() || !!state.selectedFile || !!state.selectedIssue;
+        return hasComposerText() || hasSelectedFiles() || !!state.selectedIssue;
     }
 
     function updateComposerState() {
@@ -2707,10 +5177,22 @@
             return;
         }
 
-        var readOnly = state.selectedConversation && isSystemConversation(state.selectedConversation);
+        var isSystemConv = state.selectedConversation && isSystemConversation(state.selectedConversation);
+        // Phase 8C: group send policy — backend sets canSendMessage=false for a restricted
+        // non-admin/non-allowed member. Read-only composer with a clear Persian message.
+        var sendRestricted = !!(state.selectedConversation
+            && !isSystemConv
+            && state.selectedConversation.canSendMessage === false);
+        var readOnly = state.licenseBlocked || isSystemConv || sendRestricted;
         var busy = state.sending || state.uploading;
         var canSend = hasComposerPayload();
 
+        if (els.composerReadonly) {
+            els.composerReadonly.textContent = sendRestricted
+                ? '\u0627\u0631\u0633\u0627\u0644 \u067e\u06cc\u0627\u0645 \u062f\u0631 \u0627\u06cc\u0646 \u06af\u0631\u0648\u0647 \u062a\u0648\u0633\u0637 \u0645\u062f\u06cc\u0631\u0627\u0646 \u0645\u062d\u062f\u0648\u062f \u0634\u062f\u0647 \u0627\u0633\u062a'
+                : (els.composerReadonly.getAttribute('data-default-text')
+                    || els.composerReadonly.textContent);
+        }
         if (els.composer) {
             els.composer.classList.toggle('jim-composer-is-readonly', !!readOnly);
         }
@@ -2732,22 +5214,38 @@
         if (els.issueButton) {
             els.issueButton.disabled = !!readOnly || busy;
         }
-        if (els.selectedAttachmentRemove) {
-            els.selectedAttachmentRemove.disabled = !!readOnly || busy;
-        }
-
+        // Send button shows the paper-plane SVG when idle and a short status
+        // label while in flight, so users get clear feedback without losing
+        // the icon shape.
+        var SEND_ICON_SVG = '<svg class="jim-send-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+            '<path fill="currentColor" d="M3.4 20.4 21 12 3.4 3.6c-.5-.2-1 .3-.8.8L4.6 11l8.4 1-8.4 1-2 6.6c-.2.5.3 1 .8.8z"/>' +
+            '</svg>';
         if (state.uploading) {
-            els.sendButton.textContent = 'Uploading...';
+            els.sendButton.innerHTML = '<span class="jim-send-label">Uploading\u2026</span>';
+        } else if (state.sending && state.editingMessageId) {
+            els.sendButton.innerHTML = '<span class="jim-send-label">Saving\u2026</span>';
         } else if (state.sending) {
-            els.sendButton.textContent = 'Sending...';
+            els.sendButton.innerHTML = '<span class="jim-send-label">Sending\u2026</span>';
+        } else if (state.editingMessageId) {
+            // Clear visual cue that hitting Send / Enter will save an
+            // edit, not create a new message.
+            els.sendButton.innerHTML = '<span class="jim-send-label">Save</span>';
         } else {
-            els.sendButton.textContent = 'Send';
+            els.sendButton.innerHTML = SEND_ICON_SVG;
+        }
+        if (els.sendButton) {
+            els.sendButton.classList.toggle('jim-send-button-editing', !!state.editingMessageId);
+        }
+        if (els.composer) {
+            els.composer.classList.toggle('jim-composer-is-editing', !!state.editingMessageId);
         }
 
         setHidden(els.uploadProgress, !state.uploading);
 
         if (!readOnly) {
-            els.messageInput.placeholder = 'Write a message... (Enter to send, Shift+Enter for new line)';
+            els.messageInput.placeholder = state.editingMessageId
+                ? 'Edit the message... (Enter to save, Esc to cancel)'
+                : 'Write a message... (Enter to send, Shift+Enter for new line)';
         }
     }
 
@@ -2773,6 +5271,19 @@
         var items = container.querySelectorAll('[data-conversation-id]');
         for (var i = 0; i < items.length; i++) {
             items[i].addEventListener('click', function (event) {
+                var mention = event.target.closest('[data-action="open-mention"]');
+                if (mention) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    var cid = parseInt(mention.getAttribute('data-conversation-id'), 10);
+                    var mid = parseInt(mention.getAttribute('data-message-id'), 10);
+                    if (mid) {
+                        openConversationAtMessage(cid, mid);
+                    } else {
+                        selectConversation(cid);
+                    }
+                    return;
+                }
                 var id = parseInt(event.currentTarget.getAttribute('data-conversation-id'), 10);
                 selectConversation(id);
             });
@@ -2788,6 +5299,112 @@
         return null;
     }
 
+    // Page sizes for the lazy-load strategy. INITIAL_MESSAGES_LIMIT controls
+    // both the initial open (so the chat shows quickly) and every poll
+    // refresh (so we never re-stream the full backlog). OLDER_PAGE_SIZE is
+    // used when the user explicitly requests older messages via the
+    // 'Load older messages' button or by scrolling to the top.
+    var INITIAL_MESSAGES_LIMIT = 30;
+    var OLDER_PAGE_SIZE = 50;
+
+    /**
+     * Merges existing messages with a newly-fetched batch by id.
+     * Returned array is sorted ascending by id (= chronological), which is
+     * what renderMessageGroups expects. Newer data on the same id wins so
+     * server-side mutations (edits, reactions, deletions, read state) are
+     * picked up on each poll.
+     */
+    function mergeMessages(existing, fresh) {
+        if (!existing || !existing.length) {
+            return (fresh || []).slice();
+        }
+        if (!fresh || !fresh.length) {
+            return existing;
+        }
+        var byId = {};
+        for (var i = 0; i < existing.length; i++) {
+            if (existing[i] && existing[i].id) {
+                byId[existing[i].id] = existing[i];
+            }
+        }
+        for (var j = 0; j < fresh.length; j++) {
+            if (fresh[j] && fresh[j].id) {
+                byId[fresh[j].id] = fresh[j];
+            }
+        }
+        var merged = [];
+        for (var k in byId) {
+            if (Object.prototype.hasOwnProperty.call(byId, k)) {
+                merged.push(byId[k]);
+            }
+        }
+        merged.sort(function (a, b) { return (a.id || 0) - (b.id || 0); });
+        return merged;
+    }
+
+    // --- Sprint 12 polish: ephemeral chat activity indicators ---------------
+    function activityFirstName(a) {
+        var n = (a && a.displayName ? a.displayName : '').toString().trim();
+        return n ? n.split(/\s+/)[0] : '?';
+    }
+
+    function activityLabelText(acts) {
+        if (!acts || !acts.length) {
+            return '';
+        }
+        if (acts.length === 1) {
+            var name = activityFirstName(acts[0]);
+            switch (acts[0].activity) {
+                case 'recording': return name + ' is recording voice…';
+                case 'uploading': return name + ' is sending a file…';
+                case 'uploading_media': return name + ' is sending media…';
+                default: return name + ' is typing…';
+            }
+        }
+        if (acts.length === 2) {
+            return activityFirstName(acts[0]) + ' and ' + activityFirstName(acts[1]) + ' are typing…';
+        }
+        return 'Several people are typing…';
+    }
+
+    function renderActivityIndicator() {
+        var el = document.getElementById('jim-activity-indicator');
+        var text = activityLabelText(state.activities);
+        if (!text) {
+            if (el && el.parentNode) {
+                el.parentNode.removeChild(el);
+            }
+            return;
+        }
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'jim-activity-indicator';
+            el.className = 'jim-activity-indicator';
+            if (els.composer && els.composer.parentNode) {
+                els.composer.parentNode.insertBefore(el, els.composer);
+            }
+        }
+        el.textContent = text;
+    }
+
+    function emitTypingActivity() {
+        var now = Date.now();
+        if (now - (state.lastTypingPost || 0) < 3000) {
+            return;
+        }
+        state.lastTypingPost = now;
+        if (state.selectedConversationId) {
+            JimApi.postActivity(state.selectedConversationId, 'typing').catch(function () {});
+        }
+    }
+
+    function clearTypingActivity() {
+        state.lastTypingPost = 0;
+        if (state.selectedConversationId) {
+            JimApi.postActivity(state.selectedConversationId, null, true).catch(function () {});
+        }
+    }
+
     function loadMessages(conversationId, showLoading, autoScroll) {
         if (autoScroll) {
             state.shouldAutoScroll = true;
@@ -2798,12 +5415,24 @@
             renderLoadingState(els.messageList, 'Loading messages...');
         }
 
-        return JimApi.listMessages(conversationId, 50, null).then(function (response) {
+        return JimApi.listMessages(conversationId, INITIAL_MESSAGES_LIMIT, null).then(function (response) {
             if (state.selectedConversationId !== conversationId) {
                 return;
             }
-            state.messages = response.messages || [];
+            var fresh = response.messages || [];
+            captureServerNow(response);
+            // Sprint 12 polish: other participants' ephemeral activity (TTL).
+            state.activities = response.activities || [];
+            renderActivityIndicator();
+            // First-load / poll-refresh: MERGE so any older messages the
+            // user has already lazy-loaded stay on screen across polls.
+            state.messages = mergeMessages(state.messages, fresh);
+            // If the very first server response is short of a full page,
+            // there are no older messages to fetch - hide the Load older
+            // button.
             if (state.unreadSnapshotConversationId !== conversationId) {
+                state.hasMoreOlder = fresh.length >= INITIAL_MESSAGES_LIMIT;
+                state.loadingOlder = false;
                 // Snapshot which messages were unread when the conversation was opened,
                 // so "NEW" markers stay visible after the read state syncs.
                 state.unreadSnapshotConversationId = conversationId;
@@ -2819,6 +5448,13 @@
             }
             state.loadingMessages = false;
             renderMessages();
+            // Auto-mark-read while the user is actively viewing this chat so
+            // new incoming messages (delivered via polling) don't leave an
+            // unread badge behind. The tab must be visible to count as
+            // "actively viewing".
+            if (!document.hidden && state.selectedConversationId === conversationId) {
+                maybeMarkReadActiveConversation(conversationId);
+            }
         }).catch(function (error) {
             state.loadingMessages = false;
             logError('loadMessages', error);
@@ -2833,11 +5469,157 @@
         });
     }
 
+    /**
+     * Fetches the next older page of messages and prepends them to
+     * state.messages while preserving the user's scroll position (so the
+     * messages they were looking at stay under their cursor). Triggered
+     * by the 'Load older messages' button or by scrolling to the top of
+     * the chat. No-op when already loading or when the server has
+     * indicated there is nothing older.
+     */
+    function loadOlderMessages() {
+        var convId = state.selectedConversationId;
+        if (!convId || state.loadingOlder || state.hasMoreOlder === false || !els.messageList) {
+            return;
+        }
+        var smallestId = null;
+        for (var i = 0; i < state.messages.length; i++) {
+            var m = state.messages[i];
+            if (m && m.id && (smallestId === null || m.id < smallestId)) {
+                smallestId = m.id;
+            }
+        }
+        if (!smallestId) {
+            return;
+        }
+        state.loadingOlder = true;
+        // Refresh the button label without disturbing the rest of the DOM.
+        var btn = document.getElementById('jim-load-older-btn');
+        if (btn) {
+            btn.textContent = 'Loading older messages\u2026';
+            btn.disabled = true;
+        }
+        var scrollTopBefore = els.messageList.scrollTop;
+        var scrollHeightBefore = els.messageList.scrollHeight;
+        JimApi.listMessages(convId, OLDER_PAGE_SIZE, smallestId).then(function (response) {
+            if (state.selectedConversationId !== convId) {
+                return;
+            }
+            var batch = response.messages || [];
+            captureServerNow(response);
+            if (batch.length < OLDER_PAGE_SIZE) {
+                state.hasMoreOlder = false;
+            }
+            if (batch.length > 0) {
+                state.messages = mergeMessages(state.messages, batch);
+                state.renderedMessagesHtml = null;
+                // Prevent renderMessages from snapping to the bottom; we
+                // want to keep the user looking at the same content.
+                var wasAutoScroll = state.shouldAutoScroll;
+                state.shouldAutoScroll = false;
+                renderMessages();
+                state.shouldAutoScroll = wasAutoScroll;
+                // Keep the previously-visible message at the same screen
+                // position by translating scrollTop by the delta in
+                // scrollHeight introduced by the prepended history.
+                var scrollHeightAfter = els.messageList.scrollHeight;
+                els.messageList.scrollTop = scrollHeightAfter - scrollHeightBefore + scrollTopBefore;
+            }
+        }).catch(function (error) {
+            logError('loadOlderMessages', error);
+        }).then(function () {
+            state.loadingOlder = false;
+            var btnAfter = document.getElementById('jim-load-older-btn');
+            if (btnAfter) {
+                if (state.hasMoreOlder === false) {
+                    btnAfter.parentNode.removeChild(btnAfter);
+                } else {
+                    btnAfter.textContent = 'Load older messages';
+                    btnAfter.disabled = false;
+                }
+            }
+        });
+    }
+
     function markRead(conversationId) {
         return JimApi.markConversationRead(conversationId).catch(function (error) {
             logError('markRead', error);
             return null;
         });
+    }
+
+    /**
+     * Marks the active conversation as read whenever incoming messages or a
+     * stale badge would otherwise produce a "ghost" unread count. We only
+     * call the server when the local sidebar still shows unread > 0 OR there
+     * are visible unread messages in the loaded list, so this stays cheap
+     * during the regular message poll.
+     */
+    function maybeMarkReadActiveConversation(conversationId) {
+        var conv = findConversationById(conversationId);
+        var localUnread = conv ? (Number(conv.unreadCount) || 0) : 0;
+        var hasUnreadMessages = false;
+        for (var i = 0; i < state.messages.length; i++) {
+            var m = state.messages[i];
+            if (m && m.id && !m.readByCurrentUser && !isOwnMessage(m)) {
+                hasUnreadMessages = true;
+                break;
+            }
+        }
+        if (localUnread === 0 && !hasUnreadMessages) {
+            return;
+        }
+        // Update the sidebar badge immediately so the user doesn't have to
+        // wait for the next conversation poll to see it clear.
+        clearConversationUnread(conversationId);
+        markRead(conversationId);
+    }
+
+    /**
+     * Persists whatever the user has typed in the composer for the
+     * currently selected conversation, so switching chats does not move
+     * the text into another chat. Called before the conversation switch
+     * itself in selectConversation().
+     *
+     * The draft is keyed by conversationId. Edits to an existing message
+     * are tracked separately via state.editingMessageId and are NOT
+     * stored as a draft (the edit form has its own textarea).
+     */
+    function saveCurrentDraft() {
+        if (!els.messageInput || state.editingMessageId) {
+            return;
+        }
+        var fromId = state.selectedConversationId;
+        if (!fromId) {
+            return;
+        }
+        var raw = els.messageInput.value || '';
+        if (raw.length === 0) {
+            // Empty input means the user actively cleared the draft -
+            // remember that instead of leaving the old draft hanging.
+            delete state.drafts[fromId];
+        } else {
+            state.drafts[fromId] = raw;
+        }
+    }
+
+    function restoreDraftFor(conversationId) {
+        if (!els.messageInput) {
+            return;
+        }
+        var draft = (conversationId && state.drafts && state.drafts[conversationId]) || '';
+        els.messageInput.value = draft;
+    }
+
+    function clearDraftFor(conversationId) {
+        if (conversationId && state.drafts) {
+            delete state.drafts[conversationId];
+        }
+    }
+
+    function hasDraftFor(conversationId) {
+        return !!(conversationId && state.drafts && state.drafts[conversationId]
+                && state.drafts[conversationId].trim().length > 0);
     }
 
     function selectConversation(conversationId) {
@@ -2846,15 +5628,38 @@
             return;
         }
 
+        // Save the draft for the conversation we're leaving BEFORE we
+        // overwrite state.selectedConversationId, and restore the draft
+        // for the conversation we're switching INTO afterwards.
+        saveCurrentDraft();
+        // Stop broadcasting typing in the conversation we're leaving, and clear
+        // any stale activity indicator before the new conversation loads.
+        clearTypingActivity();
+        state.activities = [];
+        renderActivityIndicator();
+
         state.selectedConversationId = conversationId;
         state.selectedConversation = conversation;
         state.messages = [];
         state.renderedMessagesHtml = null;
+        // Lazy-load state resets per conversation. Until the first response
+        // comes back we assume there MAY be older messages, so the 'Load
+        // older' button can appear immediately when warranted.
+        state.hasMoreOlder = true;
+        state.loadingOlder = false;
+        state.unreadSnapshotConversationId = null;
+        // Reset the Assistant filter auto-load-older guard for the new feed.
+        assistantAutoLoadGuard = -1;
         cancelVoiceRecording();
         clearSelectedFile();
         clearSelectedIssue();
         clearReplyTarget();
+        // Drop any in-progress edit; the savedDraftBeforeEdit belongs
+        // to the OUTGOING conversation, so we can discard it - the
+        // INCOMING conversation will get its own draft restored below.
         state.editingMessageId = null;
+        state.savedDraftBeforeEdit = '';
+        renderComposerEditing();
         state.deleteConfirmMessageId = null;
         state.reactionPickerMessageId = null;
         state.pinnedMessage = null;
@@ -2877,7 +5682,18 @@
         renderChatHeader(conversation);
         renderMembersPanel();
         renderPinnedBanner();
+        // Restore the per-conversation draft (or clear the input when the
+        // new conversation has none). Must happen before updateComposerState
+        // so the send-button enabled state reflects the restored text.
+        restoreDraftFor(conversationId);
         updateComposerState();
+
+        // Auto-focus the composer after the click handler completes so the
+        // browser's natural focus into the clicked sidebar button doesn't
+        // override us. focusMessageInput() already guards against read-only
+        // / system / license-blocked conversations, so this is a no-op when
+        // the composer is intentionally inactive.
+        window.setTimeout(focusMessageInput, 0);
 
         loadMessages(conversationId, true, true);
         loadPinned(conversationId);
@@ -2936,6 +5752,266 @@
             (leadDisplayName ? ' (' + escapeHtml(leadDisplayName) + ')' : '') +
             ' to add you to the chat.</div>' +
             '</div></div>';
+    }
+
+    var sharedState = { type: 'files', cursor: null, hasMore: false, loading: false, items: [] };
+
+    function openSharedGallery(type) {
+        if (!state.selectedConversationId || !els.sharedModal) {
+            return;
+        }
+        sharedState.type = type || 'files';
+        sharedState.cursor = null;
+        sharedState.hasMore = false;
+        sharedState.items = [];
+        setHidden(els.sharedModal, false);
+        renderSharedTabs();
+        loadSharedPage(true);
+    }
+
+    function closeSharedGallery() {
+        if (els.sharedModal) {
+            setHidden(els.sharedModal, true);
+        }
+    }
+
+    function renderSharedTabs() {
+        if (!els.sharedTabs) {
+            return;
+        }
+        var tabs = [
+            { key: 'files', label: t('Files') },
+            { key: 'media', label: t('Media') },
+            { key: 'links', label: t('Links') }
+        ];
+        els.sharedTabs.innerHTML = tabs.map(function (tab) {
+            var count = (tab.key === sharedState.type &&
+                !sharedState.hasMore &&
+                sharedState.items &&
+                sharedState.items.length)
+                ? '<span class="jim-shared-tab-count">' +
+                    escapeHtml(locDigits(String(sharedState.items.length))) +
+                    '</span>'
+                : '';
+            return '<button type="button" class="jim-shared-tab' +
+                (tab.key === sharedState.type ? ' is-active' : '') +
+                '" data-shared-type="' + tab.key + '">' +
+                escapeHtml(tab.label) + count + '</button>';
+        }).join('');
+    }
+
+    function loadSharedPage(reset) {
+        if (!state.selectedConversationId || sharedState.loading) {
+            return;
+        }
+        sharedState.loading = true;
+        if (reset) {
+            els.sharedBody.innerHTML = '<div class="jim-loading">' + escapeHtml(t('Loading...')) + '</div>';
+        }
+        JimApi.listSharedContent(state.selectedConversationId, sharedState.type, reset ? null : sharedState.cursor, 25)
+            .then(function (response) {
+                sharedState.loading = false;
+                var items = (response && response.items) ? response.items : [];
+                if (reset) {
+                    sharedState.items = items;
+                } else {
+                    sharedState.items = sharedState.items.concat(items);
+                }
+                sharedState.cursor = response && response.nextCursor ? response.nextCursor : null;
+                sharedState.hasMore = !!(response && response.hasMore);
+                renderSharedTabs();
+                renderSharedBody();
+            })
+            .catch(function (error) {
+                sharedState.loading = false;
+                logError('sharedContent', error);
+                els.sharedBody.innerHTML =
+                    '<div class="jim-empty-state jim-empty-illustrated jim-error-state">' +
+                    '<div class="jim-empty-glyph" aria-hidden="true"></div>' +
+                    '<p>' +
+                    escapeHtml(error && error.message ? error.message : t('Unable to load shared content.')) +
+                    '</p></div>' +
+                    '<button type="button" class="jim-shared-retry" data-shared-retry="1">' +
+                    escapeHtml(t('Retry')) + '</button>';
+            });
+    }
+
+    function renderSharedBody() {
+        if (!els.sharedBody) {
+            return;
+        }
+        if (!sharedState.items.length) {
+            var empty = sharedState.type === 'media'
+                ? t('No shared media yet.')
+                : (sharedState.type === 'links' ? t('No shared links yet.') : t('No shared files yet.'));
+            var emptyKind = sharedState.type === 'media'
+                ? 'media'
+                : (sharedState.type === 'links' ? 'links' : 'files');
+            els.sharedBody.innerHTML =
+                '<div class="jim-empty-state jim-empty-illustrated">' +
+                '<div class="jim-empty-glyph jim-empty-glyph-' + emptyKind + '" aria-hidden="true"></div>' +
+                '<p>' + escapeHtml(empty) + '</p></div>';
+            return;
+        }
+        var html = '';
+        if (sharedState.type === 'media') {
+            html += '<div class="jim-shared-media-grid">';
+            for (var i = 0; i < sharedState.items.length; i++) {
+                var media = sharedState.items[i];
+                var src = media.previewUrl || '';
+                var mediaCid = media.conversationId || state.selectedConversationId || '';
+                html += '<div class="jim-shared-media-cell">' +
+                    (src ? '<img src="' + escapeHtml(src) + '" alt="" />' : escapeHtml(media.filename || t('Media'))) +
+                    (media.messageId
+                        ? '<button type="button" class="jim-shared-action jim-shared-media-open" data-goto-message="' +
+                            media.messageId + '" data-goto-conversation="' + mediaCid + '">' +
+                            escapeHtml(t('Open message')) + '</button>'
+                        : '') +
+                    '</div>';
+            }
+            html += '</div>';
+        } else {
+            html += '<div class="jim-shared-list">';
+            for (var j = 0; j < sharedState.items.length; j++) {
+                var item = sharedState.items[j];
+                var title = item.title || item.filename || item.url || '';
+                var meta = [];
+                if (item.createdAt) {
+                    meta.push(formatSharedStamp(item.createdAt));
+                }
+                if (item.size) {
+                    meta.push(formatSharedFileSize(item.size));
+                }
+                var glyph = sharedState.type === 'links'
+                    ? '<div class="jim-shared-link-icon" aria-hidden="true">URL</div>'
+                    : '<div class="jim-shared-file-icon is-' + sharedFileKind(title, item.mimeType) +
+                        '" aria-hidden="true">' + escapeHtml(sharedFileLabel(title, item.mimeType)) + '</div>';
+                html += '<div class="jim-shared-row">' +
+                    glyph +
+                    '<div class="jim-shared-row-main">' +
+                    '<div class="jim-shared-row-title" dir="auto">' + escapeHtml(title) + '</div>' +
+                    (item.url ? '<div class="jim-shared-row-url" dir="ltr">' + escapeHtml(item.url) + '</div>' : '') +
+                    (meta.length ? '<div class="jim-shared-row-meta">' + escapeHtml(meta.join('  ·  ')) + '</div>' : '') +
+                    '</div>' +
+                    '<div class="jim-shared-row-actions">';
+                if (item.downloadUrl) {
+                    html += '<a class="jim-shared-action" href="' + escapeHtml(item.downloadUrl) + '" target="_blank" rel="noopener">' + escapeHtml(t('Download')) + '</a>';
+                }
+                if (item.url) {
+                    html += '<button type="button" class="jim-shared-action" data-copy-url="' + escapeHtml(item.url) + '">' + escapeHtml(t('Copy link')) + '</button>';
+                    html += '<a class="jim-shared-action" href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener">' + escapeHtml(t('Open')) + '</a>';
+                }
+                if (item.messageId) {
+                    html += '<button type="button" class="jim-shared-action" data-goto-message="' + item.messageId +
+                        '" data-goto-conversation="' + (item.conversationId || state.selectedConversationId || '') + '">' +
+                        escapeHtml(t('Open message')) + '</button>';
+                }
+                html += '</div></div>';
+            }
+            html += '</div>';
+        }
+        if (sharedState.hasMore) {
+            html += '<button type="button" class="jim-shared-more" data-shared-more="1">' + escapeHtml(t('Show all')) + '</button>';
+        }
+        els.sharedBody.innerHTML = html;
+    }
+
+    function formatSharedStamp(timestamp) {
+        if (!timestamp) {
+            return '';
+        }
+        var date = new Date(timestamp);
+        if (isNaN(date.getTime())) {
+            return '';
+        }
+        return calClock(date) + ' | ' + calDate(date);
+    }
+
+    function sharedFileKind(name, mime) {
+        var n = String(name || '').toLowerCase();
+        var m = String(mime || '').toLowerCase();
+        if (/\.(docx?|rtf)$/.test(n) || m.indexOf('word') !== -1) {
+            return 'doc';
+        }
+        if (/\.pdf$/.test(n) || m.indexOf('pdf') !== -1) {
+            return 'pdf';
+        }
+        if (/\.(xlsx?|csv)$/.test(n) || m.indexOf('sheet') !== -1 || m.indexOf('excel') !== -1) {
+            return 'sheet';
+        }
+        if (/\.pptx?$/.test(n) || m.indexOf('presentation') !== -1) {
+            return 'slide';
+        }
+        return 'file';
+    }
+
+    function sharedFileLabel(name, mime) {
+        var kind = sharedFileKind(name, mime);
+        if (kind === 'doc') {
+            return 'DOC';
+        }
+        if (kind === 'pdf') {
+            return 'PDF';
+        }
+        if (kind === 'sheet') {
+            return 'XLS';
+        }
+        if (kind === 'slide') {
+            return 'PPT';
+        }
+        return 'FILE';
+    }
+
+    function formatSharedFileSize(bytes) {
+        var n = Number(bytes) || 0;
+        var fa = !!(els.app && els.app.classList.contains('jim-lang-fa'));
+        if (n < 1024) {
+            return locDigits(String(n)) + (fa ? ' بایت' : ' B');
+        }
+        if (n < 1024 * 1024) {
+            return locDigits((n / 1024).toFixed(0)) + (fa ? ' کیلوبایت' : ' KB');
+        }
+        return locDigits((n / (1024 * 1024)).toFixed(1)) + (fa ? ' مگابایت' : ' MB');
+    }
+
+    function findSelfConversation() {
+        for (var i = 0; i < state.conversations.length; i++) {
+            if (isSelfConversation(state.conversations[i])) {
+                return state.conversations[i];
+            }
+        }
+        return null;
+    }
+
+    function openSavedMessages() {
+        if (state.licenseBlocked) {
+            return;
+        }
+        var existing = findSelfConversation();
+        if (existing && existing.id) {
+            selectConversation(existing.id);
+            return;
+        }
+        if (!state.currentUserKey) {
+            showError(t('Unable to open Saved Messages.'));
+            return;
+        }
+        JimApi.createDirectConversation(state.currentUserKey).then(function (conversation) {
+            var created = conversation && conversation.conversation ? conversation.conversation : conversation;
+            return loadConversations(false).then(function () {
+                var id = created && created.id;
+                if (!id) {
+                    var refreshed = findSelfConversation();
+                    id = refreshed && refreshed.id;
+                }
+                if (id) {
+                    selectConversation(id);
+                }
+            });
+        }).catch(function (error) {
+            logError('savedMessages', error);
+            showError(error && error.message ? error.message : t('Unable to open Saved Messages.'));
+        });
     }
 
     function loadConversations(showLoading) {
@@ -3071,6 +6147,46 @@
         }, SEARCH_DEBOUNCE_MS);
     }
 
+    /**
+     * Performs the edit submit when the composer is in edit mode. The
+     * composer's textarea content replaces the original message body.
+     * On success, edit mode is cleared, the saved pre-edit draft is
+     * restored to the composer, and the message list re-renders so
+     * the original bubble shows the new body + "(edited)" marker.
+     */
+    function submitComposerEdit() {
+        var messageId = state.editingMessageId;
+        var body = normalizeMessageBody(els.messageInput ? els.messageInput.value : '');
+        if (!body) {
+            showComposerError('Message cannot be empty.');
+            return;
+        }
+        showComposerError(null);
+        state.sending = true;
+        updateComposerState();
+        saveEditedMessage(messageId, body).then(function () {
+            // saveEditedMessage already clears state.editingMessageId.
+            // Restore whatever draft the user had typed before they
+            // entered edit mode (so editing a message doesn't blow
+            // away their in-progress composer text).
+            if (els.messageInput) {
+                els.messageInput.value = state.savedDraftBeforeEdit || '';
+            }
+            state.savedDraftBeforeEdit = '';
+            renderComposerEditing();
+            renderMessages();
+        }).catch(function (error) {
+            logError('editMessage', error);
+            var detail = error && error.message ? error.message : 'Unable to save changes.';
+            showComposerError(detail);
+            showError(detail);
+        }).then(function () {
+            state.sending = false;
+            updateComposerState();
+            focusMessageInput();
+        });
+    }
+
     function sendMessage() {
         if (!state.selectedConversationId || state.sending || state.uploading || !els.messageInput) {
             return;
@@ -3080,38 +6196,41 @@
             return;
         }
 
-        var body = normalizeMessageBody(els.messageInput.value);
-        if (!body && !state.selectedFile && !state.selectedIssue) {
-            showComposerError('Add a message or choose a file to send.');
+        // When the composer is in edit mode, Send saves the edit
+        // instead of creating a new message. Files / replies / issue
+        // links are already cleared when entering edit mode.
+        if (state.editingMessageId) {
+            submitComposerEdit();
             return;
         }
-        if (body.length > MAX_MESSAGE_LENGTH) {
-            showComposerError('Message exceeds the maximum length of ' + MAX_MESSAGE_LENGTH + ' characters.');
+
+        // Stop broadcasting "typing" as soon as we send.
+        clearTypingActivity();
+        var body = normalizeMessageBody(els.messageInput.value);
+        if (!body && !hasSelectedFiles() && !state.selectedIssue) {
+            showComposerError('Add a message or choose a file to send.');
             return;
         }
 
         showComposerError(null);
 
-        if (state.selectedFile) {
-            state.uploading = true;
-            updateComposerState();
-            JimApi.uploadAttachment(state.selectedConversationId, state.selectedFile, body || null).then(function () {
-                els.messageInput.value = '';
-                clearSelectedFile();
-                clearReplyTarget();
-                state.shouldAutoScroll = true;
-                return loadMessages(state.selectedConversationId, false, true);
-            }).then(function () {
-                return loadConversations(false);
-            }).catch(function (error) {
-                logError('uploadAttachment', error);
-                var detail = error && error.message ? error.message : 'Unable to upload attachment.';
-                showComposerError(detail);
-                showError(detail);
-            }).then(function () {
-                state.uploading = false;
-                updateComposerState();
-            });
+        if (hasSelectedFiles()) {
+            // Attachments still cap their caption at one message-length;
+            // the user can split very long text manually before attaching.
+            if (body.length > MAX_MESSAGE_LENGTH) {
+                showComposerError('When sending a file, the caption must be at most ' +
+                    MAX_MESSAGE_LENGTH + ' characters. Send the long text first, then the file.');
+                return;
+            }
+            uploadSelectedFilesQueued(body);
+            return;
+        }
+
+        // Plain text path: if the body exceeds the per-message cap, split
+        // it into ordered chunks of <= MAX_MESSAGE_LENGTH and send them
+        // sequentially so nothing the user typed is lost.
+        if (body.length > MAX_MESSAGE_LENGTH && !state.selectedIssue) {
+            sendChunkedTextMessage(body, state.replyToMessage ? state.replyToMessage.id : null);
             return;
         }
 
@@ -3120,6 +6239,7 @@
             updateComposerState();
             JimApi.sendIssueLink(state.selectedConversationId, state.selectedIssue.key, body || null).then(function () {
                 els.messageInput.value = '';
+                clearDraftFor(state.selectedConversationId);
                 clearSelectedIssue();
                 clearReplyTarget();
                 state.shouldAutoScroll = true;
@@ -3134,6 +6254,7 @@
             }).then(function () {
                 state.sending = false;
                 updateComposerState();
+                focusMessageInput();
             });
             return;
         }
@@ -3143,8 +6264,12 @@
 
         var replyToMessageId = state.replyToMessage ? state.replyToMessage.id : null;
 
+        var sendStart = Date.now();
+        try { console.log('[CorbitChat send] POST start convId=', state.selectedConversationId); } catch (e) {}
         JimApi.sendMessage(state.selectedConversationId, body, replyToMessageId).then(function () {
+            try { console.log('[CorbitChat send] POST ok in', Date.now() - sendStart, 'ms'); } catch (e) {}
             els.messageInput.value = '';
+            clearDraftFor(state.selectedConversationId);
             clearReplyTarget();
             updateComposerState();
             state.shouldAutoScroll = true;
@@ -3159,11 +6284,355 @@
         }).then(function () {
             state.sending = false;
             updateComposerState();
+            focusMessageInput();
         });
+    }
+
+    /**
+     * Uploads all files in the staged queue sequentially. The optional body
+     * text is sent with the first file only (the rest are uploaded as
+     * stand-alone attachments). Each upload is awaited so a failure on one
+     * file is reported but does not block subsequent files.
+     */
+    /**
+     * Splits a long text body into ordered chunks each <= MAX_MESSAGE_LENGTH.
+     * Prefers cutting on paragraph boundaries ("\n\n"), then line breaks,
+     * then sentence boundaries (". ", "! ", "? "), then word boundaries
+     * (whitespace). Falls back to a hard cut at MAX_MESSAGE_LENGTH so no
+     * input is ever dropped.
+     */
+    function splitTextIntoChunks(body) {
+        var chunks = [];
+        var remaining = String(body || '');
+        while (remaining.length > MAX_MESSAGE_LENGTH) {
+            var window = remaining.substring(0, MAX_MESSAGE_LENGTH);
+            var cut = -1;
+            // 1. paragraph break
+            cut = window.lastIndexOf('\n\n');
+            // 2. line break (only if not too close to start)
+            if (cut < MAX_MESSAGE_LENGTH / 2) {
+                var line = window.lastIndexOf('\n');
+                if (line > cut) cut = line;
+            }
+            // 3. sentence boundary
+            if (cut < MAX_MESSAGE_LENGTH / 2) {
+                var sent = Math.max(
+                    window.lastIndexOf('. '),
+                    window.lastIndexOf('! '),
+                    window.lastIndexOf('? ')
+                );
+                if (sent > cut) cut = sent + 1;
+            }
+            // 4. word boundary
+            if (cut < MAX_MESSAGE_LENGTH / 2) {
+                var word = window.search(/\s\S+\s*$/);
+                if (word > cut) cut = word;
+            }
+            // 5. hard cut as last resort
+            if (cut <= 0) {
+                cut = MAX_MESSAGE_LENGTH;
+            }
+            chunks.push(remaining.substring(0, cut).trim());
+            remaining = remaining.substring(cut).replace(/^\s+/, '');
+        }
+        if (remaining.length > 0) {
+            chunks.push(remaining);
+        }
+        return chunks;
+    }
+
+    /**
+     * Sends a long text message as multiple ordered chunks. Each chunk
+     * is a separate /messages POST and the chain is awaited so messages
+     * appear in the recipient's chat in the same order the user typed
+     * them. A small footer like "[1/3]" is added so the recipient (and
+     * sender) can tell at a glance that the text was split.
+     */
+    function sendChunkedTextMessage(body, replyToMessageId) {
+        var convId = state.selectedConversationId;
+        var chunks = splitTextIntoChunks(body);
+        state.sending = true;
+        updateComposerState();
+        showComposerError('Long message - sending as ' + chunks.length + ' parts...');
+
+        var anyFailed = false;
+        var chain = Promise.resolve();
+        chunks.forEach(function (chunk, idx) {
+            chain = chain.then(function () {
+                var marker = '\n\n[' + (idx + 1) + '/' + chunks.length + ']';
+                // Reply target only on the first chunk; subsequent chunks
+                // are continuations and shouldn't all reply to the same
+                // earlier message.
+                var thisReplyTo = idx === 0 ? replyToMessageId : null;
+                var thisBody = chunk + marker;
+                // Defensive: chunk + marker could still exceed cap if the
+                // user's text was right at the boundary. Trim if needed.
+                if (thisBody.length > MAX_MESSAGE_LENGTH) {
+                    thisBody = chunk.substring(0, MAX_MESSAGE_LENGTH - marker.length) + marker;
+                }
+                return JimApi.sendMessage(convId, thisBody, thisReplyTo).catch(function (error) {
+                    logError('sendMessage.chunk', error);
+                    anyFailed = true;
+                });
+            });
+        });
+
+        chain
+            .then(function () {
+                els.messageInput.value = '';
+                clearDraftFor(convId);
+                clearReplyTarget();
+                state.shouldAutoScroll = true;
+                return loadMessages(convId, false, true);
+            })
+            .then(function () {
+                return loadConversations(false);
+            })
+            .then(function () {
+                state.sending = false;
+                updateComposerState();
+                focusMessageInput();
+                if (anyFailed) {
+                    showComposerError('One or more parts failed to send. Check the message list.');
+                } else {
+                    showComposerError(null);
+                }
+            });
+    }
+
+    function uploadSelectedFilesQueued(body) {
+        var convId = state.selectedConversationId;
+        var files = state.selectedFiles.slice();
+        var caption = body || null;
+        state.uploading = true;
+        updateComposerState();
+
+        var anyFailed = false;
+        var failedNames = [];
+        var chain = Promise.resolve();
+        files.forEach(function (file, idx) {
+            chain = chain.then(function () {
+                var bodyForThis = idx === 0 ? caption : null;
+                return JimApi.uploadAttachment(convId, file, bodyForThis).catch(function (error) {
+                    logError('uploadAttachment', error);
+                    anyFailed = true;
+                    failedNames.push(file.name || 'file');
+                });
+            });
+        });
+
+        chain
+            .then(function () {
+                els.messageInput.value = '';
+                clearDraftFor(convId);
+                clearSelectedFile();
+                clearReplyTarget();
+                state.shouldAutoScroll = true;
+                return loadMessages(convId, false, true);
+            })
+            .then(function () {
+                return loadConversations(false);
+            })
+            .then(function () {
+                state.uploading = false;
+                updateComposerState();
+                focusMessageInput();
+                if (anyFailed) {
+                    var detail = failedNames.length + ' attachment(s) failed: ' + failedNames.join(', ');
+                    showComposerError(detail);
+                    showError(detail);
+                }
+            });
+    }
+
+    /**
+     * Paste handler for the message input. Files (e.g. clipboard image from a
+     * screenshot tool) are staged as the pending attachment; plain text falls
+     * through to the browser's default behaviour.
+     */
+    function onComposerPaste(event) {
+        if (!composerAcceptsInput()) {
+            return;
+        }
+        var data = event.clipboardData;
+        if (!data) {
+            return;
+        }
+        var files = collectFilesFromDataTransfer(data);
+        if (files.length) {
+            event.preventDefault();
+            acceptIncomingFiles(files);
+        }
+        // Otherwise let the browser paste text normally; updateComposerState
+        // already fires from the 'input' event after paste completes.
+    }
+
+    /**
+     * Drag-and-drop on the chat panel: drop a file/image to stage it as the
+     * pending attachment; drop plain text to insert it into the input.
+     * No state mutation happens until the actual 'drop' event fires.
+     */
+    function bindComposerDragAndDrop() {
+        if (!els.chatPanelShell) {
+            return;
+        }
+        var shell = els.chatPanelShell;
+        var dragDepth = 0;
+
+        function hasUsefulPayload(transfer) {
+            if (!transfer) {
+                return false;
+            }
+            if (transfer.types) {
+                for (var i = 0; i < transfer.types.length; i++) {
+                    var type = transfer.types[i];
+                    if (type === 'Files' || type === 'text/plain' || type === 'text/uri-list') {
+                        return true;
+                    }
+                }
+            }
+            return transfer.files && transfer.files.length > 0;
+        }
+
+        function clearOverlay() {
+            dragDepth = 0;
+            shell.classList.remove('jim-chat-drop-active');
+        }
+
+        shell.addEventListener('dragenter', function (event) {
+            if (!composerAcceptsInput() || !hasUsefulPayload(event.dataTransfer)) {
+                return;
+            }
+            event.preventDefault();
+            dragDepth++;
+            shell.classList.add('jim-chat-drop-active');
+        });
+
+        shell.addEventListener('dragover', function (event) {
+            if (!composerAcceptsInput() || !hasUsefulPayload(event.dataTransfer)) {
+                return;
+            }
+            event.preventDefault();
+            if (event.dataTransfer) {
+                event.dataTransfer.dropEffect = 'copy';
+            }
+        });
+
+        shell.addEventListener('dragleave', function (event) {
+            if (dragDepth === 0) {
+                return;
+            }
+            dragDepth--;
+            if (dragDepth <= 0) {
+                clearOverlay();
+            }
+        });
+
+        shell.addEventListener('drop', function (event) {
+            if (!composerAcceptsInput()) {
+                clearOverlay();
+                return;
+            }
+            if (!hasUsefulPayload(event.dataTransfer)) {
+                clearOverlay();
+                return;
+            }
+            event.preventDefault();
+            clearOverlay();
+
+            var droppedFiles = collectFilesFromDataTransfer(event.dataTransfer);
+            if (droppedFiles.length) {
+                acceptIncomingFiles(droppedFiles);
+                return;
+            }
+            var text = event.dataTransfer.getData('text/plain')
+                || event.dataTransfer.getData('text/uri-list');
+            if (text) {
+                insertTextIntoComposer(text);
+            }
+        });
+
+        // If the user drops outside the shell or releases the mouse elsewhere,
+        // make sure the overlay state doesn't get stuck.
+        window.addEventListener('dragend', clearOverlay);
+        window.addEventListener('drop', function (event) {
+            if (!shell.contains(event.target)) {
+                clearOverlay();
+            }
+        });
+    }
+
+    function composerAcceptsInput() {
+        if (!state.selectedConversationId) {
+            return false;
+        }
+        if (state.selectedConversation && isSystemConversation(state.selectedConversation)) {
+            return false;
+        }
+        if (state.licenseBlocked) {
+            return false;
+        }
+        if (els.composer && els.composer.classList.contains('jim-composer-is-readonly')) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Collect every file from a DataTransfer/ClipboardData payload. Some
+     * browsers expose them via .files (FileList) and some only via .items
+     * (with kind === 'file') — we look at both and de-duplicate.
+     */
+    function collectFilesFromDataTransfer(transfer) {
+        var out = [];
+        if (!transfer) {
+            return out;
+        }
+        if (transfer.files && transfer.files.length) {
+            for (var i = 0; i < transfer.files.length; i++) {
+                if (transfer.files[i]) {
+                    out.push(transfer.files[i]);
+                }
+            }
+        }
+        if (!out.length && transfer.items) {
+            for (var j = 0; j < transfer.items.length; j++) {
+                if (transfer.items[j].kind === 'file') {
+                    var f = transfer.items[j].getAsFile();
+                    if (f) {
+                        out.push(f);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    function insertTextIntoComposer(text) {
+        if (!els.messageInput || !text) {
+            return;
+        }
+        var input = els.messageInput;
+        var start = typeof input.selectionStart === 'number' ? input.selectionStart : input.value.length;
+        var end = typeof input.selectionEnd === 'number' ? input.selectionEnd : input.value.length;
+        var before = input.value.substring(0, start);
+        var after = input.value.substring(end);
+        var needsLeadingSpace = before.length > 0 && !/\s$/.test(before);
+        var insertion = (needsLeadingSpace ? ' ' : '') + text;
+        input.value = before + insertion + after;
+        var caret = before.length + insertion.length;
+        try {
+            input.setSelectionRange(caret, caret);
+        } catch (e) {
+            // setSelectionRange is unsupported on some input types; safe to skip.
+        }
+        updateComposerState();
+        focusMessageInput();
     }
 
     function startPolling() {
         stopPolling();
+        try { console.log('[CorbitChat poll] startPolling - msg every', MESSAGE_POLL_MS, 'ms, conv every', CONVERSATION_POLL_MS, 'ms'); } catch (e) {}
 
         state.messagePollTimer = window.setInterval(function () {
             if (document.hidden || !state.selectedConversationId || state.loadingMessages) {
@@ -3178,6 +6647,44 @@
             }
             loadConversations(false);
         }, CONVERSATION_POLL_MS);
+
+        bindVisibilityRefresh();
+    }
+
+    /**
+     * Triggers an immediate refresh whenever the tab regains visibility.
+     * Without this, Chrome's background-tab throttling (which can extend
+     * setInterval to once-per-minute after a tab has been idle for a few
+     * minutes) makes the perceived chat latency very long when the user
+     * returns to the chat from another tab. The handler is debounced so a
+     * burst of focus/blur events doesn't flood the server.
+     */
+    function bindVisibilityRefresh() {
+        if (state.visibilityHandlerBound) {
+            return;
+        }
+        state.visibilityHandlerBound = true;
+        var triggerRefresh = function () {
+            if (document.hidden) {
+                return;
+            }
+            if (state.visibilityRefreshTimer) {
+                window.clearTimeout(state.visibilityRefreshTimer);
+            }
+            state.visibilityRefreshTimer = window.setTimeout(function () {
+                state.visibilityRefreshTimer = null;
+                if (document.hidden) {
+                    return;
+                }
+                try { console.log('[CorbitChat poll] visibility refresh'); } catch (e) {}
+                if (state.selectedConversationId && !state.loadingMessages) {
+                    loadMessages(state.selectedConversationId, false, false);
+                }
+                loadConversations(false);
+            }, FOCUS_REFRESH_DEBOUNCE_MS);
+        };
+        document.addEventListener('visibilitychange', triggerRefresh);
+        window.addEventListener('focus', triggerRefresh);
     }
 
     function stopPolling() {
@@ -3191,12 +6698,389 @@
         }
     }
 
+    function selectedMessages() {
+        var out = [];
+        var ids = state.selectedIds || [];
+        for (var i = 0; i < ids.length; i++) {
+            var m = findMessageById(ids[i]);
+            if (m) {
+                out.push(m);
+            }
+        }
+        return out;
+    }
+
+    function firstMessageUrl(message) {
+        if (!message) {
+            return '';
+        }
+        if (message.issueUrl) {
+            return String(message.issueUrl);
+        }
+        var body = message.body ? String(message.body) : '';
+        var match = body.match(/https?:\/\/[^\s<>\]"']+/i);
+        return match ? match[0] : '';
+    }
+
+    function copyMessageLink(message) {
+        var url = firstMessageUrl(message);
+        if (!url) {
+            showError(t('No link in this message.'));
+            return;
+        }
+        copyMessageBody({ body: url });
+    }
+
+    function ensureSelfConversation() {
+        var existing = findSelfConversation();
+        if (existing && existing.id) {
+            return Promise.resolve(existing);
+        }
+        if (!state.currentUserKey) {
+            return Promise.reject(new Error(t('Unable to open Saved Messages.')));
+        }
+        return JimApi.createDirectConversation(state.currentUserKey).then(function (conversation) {
+            var created = conversation && conversation.conversation ? conversation.conversation : conversation;
+            return loadConversations(false).then(function () {
+                return created && created.id ? created : findSelfConversation();
+            });
+        });
+    }
+
+    function saveMessageToSaved(message) {
+        if (!message || message.deleted || isSystemMessage(message)) {
+            return;
+        }
+        if (isSelfConversation(state.selectedConversation)) {
+            showError(t('This message is already in Saved Messages.'));
+            return;
+        }
+        ensureSelfConversation().then(function (conv) {
+            if (!conv || !conv.id) {
+                throw new Error(t('Unable to open Saved Messages.'));
+            }
+            return forwardOneMessage(message, conv.id);
+        }).then(function () {
+            showError(t('Message saved.'));
+        }).catch(function (error) {
+            logError('saveSaved', error);
+            showError(error && error.message ? error.message : t('Unable to save message.'));
+        });
+    }
+
+    function copySelectedMessages() {
+        var texts = selectedMessages().map(function (m) {
+            return m && m.body ? String(m.body) : '';
+        }).filter(function (text) { return text; });
+        if (!texts.length) {
+            return;
+        }
+        copyMessageBody({ body: texts.join('\n\n') });
+    }
+
+    function shareSelectedMessages() {
+        var texts = selectedMessages().map(function (m) {
+            return m && m.body ? String(m.body) : '';
+        }).filter(function (text) { return text; });
+        if (!texts.length) {
+            showError(t('Unable to share'));
+            return;
+        }
+        shareMessageBody({ body: texts.join('\n\n') });
+    }
+
+    function forwardSelectedMessages() {
+        var selected = selectedMessages();
+        var forwardable = chronologicalMessages(selected.filter(isForwardableMessage));
+        if (!forwardable.length) {
+            return;
+        }
+        openForwardModalForMessages(selected);
+    }
+
+    function saveSelectedMessages() {
+        var selected = chronologicalMessages(selectedMessages().filter(function (m) {
+            return m && !m.deleted && !isSystemMessage(m);
+        }));
+        if (!selected.length) {
+            return;
+        }
+        ensureSelfConversation().then(function (conv) {
+            if (!conv || !conv.id) {
+                throw new Error(t('Unable to open Saved Messages.'));
+            }
+            var chain = Promise.resolve();
+            selected.forEach(function (message) {
+                chain = chain.then(function () {
+                    return forwardOneMessage(message, conv.id);
+                });
+            });
+            return chain;
+        }).then(function () {
+            exitSelectionMode();
+            showError(t('Messages saved.'));
+        }).catch(function (error) {
+            logError('bulkSave', error);
+            showError(error && error.message ? error.message : t('Unable to save messages.'));
+        });
+    }
+
+    function hideMessageMenu() {
+        if (els.messageMenu) {
+            els.messageMenu.hidden = true;
+            els.messageMenu.innerHTML = '';
+        }
+    }
+
+    function allowedMenuActions(message) {
+        if (!message || message.deleted) {
+            return [{ action: 'hide-for-me', label: t('Delete for me') }];
+        }
+        if (isSystemMessage(message)) {
+            return [];
+        }
+        var items = [
+            { action: 'reply', label: t('Reply') },
+            { action: 'copy', label: t('Copy') }
+        ];
+        if (message.body) {
+            items.push({ action: 'share', label: t('Share') });
+        }
+        if (isForwardableMessage(message)) {
+            items.push({ action: 'forward', label: t('Forward') });
+        }
+        items.push({ action: 'hide-for-me', label: t('Delete for me') });
+        if (!isSelfConversation(state.selectedConversation)) {
+            items.push({ action: 'save-saved', label: t('Save to Saved Messages') });
+        }
+        if (firstMessageUrl(message)) {
+            items.push({ action: 'copy-link', label: t('Copy link') });
+        }
+        items.push({ action: 'select-msg', label: t('Select') });
+        return items;
+    }
+
+    function showMessageMenu(message, clientX, clientY) {
+        if (!els.messageMenu || !message) {
+            return;
+        }
+        var items = allowedMenuActions(message);
+        if (!items.length) {
+            hideMessageMenu();
+            return;
+        }
+        var html = '';
+        for (var i = 0; i < items.length; i++) {
+            var danger = items[i].action === 'hide-for-me' || items[i].action === 'delete';
+            html += '<button type="button" class="jim-message-menu-item' +
+                (danger ? ' is-danger' : '') + '" role="menuitem" data-action="' +
+                items[i].action + '" data-message-id="' + message.id + '">' +
+                escapeHtml(items[i].label) + '</button>';
+        }
+        if (message.attachments && message.attachments.length && message.attachments[0].downloadUrl) {
+            html += '<a class="jim-message-menu-item" role="menuitem" href="' +
+                escapeHtml(resolveAttachmentUrl(message.attachments[0].downloadUrl)) +
+                '" target="_blank" rel="noopener">' + escapeHtml(t('Download')) + '</a>';
+        }
+        els.messageMenu.innerHTML = html;
+        els.messageMenu.hidden = false;
+        var x = clientX;
+        var y = clientY;
+        var width = 220;
+        var height = (items.length + 1) * 34;
+        if (x + width > window.innerWidth - 8) {
+            x = window.innerWidth - width - 8;
+        }
+        if (y + height > window.innerHeight - 8) {
+            y = window.innerHeight - height - 8;
+        }
+        els.messageMenu.style.left = Math.max(8, x) + 'px';
+        els.messageMenu.style.top = Math.max(8, y) + 'px';
+    }
+
+    var msgSearchTimer = null;
+    var msgSearchSeq = 0;
+
+    function toggleMessageSearch() {
+        if (!els.msgSearchPanel || !els.msgSearchToggle) {
+            return;
+        }
+        var open = els.msgSearchPanel.hidden;
+        els.msgSearchPanel.hidden = !open;
+        els.msgSearchToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open && els.msgSearch) {
+            try { els.msgSearch.focus(); } catch (e) {}
+        } else {
+            hideMessageSearchResults();
+        }
+    }
+
+    function onMessageSearchInput() {
+        if (!els.msgSearch) {
+            return;
+        }
+        var q = (els.msgSearch.value || '').trim();
+        if (msgSearchTimer) {
+            window.clearTimeout(msgSearchTimer);
+        }
+        if (q.length < 2) {
+            hideMessageSearchResults();
+            return;
+        }
+        msgSearchTimer = window.setTimeout(function () { runMessageSearch(q); }, 280);
+    }
+
+    function hideMessageSearchResults() {
+        if (els.msgSearchResults) {
+            els.msgSearchResults.hidden = true;
+            els.msgSearchResults.innerHTML = '';
+        }
+    }
+
+    function runMessageSearch(q) {
+        if (!els.msgSearchResults || !JimApi.searchMessages) {
+            return;
+        }
+        var seq = ++msgSearchSeq;
+        els.msgSearchResults.hidden = false;
+        els.msgSearchResults.innerHTML = '<div class="jim-search-status">' + escapeHtml(t('Searching…')) + '</div>';
+        JimApi.searchMessages(q, null, 25, null).then(function (data) {
+            if (seq !== msgSearchSeq) {
+                return;
+            }
+            renderMessageSearchResults((data && data.results) || []);
+        }).catch(function () {
+            if (seq !== msgSearchSeq) {
+                return;
+            }
+            els.msgSearchResults.innerHTML = '<div class="jim-search-status">' + escapeHtml(t('Search failed')) +
+                ' <button type="button" class="jim-search-retry" data-action="search-retry">' +
+                escapeHtml(t('Retry')) + '</button></div>';
+            var retry = els.msgSearchResults.querySelector('[data-action="search-retry"]');
+            if (retry) {
+                retry.addEventListener('click', function () { runMessageSearch(q); });
+            }
+        });
+    }
+
+    function renderMessageSearchResults(results) {
+        if (!els.msgSearchResults) {
+            return;
+        }
+        if (!results.length) {
+            els.msgSearchResults.innerHTML = '<div class="jim-search-status">' + escapeHtml(t('No messages found')) + '</div>';
+            return;
+        }
+        var html = '';
+        for (var i = 0; i < results.length; i++) {
+            var r = results[i];
+            var sender = (r.sender && r.sender.displayName) || r.senderDisplayName || '';
+            var field = r.matchedField === 'filename' ? t('Matched filename')
+                : (r.matchedField === 'issue' ? t('Matched issue') : '');
+            html += '<button type="button" class="jim-search-result jim-msg-result" data-conversation-id="' +
+                escapeHtml(String(r.conversationId)) + '" data-message-id="' + escapeHtml(String(r.messageId)) + '">' +
+                '<span class="jim-msg-result-title">' + escapeHtml(r.conversationTitle || '') + '</span>' +
+                '<span class="jim-msg-result-meta">' + escapeHtml(sender) +
+                (r.createdAt ? ' · ' + escapeHtml(formatTime(r.createdAt)) : '') +
+                (field ? ' · ' + escapeHtml(field) : '') + '</span>' +
+                '<span class="jim-msg-result-snippet">' + escapeHtml(r.snippet || '') + '</span></button>';
+        }
+        els.msgSearchResults.innerHTML = html;
+        var btns = els.msgSearchResults.querySelectorAll('.jim-msg-result');
+        for (var j = 0; j < btns.length; j++) {
+            btns[j].addEventListener('click', function () {
+                var cid = parseInt(this.getAttribute('data-conversation-id'), 10);
+                var mid = parseInt(this.getAttribute('data-message-id'), 10);
+                openConversationAtMessage(cid, mid);
+            });
+        }
+    }
+
     function bindEvents() {
         if (els.searchInput) {
             els.searchInput.addEventListener('input', onSearchInput);
         }
+        if (els.msgSearchToggle) {
+            els.msgSearchToggle.addEventListener('click', toggleMessageSearch);
+        }
+        if (els.msgSearch) {
+            els.msgSearch.addEventListener('input', onMessageSearchInput);
+            els.msgSearch.addEventListener('search', onMessageSearchInput);
+            els.msgSearch.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    var q = (els.msgSearch.value || '').trim();
+                    if (q.length >= 2) {
+                        runMessageSearch(q);
+                    }
+                } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    if (els.msgSearchPanel && !els.msgSearchPanel.hidden) {
+                        toggleMessageSearch();
+                    }
+                }
+            });
+        }
+        if (els.messageList) {
+            els.messageList.addEventListener('contextmenu', function (event) {
+                var row = event.target.closest('[data-message-id]');
+                if (!row) {
+                    return;
+                }
+                var message = findMessageById(parseInt(row.getAttribute('data-message-id'), 10));
+                if (!message) {
+                    return;
+                }
+                event.preventDefault();
+                showMessageMenu(message, event.clientX, event.clientY);
+            });
+        }
+        if (els.messageMenu) {
+            els.messageMenu.addEventListener('click', function (event) {
+                var item = event.target.closest('[data-action]');
+                if (!item) {
+                    return;
+                }
+                var action = item.getAttribute('data-action');
+                var messageId = parseInt(item.getAttribute('data-message-id'), 10);
+                hideMessageMenu();
+                var proxy = document.createElement('button');
+                proxy.setAttribute('data-action', action);
+                proxy.setAttribute('data-message-id', String(messageId));
+                proxy.style.display = 'none';
+                var host = els.messageList || document.body;
+                host.appendChild(proxy);
+                proxy.click();
+                host.removeChild(proxy);
+            });
+        }
+        document.addEventListener('click', function (event) {
+            if (els.messageMenu && !els.messageMenu.hidden && !els.messageMenu.contains(event.target)) {
+                hideMessageMenu();
+            }
+        });
         if (els.sendButton) {
             els.sendButton.addEventListener('click', sendMessage);
+        }
+        // Scroll-to-top auto-loads the next older page so users who scroll
+        // up don't have to click the button explicitly. Debounced via
+        // requestAnimationFrame so a fast scroll only fires once.
+        if (els.messageList) {
+            var olderScrollPending = false;
+            els.messageList.addEventListener('scroll', function () {
+                if (olderScrollPending) {
+                    return;
+                }
+                olderScrollPending = true;
+                window.requestAnimationFrame(function () {
+                    olderScrollPending = false;
+                    if (els.messageList.scrollTop < 80
+                            && state.hasMoreOlder !== false
+                            && !state.loadingOlder) {
+                        loadOlderMessages();
+                    }
+                });
+            }, { passive: true });
         }
         if (els.attachButton && els.fileInput) {
             els.attachButton.addEventListener('click', function () {
@@ -3204,11 +7088,30 @@
             });
             els.fileInput.addEventListener('change', onFileInputChange);
         }
-        if (els.selectedAttachmentRemove) {
-            els.selectedAttachmentRemove.addEventListener('click', clearSelectedFile);
+        if (els.avatarInput) {
+            els.avatarInput.addEventListener('change', handleAvatarFileSelected);
+        }
+        // Per-chip remove buttons are delegated through the selected-attachment
+        // container so they keep working after each re-render.
+        if (els.selectedAttachment) {
+            els.selectedAttachment.addEventListener('click', function (event) {
+                var removeBtn = event.target && event.target.closest
+                    ? event.target.closest('[data-action="remove-file"]')
+                    : null;
+                if (!removeBtn) {
+                    return;
+                }
+                var idx = parseInt(removeBtn.getAttribute('data-file-index'), 10);
+                if (!isNaN(idx)) {
+                    removeSelectedFileAt(idx);
+                }
+            });
         }
         if (els.composerReplyCancel) {
             els.composerReplyCancel.addEventListener('click', clearReplyTarget);
+        }
+        if (els.composerEditingCancel) {
+            els.composerEditingCancel.addEventListener('click', cancelEditMode);
         }
         if (els.newConversationButton && els.searchInput) {
             els.newConversationButton.addEventListener('click', function () {
@@ -3223,6 +7126,9 @@
         if (els.newGroupButton) {
             els.newGroupButton.addEventListener('click', openGroupModal);
         }
+        if (els.savedMessagesButton) {
+            els.savedMessagesButton.addEventListener('click', openSavedMessages);
+        }
         if (els.messageInfoModal) {
             els.messageInfoModal.addEventListener('click', function (event) {
                 if (event.target === els.messageInfoModal) {
@@ -3230,6 +7136,89 @@
                 }
             });
             els.messageInfoClose.addEventListener('click', closeMessageInfo);
+        }
+        if (els.forwardModal) {
+            els.forwardModal.addEventListener('click', function (event) {
+                if (event.target === els.forwardModal) {
+                    closeForwardModal();
+                }
+            });
+        }
+        if (els.sharedClose) {
+            els.sharedClose.addEventListener('click', closeSharedGallery);
+        }
+        if (els.sharedModal) {
+            els.sharedModal.addEventListener('click', function (event) {
+                if (event.target === els.sharedModal) {
+                    closeSharedGallery();
+                }
+            });
+        }
+        if (els.sharedTabs) {
+            els.sharedTabs.addEventListener('click', function (event) {
+                var tab = event.target.closest('[data-shared-type]');
+                if (!tab) {
+                    return;
+                }
+                openSharedGallery(tab.getAttribute('data-shared-type'));
+            });
+        }
+        if (els.sharedBody) {
+            els.sharedBody.addEventListener('click', function (event) {
+                if (event.target.getAttribute('data-shared-retry')) {
+                    loadSharedPage(true);
+                    return;
+                }
+                if (event.target.getAttribute('data-shared-more')) {
+                    loadSharedPage(false);
+                    return;
+                }
+                var copyUrl = event.target.getAttribute('data-copy-url');
+                if (copyUrl) {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(copyUrl);
+                    }
+                    return;
+                }
+                var gotoBtn = event.target.closest
+                    ? event.target.closest('[data-goto-message]')
+                    : (event.target.getAttribute && event.target.getAttribute('data-goto-message') ? event.target : null);
+                if (gotoBtn) {
+                    var messageId = parseInt(gotoBtn.getAttribute('data-goto-message'), 10);
+                    var conversationId = parseInt(gotoBtn.getAttribute('data-goto-conversation'), 10);
+                    if (isNaN(conversationId)) {
+                        conversationId = state.selectedConversationId;
+                    }
+                    closeSharedGallery();
+                    if (!isNaN(messageId) && conversationId) {
+                        openConversationAtMessage(conversationId, messageId);
+                    } else {
+                        showError(t('Message not available'));
+                    }
+                }
+            });
+        }
+        if (els.forwardCancel) {
+            els.forwardCancel.addEventListener('click', closeForwardModal);
+        }
+        if (els.forwardSearch) {
+            els.forwardSearch.addEventListener('input', function () {
+                renderForwardTargets(els.forwardSearch.value);
+            });
+        }
+        if (els.forwardTargets) {
+            els.forwardTargets.addEventListener('click', function (event) {
+                var btn = event.target && event.target.closest
+                    ? event.target.closest('[data-forward-target]')
+                    : null;
+                if (!btn) {
+                    return;
+                }
+                var targetId = parseInt(btn.getAttribute('data-forward-target'), 10);
+                if (!isNaN(targetId)) {
+                    submitForward(targetId);
+                }
+            });
         }
         if (els.imageLightbox) {
             if (els.messageList) {
@@ -3330,13 +7319,58 @@
                 toggleMentionPalette(false);
             });
             els.mentionPalette.addEventListener('click', function (event) {
-                var option = event.target.closest('.jim-mention-option');
-                if (!option) {
+                var target = event.target;
+
+                // "Mention all members" - insert mentions for every member.
+                if (target.closest('[data-mention-all]')) {
+                    var allMembers = mentionableMembers();
+                    var allNames = [];
+                    for (var i = 0; i < allMembers.length; i++) {
+                        if (allMembers[i].userKey === state.currentUserKey) {
+                            continue;
+                        }
+                        allNames.push(allMembers[i].displayName);
+                    }
+                    insertMentionsAndClose(allNames);
                     return;
                 }
-                insertAtCursor(els.messageInput, '@' + (option.getAttribute('data-mention-name') || '') + ' ');
-                toggleMentionPalette(true);
-                updateComposerState();
+
+                // Footer "Clear" - untick everything.
+                if (target.closest('[data-mention-clear]')) {
+                    var boxes = els.mentionPalette.querySelectorAll('.jim-mention-checkbox');
+                    for (var b = 0; b < boxes.length; b++) {
+                        boxes[b].checked = false;
+                    }
+                    updateMentionInsertButton();
+                    return;
+                }
+
+                // Footer "Insert N selected" - mention every ticked member.
+                if (target.closest('[data-mention-insert]')) {
+                    insertMentionsAndClose(selectedMentionNames());
+                    return;
+                }
+
+                // Checkbox click - toggle selection only, do not insert yet.
+                // (The native checkbox change event also fires; we just
+                // refresh the footer counter from either path.)
+                if (target.matches('.jim-mention-checkbox')) {
+                    updateMentionInsertButton();
+                    return;
+                }
+
+                // Single-mention quick path: click the avatar / name area
+                // (data-mention-name on the inner button). This keeps the
+                // original one-click UX for users who don't need multi.
+                var body = target.closest('[data-mention-name]');
+                if (body) {
+                    insertMentionsAndClose([body.getAttribute('data-mention-name') || '']);
+                }
+            });
+            els.mentionPalette.addEventListener('change', function (event) {
+                if (event.target && event.target.matches('.jim-mention-checkbox')) {
+                    updateMentionInsertButton();
+                }
             });
         }
         if (els.issueButton && els.issuePalette) {
@@ -3386,13 +7420,28 @@
         }
         if (els.messageInput) {
             els.messageInput.addEventListener('input', updateComposerState);
+            els.messageInput.addEventListener('input', function () {
+                if (els.messageInput.value && els.messageInput.value.trim()) {
+                    emitTypingActivity();
+                } else {
+                    clearTypingActivity();
+                }
+            });
             els.messageInput.addEventListener('keydown', function (event) {
                 if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();
                     sendMessage();
+                } else if (event.key === 'Escape' && state.editingMessageId) {
+                    // Esc cancels edit mode, restoring whatever draft
+                    // the user had typed before they entered edit.
+                    event.preventDefault();
+                    cancelEditMode();
                 }
             });
+            els.messageInput.addEventListener('paste', onComposerPaste);
         }
+
+        bindComposerDragAndDrop();
 
         document.addEventListener('click', function (event) {
             if (els.searchResults && els.searchInput
@@ -3434,10 +7483,79 @@
         return outputArray;
     }
 
+    /**
+     * Resolves the SW URL and scope as absolute URLs bound to the current
+     * page origin. Using new URL() against window.location.origin (rather
+     * than string concatenation) makes the origin explicit and removes any
+     * chance of the SW being registered against an opaque origin if the
+     * page happens to be in a sandboxed/iframe context. The servlet sends
+     * Service-Worker-Allowed: / so an explicit broader scope is permitted.
+     */
+    function pushUrls() {
+        var origin = window.location.origin;
+        var ctx = contextPath();
+        // Guard against opaque-origin contexts (sandboxed iframe, blob:,
+        // data:, srcdoc, about:blank) where origin is the string 'null'.
+        // We must NOT call new URL(path, 'null') because it throws and
+        // would break init() if pushUrls() is called from the bootstrap
+        // path. The caller (subscribeForPush) detects an opaque origin
+        // through the empty sw/scope and rejects with a clear message.
+        if (!origin || origin === 'null') {
+            return { origin: origin || null, sw: '', scope: '' };
+        }
+        try {
+            return {
+                origin: origin,
+                sw: new URL(ctx + '/plugins/servlet/jim/sw.js', origin).href,
+                scope: new URL(ctx + '/', origin).href
+            };
+        } catch (urlError) {
+            // Any URL-construction failure is treated as opaque-origin too.
+            return { origin: origin || null, sw: '', scope: '' };
+        }
+    }
+
+    function logPushDiagnostics(stage, extra) {
+        try {
+            var info = {
+                stage: stage,
+                locationHref: window.location.href,
+                locationOrigin: window.location.origin,
+                isSecureContext: window.isSecureContext,
+                notificationPermission: (window.Notification && window.Notification.permission) || 'unsupported'
+            };
+            if (extra) {
+                for (var k in extra) {
+                    if (Object.prototype.hasOwnProperty.call(extra, k)) {
+                        info[k] = extra[k];
+                    }
+                }
+            }
+            console.log('[CorbitChat Push]', info);
+        } catch (logError) {
+            // best effort
+        }
+    }
+
     function subscribeForPush() {
-        return navigator.serviceWorker.register(
-                contextPath() + '/plugins/servlet/jim/sw.js',
-                { updateViaCache: 'none' })
+        var urls = pushUrls();
+
+        // Fail fast with a clear message if this code is running inside an
+        // opaque-origin context. pushUrls() returns empty sw/scope strings
+        // for that case so this also covers any URL-construction failure.
+        if (!urls.origin || urls.origin === 'null' || !urls.sw) {
+            logPushDiagnostics('blocked-opaque-origin');
+            return Promise.reject(new Error(
+                'Push setup failed because the request was not made from the Jira page origin.'
+            ));
+        }
+
+        logPushDiagnostics('register', { swUrl: urls.sw, scope: urls.scope });
+
+        return navigator.serviceWorker.register(urls.sw, {
+                scope: urls.scope,
+                updateViaCache: 'none'
+            })
             .then(function (registration) {
                 // Force an update check so a redeployed service worker
                 // replaces the old one immediately.
@@ -3450,6 +7568,10 @@
             })
             .then(function (registration) {
                 return registration.pushManager.getSubscription().then(function (existing) {
+                    logPushDiagnostics('ready', {
+                        scope: registration.scope,
+                        hasSubscription: !!existing
+                    });
                     if (existing) {
                         return existing;
                     }
@@ -3464,6 +7586,10 @@
             .then(function (subscription) {
                 var payload = subscription && subscription.toJSON ? subscription.toJSON() : subscription;
                 return JimApi.savePushSubscription(payload);
+            })
+            .catch(function (error) {
+                logPushDiagnostics('error', { message: error && error.message });
+                throw error;
             });
     }
 
@@ -3494,7 +7620,7 @@
     }
 
     function unsubscribeFromPush() {
-        return navigator.serviceWorker.getRegistration(contextPath() + '/plugins/servlet/jim/sw.js')
+        return navigator.serviceWorker.getRegistration(pushUrls().sw)
             .then(function (registration) {
                 return registration ? registration.pushManager.getSubscription() : null;
             })
@@ -3509,20 +7635,53 @@
             });
     }
 
+    /**
+     * Renders the bottom-left notification status as plain text.
+     *
+     *   - "Enable notifications" : default, clickable - asks for permission
+     *   - "Notifications on"     : push subscribed; clicking disables
+     *   - "Notifications blocked": permission === 'denied' (browser-level);
+     *                              not clickable, shown so the user knows
+     *                              they need to fix it in browser settings
+     *
+     * The crossed-bell glyph is gone - that style is reserved for muting
+     * individual conversations.
+     */
     function refreshPushButton(button) {
-        if (window.Notification.permission === 'denied') {
+        if (!pushSupported()) {
             button.hidden = true;
             return;
         }
         button.hidden = false;
+        button.classList.remove('jim-push-status-on', 'jim-push-status-blocked');
+        if (window.Notification.permission === 'denied') {
+            button.textContent = t('Notifications blocked');
+            button.classList.add('jim-push-status-blocked');
+            button.setAttribute('aria-label', 'Browser has blocked notifications for this site');
+            button.setAttribute('title', 'Allow notifications in your browser settings to receive push messages');
+            button.setAttribute('aria-disabled', 'true');
+            return;
+        }
         var enabled = pushEnabled();
-        button.innerHTML = enabled ? '&#128277;' : '&#128276;';
-        var label = enabled ? 'Disable notifications' : 'Enable notifications';
-        button.title = label;
-        button.setAttribute('aria-label', label);
+        if (enabled) {
+            button.textContent = t('Notifications on');
+            button.classList.add('jim-push-status-on');
+            button.setAttribute('aria-label', 'Notifications are on (click to disable)');
+            button.setAttribute('title', 'Click to disable push notifications');
+        } else {
+            button.textContent = t('Enable notifications');
+            button.setAttribute('aria-label', 'Enable browser push notifications');
+            button.setAttribute('title', 'Enable browser push notifications');
+        }
+        button.removeAttribute('aria-disabled');
     }
 
     function onPushButtonClick(button) {
+        // No action when the browser has blocked notifications - the user
+        // has to fix it in their browser settings.
+        if (window.Notification && window.Notification.permission === 'denied') {
+            return;
+        }
         if (pushEnabled()) {
             setPushDisabled(true);
             unsubscribeFromPush().catch(function (error) {
@@ -3539,6 +7698,12 @@
             }
             subscribeForPush().catch(function (error) {
                 logError('push.subscribe', error);
+                // Surface a clear message when the failure is the
+                // opaque-origin case so the user knows it isn't a generic
+                // network glitch.
+                if (error && error.message && error.message.indexOf('Jira page origin') !== -1) {
+                    showError(error.message);
+                }
             });
         });
     }
@@ -3551,6 +7716,9 @@
             // Keep the subscription fresh on every chat visit.
             subscribeForPush().catch(function (error) {
                 logError('push.subscribe', error);
+                if (error && error.message && error.message.indexOf('Jira page origin') !== -1) {
+                    showError(error.message);
+                }
             });
         }
         var button = document.getElementById('jim-push-enable');
@@ -3560,6 +7728,66 @@
         refreshPushButton(button);
         button.addEventListener('click', function () {
             onPushButtonClick(button);
+        });
+    }
+
+    // ===== Marketplace license =====
+
+    function showLicenseBanner(message, blocking) {
+        if (!els.app || document.getElementById('jim-license-banner')) {
+            return;
+        }
+        var banner = document.createElement('div');
+        banner.id = 'jim-license-banner';
+        banner.className = 'jim-license-banner' + (blocking ? ' jim-license-banner-blocking' : '');
+        banner.setAttribute('role', 'alert');
+        var icon = document.createElement('span');
+        icon.className = 'jim-license-banner-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = '\u26A0';
+        var text = document.createElement('span');
+        text.className = 'jim-license-banner-text';
+        text.textContent = message;
+        banner.appendChild(icon);
+        banner.appendChild(text);
+        // The app shell is a flex row (sidebar | main), so the banner lives at
+        // the top of the main chat column.
+        var main = document.getElementById('jim-chat-panel-shell')
+            || els.app.querySelector('.jim-main')
+            || els.app;
+        main.insertBefore(banner, main.firstChild);
+    }
+
+    function applyLicenseLock() {
+        state.licenseBlocked = true;
+        if (els.composerReadonly) {
+            els.composerReadonly.textContent = 'Messaging is disabled \u2014 the CorbitChat license is missing or expired.';
+        }
+        if (els.searchInput) {
+            els.searchInput.disabled = true;
+            els.searchInput.placeholder = 'License required';
+        }
+        if (els.newConversationButton) {
+            els.newConversationButton.disabled = true;
+        }
+        if (els.savedMessagesButton) {
+            els.savedMessagesButton.disabled = true;
+        }
+        updateComposerState();
+    }
+
+    function checkLicense() {
+        if (!window.JimApi || typeof window.JimApi.getLicenseStatus !== 'function') {
+            return;
+        }
+        window.JimApi.getLicenseStatus().then(function (status) {
+            if (status && status.licensed === false) {
+                showLicenseBanner('CorbitChat license is missing or expired. Messaging is disabled until a valid license is installed via Manage apps. Existing conversations stay readable.', true);
+                applyLicenseLock();
+            }
+        }).catch(function () {
+            // Never break the chat UI because the license endpoint failed.
+            showLicenseBanner('CorbitChat could not verify its license. If problems persist, contact your Jira administrator.', false);
         });
     }
 
@@ -3585,14 +7813,50 @@
         state.projectMode = !!state.projectKey;
         state.projectLeadName = els.app.getAttribute('data-project-lead-name') || null;
 
+        // Effective localization (resolved server-side): drive Persian UI + RTL
+        // + Jalali dates for this user only. Display-only.
+        Locale.lang = els.app.getAttribute('data-effective-lang') === 'fa' ? 'fa' : 'en';
+        Locale.calendar = els.app.getAttribute('data-effective-calendar') === 'jalali'
+            ? 'jalali' : 'gregorian';
+        applyLocaleToDom();
+        setupSettingsPanel();
+
         bindEvents();
         ensureMessageActionsBound();
         updateComposerState();
-        setupPushNotifications();
+        checkLicense();
         if (!state.projectMode) {
             restoreActiveTab();
         }
-        loadConversations(true).then(startPolling);
+        // Polling is the primary message-delivery channel; push is
+        // best-effort on top. We MUST start polling regardless of:
+        //   - whether loadConversations resolves or rejects
+        //   - whether push subscription succeeds, hangs or throws
+        //   - browser notification permission state
+        //
+        // 1) startPolling fires whether the initial conversation load
+        //    succeeded or not (.then + .catch both schedule it). If the
+        //    conversation list failed to load it'll retry on the regular
+        //    poll cycle anyway.
+        // 2) setupPushNotifications is deferred to a setTimeout(0) so it
+        //    runs after the current event-loop tick - completely outside
+        //    init()'s synchronous critical path. Any error inside is
+        //    caught locally.
+        loadConversations(true)
+            .then(startPolling)
+            .catch(function (error) {
+                logError('init.loadConversations', error);
+                // Still start polling so the chat can recover once the
+                // server (or the user's connection) comes back.
+                startPolling();
+            });
+        window.setTimeout(function () {
+            try {
+                setupPushNotifications();
+            } catch (pushSetupError) {
+                logError('push.setup', pushSetupError);
+            }
+        }, 0);
     }
 
     onReady(init);
