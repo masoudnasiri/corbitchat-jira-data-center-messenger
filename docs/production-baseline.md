@@ -1,13 +1,13 @@
-# Production baseline — figmachat7h-functional1 + PWA +107
+# Production baseline — figmachat7i-reportmetrics2 + PWA +107
 
-Updated: 2026-08-15. **Production status: Phase 7H plugin + mobile +107**
-(7G TECH PWA only). Plugin, Gateway, Workspace Agent, and
-report/calendar logic were **not** changed in the +107 swap. Hub was
-**not** deployed. See `docs/phase7h-pwa107-production-rollout.md`.
+Updated: 2026-08-17. **Production status: plugin hotfix
+`figmachat7i-reportmetrics2`**. PWA stays `+107 / figma-task-detail-person-spacing2-prod`
+(7G TECH). Gateway and Workspace Agent were **not** restarted or changed.
+See `docs/phase7i-reportmetrics2-production-rollout.md`.
 
 | Surface | Version |
 |---|---|
-| Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1` |
+| Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2` |
 | PWA | `1.0.0+107 / figma-task-detail-person-spacing2-prod` (7G TECH) |
 | Gateway | `gateway-2.7-prod16` / `mcp-atlassian-prod` (**unchanged**, StartedAt `2026-07-31T23:35:19Z`) |
 
@@ -32,11 +32,11 @@ credential-based smokes. Owner UI test is the acceptance signal.
 
 | Field | Value |
 |---|---|
-| Version | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1` |
+| Version | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2` |
 | Plugin key | `com.corbitlogic.corbitchat.jira.dc` (never change) |
-| Jar sha256 | `b3933dfed2ad986661c725fcaae13397a33f118175d7a7b80445239668a54949` |
-| Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1.jar` |
-| Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1.jar` (inside `jira-srv`) |
+| Jar sha256 | `8102a1b931d7df0dcc7450f9514999555257c2ff4f040a68237284ffa29a880e` |
+| Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2.jar` |
+| Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2.jar` (inside `jira-srv`) |
 | Plugin source commit | `95f50c6ff9e0b02f83856a7f107b300ddb6e749b` |
 | Production PWA | `1.0.0+107 / figma-task-detail-person-spacing2-prod` (7G TECH) |
 | PWA sha256 | `87492330e09e9c6a0815613bbf293867eaad808adf89171cc440d7c208dcaeb9` |
@@ -50,14 +50,14 @@ credential-based smokes. Owner UI test is the acceptance signal.
 
 | Surface | Roll back to |
 |---|---|
-| Plugin | **Do not roll back** — plugin was not changed in +107 |
-| PWA | `1.0.0+102 / figma-phase7h-functional1-prod` |
+| Plugin | `figmachat7i-reportmetrics1` |
+| PWA | **Do not roll back** — PWA was not changed in this hotfix |
 | Gateway | **Do not roll back** — Gateway was not changed |
 
-On `corbit-prod` (TS `20260815-174930`):
+On `corbit-prod` (TS `20260817-090409`):
 
-- PWA: `/root/jira-backups/rollback-pwa-107-20260815-174930/ROLLBACK-pwa.sh`
-- Previous 7H plugin rollback (unused for this swap): `/root/jira-backups/rollback-figmachat7h-20260815-110909/ROLLBACK-plugin.sh`
+- Plugin: `/root/jira-backups/rollback-figmachat7i-reportmetrics2-20260817-090409/ROLLBACK-plugin.sh`
+- Previous PWA +107 rollback (unused for this hotfix): `/root/jira-backups/rollback-pwa-107-20260815-174930/ROLLBACK-pwa.sh`
 
 ## Root cause
 

@@ -238,10 +238,18 @@
 
         <h3 style="margin-top:20px;">Follow-up level intervals</h3>
         <p class="jim-admin-hint">
-            Interval per level. Leave a level's interval at 0 to treat that level as "not configured".
-            Per-level start/end are optional overrides; leave blank to use the global window above.
+            Levels are read dynamically from the configured Follow-up level Jira custom field options below.
+            Add a new option to that Jira field and it appears here after reload. Leave a level's interval at 0
+            to treat that option as "not configured" (no required/missed reports). Per-level start/end are
+            optional overrides; leave blank to use the global window above.
+            <span dir="rtl" lang="fa">سطوح به‌صورت پویا از گزینه‌های فیلد «سطح پیگیری» خوانده می‌شوند. افزودن گزینهٔ جدید در Jira پس از بارگذاری مجدد این جدول را به‌روز می‌کند. مقدار بازه ۰ یعنی «تنظیم‌نشده».</span>
         </p>
-        <table class="aui" style="max-width:920px;">
+        <p class="jim-admin-hint" dir="rtl" lang="fa">
+            واحد «روز» یعنی «روز کاری» بر اساس تنظیمات روزهای کاری Jira (تعطیلات و روزهای غیرکاری شمرده نمی‌شوند)؛ نه ۲۴ ساعت و نه روز تقویمی. مثال: بازه ۷ روز یعنی یک گزارش در هر ۷ روز کاری.
+            <span dir="ltr" lang="en">Days = working days per Jira working-day settings (holidays/non-working days are skipped), not 24h/calendar days. e.g. interval 7 days = one report per 7 working days.</span>
+        </p>
+        <div id="jim-report-levels-warning" class="jim-admin-hint" dir="rtl" lang="fa" style="display:none;color:#a54;margin-bottom:8px;"></div>
+        <table class="aui" style="max-width:960px;">
             <thead>
                 <tr>
                     <th>Level / سطح</th>
@@ -254,41 +262,11 @@
                     <th>Min (fixed) / حداقل</th>
                 </tr>
             </thead>
-            <tbody>
-                #set($levels = [["normal","عادی"],["high","بالا"],["special","ویژه"],["managerial","مدیریتی"]])
-                #foreach($lvl in $levels)
-                <tr>
-                    <td>$lvl.get(1) <span class="jim-admin-hint">($lvl.get(0))</span></td>
-                    <td><input type="number" min="0" id="jim-set-reportInterval_$lvl.get(0)" class="text" style="max-width:70px;"/></td>
-                    <td>
-                        <select id="jim-set-reportIntervalUnit_$lvl.get(0)" class="select">
-                            <option value="hours">hours</option>
-                            <option value="minutes">minutes</option>
-                        </select>
-                    </td>
-                    <td><input type="text" id="jim-set-reportStart_$lvl.get(0)" class="text" style="max-width:64px;" placeholder="08:00"/></td>
-                    <td><input type="text" id="jim-set-reportEnd_$lvl.get(0)" class="text" style="max-width:64px;" placeholder="21:00"/></td>
-                    <td>
-                        <select id="jim-set-reportActiveUntil_$lvl.get(0)" class="select">
-                            <option value="earlier">Earlier of Due/Done / هر کدام زودتر</option>
-                            <option value="due">Due Date / تا Due Date</option>
-                            <option value="done">Done / تا Done شدن</option>
-                        </select>
-                    </td>
-                    <td>
-                        <select id="jim-set-reportCountMode_$lvl.get(0)" class="select">
-                            <option value="daily">Daily / روزانه</option>
-                            <option value="cumulative_due">Cumulative to Due / تجمیعی تا Due</option>
-                            <option value="cumulative_done">Cumulative to Done / تجمیعی تا Done</option>
-                            <option value="cumulative_earlier">Cumulative to earlier / تجمیعی تا زودتر</option>
-                            <option value="fixed_minimum">Fixed minimum until end / حداقل ثابت تا پایان</option>
-                        </select>
-                    </td>
-                    <td><input type="number" min="1" max="1000" id="jim-set-reportMinCount_$lvl.get(0)" class="text" style="max-width:64px;" title="Minimum required reports (fixed_minimum) / حداقل تعداد گزارش موردنیاز"/></td>
-                </tr>
-                #end
+            <tbody id="jim-report-levels-body">
+                <tr><td colspan="8" class="jim-admin-hint">در حال بارگذاری سطوح… / loading levels…</td></tr>
             </tbody>
         </table>
+        <p class="jim-admin-hint" id="jim-report-levels-orphans" dir="rtl" lang="fa" style="display:none;"></p>
 
         <h3 style="margin-top:20px;">Custom field mapping</h3>
         <p class="jim-admin-hint">

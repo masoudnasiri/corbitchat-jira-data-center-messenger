@@ -131,8 +131,17 @@ public class JimRestJsonMapper {
             boolean isOwner = JimGroupServiceImpl.ROLE_OWNER.equals(myRole);
             item.put("myRole", myRole);
             item.put("isOwner", isOwner);
-            item.put("canManage", this.groupService.canManageMembers(conversation, currentUserKey));
+            boolean canManage = this.groupService.canManageMembers(conversation, currentUserKey);
+            item.put("canManage", canManage);
             item.put("canManageAdmins", this.groupService.canManageAdmins(conversation, currentUserKey));
+            // Phase 8C group send policy.
+            String sendPolicy = this.groupService.getSendPolicy(conversation);
+            boolean canSend = this.groupService.canSend(conversation, currentUserKey);
+            item.put("sendPolicy", sendPolicy);
+            item.put("canSendMessage", canSend);
+            item.put("canManageSendPolicy", canManage); // OWNER/ADMIN
+            item.put("memberSendRestricted",
+                    JimGroupServiceImpl.SEND_POLICY_ADMINS_AND_ALLOWED.equals(sendPolicy) && !canSend);
             if (isProjectChat) {
                 item.put("projectKey", conversation.getProjectKey());
             }
@@ -655,6 +664,17 @@ public class JimRestJsonMapper {
             }
             item.put("role", role);
             item.put("joinedAt", member.getJoinedAt());
+            // Phase 8C: expose per-member allow flag + effective send ability so the
+            // group-admin UI can render/manage the allowlist. Admins/owner always send.
+            boolean isAdminRole = JimGroupServiceImpl.ROLE_OWNER.equals(role)
+                    || JimGroupServiceImpl.ROLE_ADMIN.equals(role);
+            boolean allowedSender = Boolean.TRUE.equals(member.getAllowedSender());
+            item.put("allowedSender", allowedSender);
+            item.put("canSend", conversation == null
+                    || isAdminRole
+                    || allowedSender
+                    || !JimGroupServiceImpl.SEND_POLICY_ADMINS_AND_ALLOWED.equals(
+                            this.groupService.getSendPolicy(conversation)));
             ApplicationUser user = this.userManager.getUserByKey(member.getUserKey());
             if (user != null) {
                 item.put("displayName", user.getDisplayName());

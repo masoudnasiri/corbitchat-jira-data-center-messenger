@@ -212,6 +212,7 @@ public class JimReportServiceImpl implements JimReportService {
         in.intervalMinutes = sch.intervalMinutes;
         in.windowStartMin = sch.windowStartMinute;
         in.windowEndMin = sch.windowEndMinute;
+        in.workingDayInterval = sch.workingDayInterval; // Phase 8B: unit=days → N working days
         in.nowMs = System.currentTimeMillis();
         in.daily = "daily".equals(s.countMode);
         in.periodEndMs = countPeriodEnd(s, isDoneNow);
@@ -648,7 +649,7 @@ public class JimReportServiceImpl implements JimReportService {
         s.satisfiedWindowCount = s.validCount;
         s.missedWindowCount = s.missedCount;
         s.todayValidCount = s.validCount;
-        s.todayRequiredCount = s.requiredCount;
+        s.todayRequiredCount = s.requiredSoFar;
         s.todayMissedCount = s.missedCount;
     }
 
@@ -759,7 +760,12 @@ public class JimReportServiceImpl implements JimReportService {
             String activeUntil = level != null ? JimReportConfig.activeUntilForLevel(level) : null;
             JimReportConfig.ReportSchedule sch = level != null ? JimReportConfig.scheduleForLevel(level) : null;
             String schedSig = sch != null
-                    ? (sch.intervalMinutes + "/" + sch.windowStartMinute + "-" + sch.windowEndMinute) : "none";
+                    ? (sch.intervalMinutes + "/" + sch.windowStartMinute + "-" + sch.windowEndMinute
+                        + "/wd" + sch.workingDayInterval) : "none";
+            // Include the fixed-minimum count so a minCount change for the issue's
+            // (dynamic) level invalidates the cached ledger (Phase 8A).
+            int minCount = level != null ? JimReportConfig.minCountForLevel(level) : 0;
+            schedSig = schedSig + "/min" + minCount;
             String cfgSig = JimReportConfig.marker()
                     + "|" + JimReportConfig.globalWindowStartMinute()
                     + "|" + JimReportConfig.globalWindowEndMinute()
@@ -877,7 +883,7 @@ public class JimReportServiceImpl implements JimReportService {
      * = the configured minimum; valid = report comments inside the reporting
      * window and at/before the endpoint (capped at required for compliance).
      * Out-of-window reports stay raw-only. Not-yet-met is on-track while still
-     * active and overdue once the endpoint has passed.
+     * active; {@code missedCount} stays 0 until the endpoint has passed.
      */
     private void computeFixedMinimum(JimReportSummary s, TimeZone tz) {
         // Fully out of enforcement scope → no scoring obligation (history still shown).
@@ -912,11 +918,14 @@ public class JimReportServiceImpl implements JimReportService {
         s.validCount = Math.min(validInWindow, required);
         s.duplicateCount = 0; // interval-duplicate logic does not apply
         s.outOfWindowCount = Math.max(0, s.rawCount - validInWindow - outOfScope);
-        s.requiredSoFar = required;
-        s.validSoFar = s.validCount;
-        s.missedCount = Math.max(required - s.validCount, 0);
         boolean met = s.validCount >= required;
         boolean ended = endpoint != null && now > endpoint;
+        // Obligation is "N by the end". Until the due/done endpoint, nothing
+        // has expired — not-yet-submitted is ON_TRACK, not missed.
+        // Do not use (minimumRequired - valid) while the window is still open.
+        s.requiredSoFar = (ended || met) ? required : 0;
+        s.validSoFar = s.validCount;
+        s.missedCount = (ended && !met) ? Math.max(required - s.validCount, 0) : 0;
         s.compliance = met ? "on_track" : (ended ? "overdue" : "on_track");
         s.nextExpectedMs = met ? null : endpoint;
     }

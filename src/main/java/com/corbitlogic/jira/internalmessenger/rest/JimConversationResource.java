@@ -469,6 +469,7 @@ public class JimConversationResource {
             ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
             JimConversation conversation = this.conversationService.getConversationForUser(conversationId, currentUserKey);
             this.enforceDirectChatPolicy(conversation, currentUserKey);
+            this.groupService.requireCanSend(conversation, currentUserKey); // Phase 8C group send policy
             if (!requestedIssueKey.isEmpty()) {
                 MutableIssue issue = ComponentAccessor.getIssueManager().getIssueByCurrentKey(requestedIssueKey);
                 if (issue == null || !ComponentAccessor.getPermissionManager().hasPermission(ProjectPermissions.BROWSE_PROJECTS, (Issue)issue, viewer)) {
@@ -505,6 +506,7 @@ public class JimConversationResource {
             ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
             JimConversation uploadConversation = this.conversationService.getConversationForUser(conversationId, currentUserKey);
             this.enforceDirectChatPolicy(uploadConversation, currentUserKey);
+            this.groupService.requireCanSend(uploadConversation, currentUserKey); // Phase 8C: block before any upload side effect
             File tempDirectory = this.attachmentStorageService.createUploadTempDirectory();
             JimMultipartParser.ParsedMultipartForm form = JimMultipartParser.parse(request, tempDirectory);
             JimAttachmentService.UploadResult result = this.attachmentService.uploadAttachment(conversationId, currentUserKey, form.getBody(), form.getFile(), form.getContentType(), form.getOriginalFilename());

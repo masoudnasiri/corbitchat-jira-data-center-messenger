@@ -28,6 +28,7 @@ import com.corbitlogic.jira.internalmessenger.rest.JimRestJsonMapper;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
 import com.corbitlogic.jira.internalmessenger.service.JimChatAuditService;
 import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
+import com.corbitlogic.jira.internalmessenger.service.JimGroupService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessageUserStateService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
@@ -60,9 +61,10 @@ public class JimMessageResource {
     private final JimRestJsonMapper restJsonMapper;
     private final JimMessageUserStateService userStateService;
     private final JimChatAuditService auditService;
+    private final JimGroupService groupService;
 
     @Inject
-    public JimMessageResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReactionService reactionService, JimRestJsonMapper restJsonMapper, JimMessageUserStateService userStateService, JimChatAuditService auditService) {
+    public JimMessageResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimConversationService conversationService, JimMessageService messageService, JimReactionService reactionService, JimRestJsonMapper restJsonMapper, JimMessageUserStateService userStateService, JimChatAuditService auditService, JimGroupService groupService) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.conversationService = conversationService;
@@ -71,6 +73,7 @@ public class JimMessageResource {
         this.restJsonMapper = restJsonMapper;
         this.userStateService = userStateService;
         this.auditService = auditService;
+        this.groupService = groupService;
     }
 
     /** Delete-for-me: hide a single message for the current user only (Sprint 12). */
@@ -228,6 +231,9 @@ public class JimMessageResource {
         try {
             String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
             ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            // Phase 8C: forwarding creates a message in the TARGET group — enforce its send policy.
+            JimConversation target = this.conversationService.getConversationForUser(targetConversationId, currentUserKey);
+            this.groupService.requireCanSend(target, currentUserKey);
             JimMessage message = this.messageService.forwardUserMessage(targetConversationId, currentUserKey, messageId);
             JimConversation conversation = this.conversationService.getConversationForUser(message.getConversationId(), currentUserKey);
             return JimRestResponses.okJson(this.restJsonMapper.toMessageMap(message, viewer, conversation, currentUserKey));

@@ -284,16 +284,79 @@
         setVal('jim-set-reportLevelFieldId', settings.reportLevelFieldId || '');
         setVal('jim-set-reportValidCountFieldId', settings.reportValidCountFieldId || '');
         setVal('jim-set-reportRequiredCountFieldId', settings.reportRequiredCountFieldId || '');
-        for (var i = 0; i < REPORT_LEVEL_CODES.length; i++) {
-            var c = REPORT_LEVEL_CODES[i];
-            setVal('jim-set-reportInterval_' + c, settings['reportInterval_' + c] != null ? settings['reportInterval_' + c] : 0);
-            setVal('jim-set-reportIntervalUnit_' + c, settings['reportIntervalUnit_' + c] || 'hours');
-            setVal('jim-set-reportStart_' + c, settings['reportStart_' + c] || '');
-            setVal('jim-set-reportEnd_' + c, settings['reportEnd_' + c] || '');
-            setVal('jim-set-reportActiveUntil_' + c, settings['reportActiveUntil_' + c] || 'earlier');
-            setVal('jim-set-reportCountMode_' + c, settings['reportCountMode_' + c] || 'daily');
-            setVal('jim-set-reportMinCount_' + c, settings['reportMinCount_' + c] != null ? settings['reportMinCount_' + c] : 1);
+        // Follow-up levels are now dynamic (Phase 8A): fetch options from the
+        // configured Jira custom field and render an editable row per option.
+        loadReportLevels();
+    }
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+        });
+    }
+
+    function levelRowHtml(row, isOrphan) {
+        var key = row.key;
+        var label = esc(row.value != null ? row.value : key);
+        var badges = '';
+        if (isOrphan) {
+            badges += ' <span class="jim-admin-hint" style="color:#a54;">(orphan / یتیم: ' + esc(row.reason || '') + ')</span>';
+        } else {
+            if (!row.configured) { badges += ' <span class="jim-admin-hint">(not configured / تنظیم‌نشده)</span>'; }
+            if (row.legacyFallbackUsed) { badges += ' <span class="jim-admin-hint" style="color:#586;">(legacy fallback)</span>'; }
+            if (row.disabled) { badges += ' <span class="jim-admin-hint" style="color:#a54;">(disabled option)</span>'; }
+            if (row.duplicateLabel && row.contextName) { badges += ' <span class="jim-admin-hint">[' + esc(row.contextName) + ']</span>'; }
         }
+        var au = row.activeUntil || 'earlier';
+        var cm = row.countMode || 'daily';
+        var unit = row.unit || 'hours';
+        function opt(v, t, sel) { return '<option value="' + v + '"' + (sel === v ? ' selected' : '') + '>' + t + '</option>'; }
+        return '<tr data-levelkey="' + esc(key) + '">'
+            + '<td>' + label + ' <span class="jim-admin-hint" title="stable option key">(' + esc(key) + ')</span>' + badges + '</td>'
+            + '<td><input type="number" min="0" id="jim-set-reportInterval_' + esc(key) + '" class="text" style="max-width:70px;" value="' + esc(row.interval != null ? row.interval : 0) + '"/></td>'
+            + '<td><select id="jim-set-reportIntervalUnit_' + esc(key) + '" class="select" title="Days = working days (Jira working-day settings) / روز = روز کاری">' + opt('hours', 'hours', unit) + opt('minutes', 'minutes', unit) + opt('days', 'days / روز', unit) + '</select></td>'
+            + '<td><input type="text" id="jim-set-reportStart_' + esc(key) + '" class="text" style="max-width:64px;" placeholder="08:00" value="' + esc(row.start || '') + '"/></td>'
+            + '<td><input type="text" id="jim-set-reportEnd_' + esc(key) + '" class="text" style="max-width:64px;" placeholder="21:00" value="' + esc(row.end || '') + '"/></td>'
+            + '<td><select id="jim-set-reportActiveUntil_' + esc(key) + '" class="select">' + opt('earlier', 'Earlier / زودتر', au) + opt('due', 'Due / تا Due', au) + opt('done', 'Done / تا Done', au) + '</select></td>'
+            + '<td><select id="jim-set-reportCountMode_' + esc(key) + '" class="select">'
+                + opt('daily', 'Daily / روزانه', cm) + opt('cumulative_due', 'Cumulative Due', cm)
+                + opt('cumulative_done', 'Cumulative Done', cm) + opt('cumulative_earlier', 'Cumulative earlier', cm)
+                + opt('fixed_minimum', 'Fixed minimum', cm) + '</select></td>'
+            + '<td><input type="number" min="1" max="1000" id="jim-set-reportMinCount_' + esc(key) + '" class="text" style="max-width:64px;" value="' + esc(row.minCount != null ? row.minCount : 1) + '"/></td>'
+            + '</tr>';
+    }
+
+    function loadReportLevels() {
+        var body = el('jim-report-levels-body');
+        var warn = el('jim-report-levels-warning');
+        var orphansEl = el('jim-report-levels-orphans');
+        if (!body) { return; }
+        request('GET', '/reporting/levels').then(function (model) {
+            var rows = (model && model.options) || [];
+            var html = '';
+            for (var i = 0; i < rows.length; i++) { html += levelRowHtml(rows[i], false); }
+            var orphans = (model && model.orphans) || [];
+            for (var j = 0; j < orphans.length; j++) { html += levelRowHtml(orphans[j], true); }
+            if (!html) {
+                html = '<tr><td colspan="8" class="jim-admin-hint" dir="rtl" lang="fa">هیچ گزینه‌ای برای فیلد سطح پیگیری یافت نشد.</td></tr>';
+            }
+            body.innerHTML = html;
+            if (warn) {
+                var w = (model && model.warnings) || [];
+                var msgs = [];
+                if (model && model.fieldConfigured === false) { msgs.push('فیلد «سطح پیگیری» پیدا نشد — سطوح پویا غیرفعال است.'); }
+                else if (model && model.isSelect === false) { msgs.push('فیلد «سطح پیگیری» از نوع select/list نیست.'); }
+                for (var k = 0; k < w.length; k++) { if (w[k].indexOf('duplicate_option_label') === 0) { msgs.push('برچسب گزینهٔ تکراری در چند کانتکست: ' + w[k].split(':')[1]); } }
+                warn.style.display = msgs.length ? '' : 'none';
+                warn.textContent = msgs.join('  |  ');
+            }
+            if (orphansEl) {
+                orphansEl.style.display = orphans.length ? '' : 'none';
+                orphansEl.textContent = orphans.length ? ('تنظیمات یتیم (گزینهٔ حذف/تغییر یافته): ' + orphans.length + ' — برای پاک‌سازی، بازه را ۰ کنید و ذخیره نمایید.') : '';
+            }
+        }).catch(function (err) {
+            body.innerHTML = '<tr><td colspan="8" class="jim-admin-hint" style="color:#a54;">خطا در بارگذاری سطوح / error: ' + esc(err && err.message ? err.message : err) + '</td></tr>';
+        });
     }
 
     function setVal(id, value) {
@@ -396,9 +459,15 @@
                     reportValidCountFieldId: (el('jim-set-reportValidCountFieldId').value || '').trim(),
                     reportRequiredCountFieldId: (el('jim-set-reportRequiredCountFieldId').value || '').trim()
                 };
-                for (var i = 0; i < REPORT_LEVEL_CODES.length; i++) {
-                    var c = REPORT_LEVEL_CODES[i];
-                    changes['reportInterval_' + c] = (el('jim-set-reportInterval_' + c).value || '0').trim();
+                // Collect per-level config from the DYNAMIC rows (Phase 8A): one row
+                // per Jira follow-up-level option (stable key o<optionId>) + any orphan rows.
+                var levelRows = document.querySelectorAll('#jim-report-levels-body tr[data-levelkey]');
+                for (var i = 0; i < levelRows.length; i++) {
+                    var c = levelRows[i].getAttribute('data-levelkey');
+                    if (!c) { continue; }
+                    var ivEl = el('jim-set-reportInterval_' + c);
+                    if (!ivEl) { continue; }
+                    changes['reportInterval_' + c] = (ivEl.value || '0').trim();
                     changes['reportIntervalUnit_' + c] = el('jim-set-reportIntervalUnit_' + c).value;
                     changes['reportStart_' + c] = (el('jim-set-reportStart_' + c).value || '').trim();
                     changes['reportEnd_' + c] = (el('jim-set-reportEnd_' + c).value || '').trim();

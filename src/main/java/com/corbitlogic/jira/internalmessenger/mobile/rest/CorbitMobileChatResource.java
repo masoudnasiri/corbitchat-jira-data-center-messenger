@@ -535,7 +535,8 @@ public class CorbitMobileChatResource {
             String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
             ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
             List<JimGroupMember> members = this.groupService.listMembers(conversationId, currentUserKey);
-            List<Map<String, Object>> memberMaps = this.restJsonMapper.toGroupMemberMaps(members, viewer);
+            JimConversation conversation = this.conversationService.getConversationForUser(conversationId, currentUserKey);
+            List<Map<String, Object>> memberMaps = this.restJsonMapper.toGroupMemberMaps(members, viewer, conversation); // Phase 8C
             rewriteGroupMemberAvatars(memberMaps);
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("members", memberMaps);
@@ -693,6 +694,85 @@ public class CorbitMobileChatResource {
             return JimRestResponses.internalError(log,
                     "POST /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/rename",
                     userKey, ex, "internal_error", "An internal error occurred while renaming the group.");
+        }
+    }
+
+    /**
+     * Phase 8C: set group send policy (OWNER/ADMIN). Body {@code {"sendPolicy":"ALL_MEMBERS"|"ADMINS_AND_ALLOWED"}}.
+     * Mirrors {@code POST /rest/jim/1.0/groups/{id}/send-policy}.
+     */
+    @POST
+    @Path("/conversations/{conversationId}/send-policy")
+    @Consumes({"application/json"})
+    public Response setSendPolicy(@PathParam("conversationId") int conversationId, Map<String, Object> requestBody) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        String policy = str(requestBody, "sendPolicy");
+        if (policy == null || policy.trim().isEmpty()) {
+            return JimRestResponses.errorJson(400, "bad_request", "sendPolicy is required");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimConversation conversation = this.groupService.setSendPolicy(conversationId, currentUserKey, policy);
+            int unreadCount = this.readStateService.getUnreadCount(conversation.getID(), currentUserKey);
+            Map<String, Object> convMap =
+                    this.restJsonMapper.toConversationMap(conversation, currentUserKey, viewer, unreadCount);
+            rewriteConversationAvatar(conversation, convMap, currentUserKey);
+            return JimRestResponses.okJson(convMap);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/send-policy",
+                    userKey, ex, "internal_error", "An internal error occurred while updating the send policy.");
+        }
+    }
+
+    /**
+     * Phase 8C: allow/disallow a non-admin member to send (OWNER/ADMIN). Body {@code {"userKey":..,"allowed":true}}.
+     * Mirrors {@code POST /rest/jim/1.0/groups/{id}/allowed-senders}. Returns the updated member list.
+     */
+    @POST
+    @Path("/conversations/{conversationId}/allowed-senders")
+    @Consumes({"application/json"})
+    public Response setAllowedSender(@PathParam("conversationId") int conversationId, Map<String, Object> requestBody) {
+        String userKey = resolveCurrentUserKey();
+        if (userKey == null) {
+            return unauthenticated();
+        }
+        Response featureBlocked = chatFeatureBlocked();
+        if (featureBlocked != null) {
+            return featureBlocked;
+        }
+        String targetUserKey = str(requestBody, "userKey");
+        if (targetUserKey == null || targetUserKey.trim().isEmpty()) {
+            return JimRestResponses.errorJson(400, "bad_request", "userKey is required");
+        }
+        boolean allowed = requestBody != null && Boolean.TRUE.equals(requestBody.get("allowed"));
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            this.groupService.setAllowedSender(conversationId, currentUserKey, targetUserKey, allowed);
+            List<JimGroupMember> members = this.groupService.listMembers(conversationId, currentUserKey);
+            JimConversation conversation = this.conversationService.getConversationForUser(conversationId, currentUserKey);
+            List<Map<String, Object>> memberMaps = this.restJsonMapper.toGroupMemberMaps(members, viewer, conversation);
+            rewriteGroupMemberAvatars(memberMaps);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("members", memberMaps);
+            return JimRestResponses.okJson(body);
+        } catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "POST /rest/corbit-mobile/1.0/chat/conversations/" + conversationId + "/allowed-senders",
+                    userKey, ex, "internal_error", "An internal error occurred while updating allowed senders.");
         }
     }
 
@@ -1116,6 +1196,7 @@ public class CorbitMobileChatResource {
             JimConversation conversation =
                     this.conversationService.getConversationForUser(conversationId, currentUserKey);
             enforceDirectChatPolicy(conversation, currentUserKey);
+            this.groupService.requireCanSend(conversation, currentUserKey); // Phase 8C group send policy
             Long replyToMessageId = asLong(requestBody, "replyToMessageId");
             JimMessage message;
             if (!issueKey.isEmpty()) {
@@ -1181,6 +1262,7 @@ public class CorbitMobileChatResource {
             JimConversation conversation =
                     this.conversationService.getConversationForUser(conversationId, currentUserKey);
             enforceDirectChatPolicy(conversation, currentUserKey);
+            this.groupService.requireCanSend(conversation, currentUserKey); // Phase 8C: block before upload side effect
             File tempDirectory = this.attachmentStorageService.createUploadTempDirectory();
             JimMultipartParser.ParsedMultipartForm form = JimMultipartParser.parse(request, tempDirectory);
             JimAttachmentService.UploadResult result = this.attachmentService.uploadAttachment(
@@ -1556,6 +1638,7 @@ public class CorbitMobileChatResource {
             JimConversation target = this.conversationService.getConversationForUser(
                     targetConversationId.intValue(), currentUserKey);
             enforceDirectChatPolicy(target, currentUserKey);
+            this.groupService.requireCanSend(target, currentUserKey); // Phase 8C: forward respects target group policy
             JimMessage message = this.messageService.forwardUserMessage(
                     targetConversationId.intValue(), currentUserKey, messageId);
             return okMessage(message, viewer, currentUserKey);

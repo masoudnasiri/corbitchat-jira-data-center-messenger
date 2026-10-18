@@ -95,6 +95,7 @@ public class CorbitMobileIssueResource {
     private final JimAttachmentStorageService attachmentStorageService;
     private final com.corbitlogic.jira.internalmessenger.report.JimReportService reportService;
     private final com.corbitlogic.jira.internalmessenger.service.JimCommentReactionService commentReactionService;
+    private final com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService reportMetricsService;
 
     @Inject
     public CorbitMobileIssueResource(JiraAuthenticationContext authenticationContext,
@@ -104,7 +105,8 @@ public class CorbitMobileIssueResource {
                                      JimMobileFeatureService featureService,
                                      JimAttachmentStorageService attachmentStorageService,
                                      com.corbitlogic.jira.internalmessenger.report.JimReportService reportService,
-                                     com.corbitlogic.jira.internalmessenger.service.JimCommentReactionService commentReactionService) {
+                                     com.corbitlogic.jira.internalmessenger.service.JimCommentReactionService commentReactionService,
+                                     com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService reportMetricsService) {
         this.authenticationContext = authenticationContext;
         this.searchService = searchService;
         this.avatarService = avatarService;
@@ -113,6 +115,7 @@ public class CorbitMobileIssueResource {
         this.attachmentStorageService = attachmentStorageService;
         this.reportService = reportService;
         this.commentReactionService = commentReactionService;
+        this.reportMetricsService = reportMetricsService;
     }
 
     // --- Report compliance (Sprint 12 Phase D — mobile parity) ----------------
@@ -519,16 +522,17 @@ public class CorbitMobileIssueResource {
     }
 
     /**
-     * Bounded report-list for the redesigned Reports surface (Phase 3B-4R). Runs
-     * the report summary for the caller's assigned, report-configured issues,
-     * capped at {@code maxResults} (≤10) so it is never an unbounded N+1. Returns
-     * per-issue report cards + a real aggregate (compliance score) for the gauge.
-     * Degrades to an empty/available=false payload when nothing is configured.
+     * Report list + aggregate from the shared metrics service (Phase 7I).
+     * Same scan, cap, and period as Dashboard {@code reportSummary}.
+     * Aggregate is the full scan, not the current page.
      */
     @GET
     @Path("/reports")
     public Response reportList(@QueryParam("startAt") @DefaultValue("0") int startAt,
-                               @QueryParam("maxResults") @DefaultValue("10") int maxResults) {
+                               @QueryParam("maxResults") @DefaultValue("25") int maxResults,
+                               @QueryParam("period") @DefaultValue("all") String period,
+                               @QueryParam("from") String from,
+                               @QueryParam("to") String to) {
         ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
         if (viewer == null) {
             return unauthenticated();
@@ -537,51 +541,52 @@ public class CorbitMobileIssueResource {
             return JimRestResponses.featureDisabled(JimMobileFeatures.TASKS);
         }
         int start = Math.max(0, startAt);
-        int max = Math.min(Math.max(1, maxResults), 10); // hard cap — bounded, no unbounded N+1
+        int max = Math.min(Math.max(1, maxResults),
+                com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService.SCAN_CAP);
         try {
-            Query query = JimMobileIssues.buildQuery(viewer, this.searchService, "assigned");
-            PagerFilter<Issue> pager = new PagerFilter<Issue>(max);
-            pager.setStart(start);
-            SearchResults<Issue> results = this.searchService.search(viewer, query, pager);
-            List<Map<String, Object>> items = new ArrayList<Map<String, Object>>();
-            long tot = 0, val = 0, oow = 0, missed = 0, reqSoFar = 0, valSoFar = 0;
-            int configured = 0;
-            for (Issue issue : results.getResults()) {
-                com.corbitlogic.jira.internalmessenger.report.JimReportSummary s =
-                        this.reportService.computeSummary(issue);
-                if (s == null || !s.configured || s.levelCode == null || !s.applicable) {
-                    continue; // out-of-scope issues are excluded from current reports
-                }
-                items.add(reportListItemMap(issue, s, viewer));
-                configured++;
-                tot += s.rawCount;
-                val += s.validCount;
-                oow += s.outOfWindowCount;
-                missed += s.missedCount;
-                reqSoFar += s.requiredSoFar;
-                valSoFar += s.validSoFar;
+            com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService.Snapshot snap =
+                    this.reportMetricsService.snapshot(viewer, period, from, to);
+            List<Map<String, Object>> allItems = new ArrayList<Map<String, Object>>();
+            for (com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService.IssueRow row
+                    : snap.rows) {
+                Map<String, Object> item = reportListItemMap(row.issue, row.summary, viewer);
+                item.put("validCount", row.counts.valid);
+                item.put("missedCount", row.counts.missed);
+                item.put("rawCount", row.counts.raw);
+                item.put("outOfWindowCount", row.counts.outOfWindow);
+                item.put("requiredCount", row.counts.required);
+                allItems.add(item);
             }
+            int end = Math.min(allItems.size(), start + max);
+            List<Map<String, Object>> page = start >= allItems.size()
+                    ? new ArrayList<Map<String, Object>>()
+                    : new ArrayList<Map<String, Object>>(allItems.subList(start, end));
+            Map<String, Object> metrics = this.reportMetricsService.metricsMap(snap);
             Map<String, Object> agg = new LinkedHashMap<String, Object>();
-            agg.put("total", tot);
-            agg.put("valid", val);
-            agg.put("outOfWindow", oow);
-            agg.put("missed", missed);
-            agg.put("requiredSoFar", reqSoFar);
-            agg.put("validSoFar", valSoFar);
-            // Real compliance score in [0,1]: valid-so-far / required-so-far.
-            double score = reqSoFar > 0
-                    ? Math.max(0.0, Math.min(1.0, (double) valSoFar / (double) reqSoFar))
-                    : (configured > 0 && oow == 0 && missed == 0 ? 1.0 : 0.0);
+            agg.put("total", snap.metrics.rawTotal);
+            agg.put("valid", snap.metrics.valid);
+            agg.put("outOfWindow", snap.metrics.outOfWindow);
+            agg.put("missed", snap.metrics.missed);
+            agg.put("requiredSoFar", snap.metrics.totalRequired);
+            agg.put("validSoFar", snap.metrics.valid);
+            int req = snap.metrics.totalRequired;
+            double score = req > 0
+                    ? Math.max(0.0, Math.min(1.0, (double) snap.metrics.valid / (double) req))
+                    : (snap.metrics.available && snap.metrics.outOfWindow == 0
+                    && snap.metrics.missed == 0 ? 1.0 : 0.0);
             agg.put("score", score);
-            agg.put("available", configured > 0);
+            agg.put("available", snap.metrics.available);
             Map<String, Object> body = new LinkedHashMap<String, Object>();
-            body.put("items", items);
+            body.put("items", page);
             body.put("aggregate", agg);
+            body.put("reportMetrics", metrics);
+            body.put("period", this.reportMetricsService.periodMap(snap.period));
             body.put("startAt", start);
             body.put("maxResults", max);
-            body.put("total", results.getTotal());
-            body.put("isLast", start + results.getResults().size() >= results.getTotal());
-            body.put("reportConfigured", configured > 0);
+            body.put("total", snap.rows.size());
+            body.put("isLast", end >= allItems.size());
+            body.put("reportConfigured", snap.metrics.available);
+            body.put("capped", snap.metrics.capped);
             return JimRestResponses.okJson(body);
         } catch (Exception ex) {
             return JimRestResponses.internalError(log,
@@ -1132,6 +1137,36 @@ public class CorbitMobileIssueResource {
     // ====================================================================
 
     /** Available workflow transitions for the viewer (condition + permission aware). */
+    /**
+     * Phase 8D — read-only custom Workflow Viewer (mobile BFF).
+     * {@code GET /rest/corbit-mobile/1.0/issues/{issueKey}/workflow-view}. Browse-gated;
+     * never mutates/transitions the issue. Shares {@link JimWorkflowViewService} with web.
+     */
+    @GET
+    @Path("/{issueKey}/workflow-view")
+    public Response getWorkflowView(@PathParam("issueKey") String issueKey) {
+        ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+        if (viewer == null) {
+            return unauthenticated();
+        }
+        if (!this.featureService.isAllowed(viewer, JimMobileFeatures.ISSUE_DETAIL)) {
+            return JimRestResponses.featureDisabled(JimMobileFeatures.ISSUE_DETAIL);
+        }
+        try {
+            MutableIssue issue = loadBrowsable(issueKey, viewer);
+            if (issue == null) {
+                return notFound();
+            }
+            return JimRestResponses.okJson(
+                    com.corbitlogic.jira.internalmessenger.service.JimWorkflowViewService
+                            .buildWorkflowView(issue, viewer));
+        } catch (Exception ex) {
+            return JimRestResponses.internalError(log,
+                    "GET /rest/corbit-mobile/1.0/issues/" + issueKey + "/workflow-view",
+                    viewer.getKey(), ex, "internal_error", "Unable to load the workflow view.");
+        }
+    }
+
     @GET
     @Path("/{issueKey}/transitions")
     public Response getTransitions(@PathParam("issueKey") String issueKey) {

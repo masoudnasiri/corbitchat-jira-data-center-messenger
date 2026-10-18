@@ -1,0 +1,47 @@
+/* Phase 8D — custom Workflow Viewer styles (scoped to .jim-workflow-app / modal). */
+.jim-workflow-app { font-size: 13px; color: #172b4d; }
+.jim-workflow-app.jim-lang-fa { direction: rtl; text-align: right; }
+.jim-wf-loading, .jim-wf-error { padding: 16px; color: #5e6c84; }
+.jim-wf-error { color: #bf2600; }
+.jim-wf-wrap { padding: 8px 4px; }
+.jim-wf-head { margin-bottom: 8px; }
+.jim-wf-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.jim-wf-sub { display: flex; flex-wrap: wrap; gap: 6px; }
+.jim-wf-chip { background: #f1f2f4; border-radius: 12px; padding: 2px 10px; font-size: 12px; color: #42526e; }
+.jim-wf-chip-wf { background: #deebff; color: #0b3d91; }
+.jim-wf-chip-current { background: #0b6e6e; color: #fff; }
+.jim-wf-avail { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+.jim-wf-avail-label { font-weight: 600; color: #42526e; }
+.jim-wf-avail-chip { background: #e3fcef; color: #0b5a3a; border: 1px solid #36b37e; border-radius: 12px; padding: 2px 10px; font-size: 12px; }
+.jim-wf-muted { color: #97a0af; font-style: italic; }
+.jim-wf-toggle { margin: 6px 0; display: flex; gap: 6px; }
+.jim-wf-toggle .jim-wf-active { background: #0b6e6e; color: #fff; }
+.jim-wf-graph { overflow: auto; border: 1px solid #ebecf0; border-radius: 8px; background: #fafbfc; padding: 6px; }
+.jim-wf-svg { display: block; min-width: 320px; }
+.jim-wf-list, .jim-wf-tlist { margin-top: 6px; }
+.jim-wf-tlist-h { font-weight: 700; margin: 8px 0 4px; }
+.jim-wf-trow { border: 1px solid #ebecf0; border-radius: 8px; margin-bottom: 6px; background: #fff; }
+.jim-wf-trow-avail { border-color: #36b37e; box-shadow: 0 0 0 1px #36b37e33; }
+.jim-wf-trow-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; cursor: pointer; }
+.jim-wf-tname { font-weight: 600; }
+.jim-wf-tpath { color: #5e6c84; }
+.jim-wf-ttype { background: #f4f5f7; border-radius: 10px; padding: 1px 8px; font-size: 11px; color: #6554c0; }
+.jim-wf-tavail { color: #36b37e; font-weight: 700; margin-inline-start: auto; }
+.jim-wf-tdetail { padding: 8px 12px; border-top: 1px solid #f1f2f4; }
+.jim-wf-rblock { margin-bottom: 8px; }
+.jim-wf-rlabel { font-weight: 600; color: #42526e; margin-bottom: 2px; }
+.jim-wf-ritem { padding: 4px 8px; border-inline-start: 3px solid #c1c7d0; background: #fafbfc; border-radius: 4px; margin-bottom: 4px; }
+.jim-wf-ritem.jim-wf-redacted { border-inline-start-color: #ff8b00; background: #fff7ed; }
+.jim-wf-ritem.jim-wf-admin { border-inline-start-color: #6554c0; }
+.jim-wf-rname { font-weight: 600; }
+.jim-wf-rbadge { background: #ffab00; color: #172b4d; border-radius: 8px; padding: 0 6px; font-size: 11px; margin-inline-start: 6px; }
+.jim-wf-rclass { color: #97a0af; font-family: monospace; font-size: 11px; margin-inline-start: 6px; }
+.jim-wf-rparams { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.jim-wf-rparam { background: #f1f2f4; border-radius: 8px; padding: 0 6px; font-size: 11px; }
+.jim-wf-warn { margin-top: 10px; border: 1px solid #ffe0b2; background: #fff8e1; border-radius: 8px; padding: 8px; }
+.jim-wf-warn-h { font-weight: 700; color: #a15c00; margin-bottom: 4px; }
+.jim-wf-warn-item { font-size: 12px; color: #7a5200; }
+.jim-wf-openmodal { margin-bottom: 8px; background: #0b6e6e; color: #fff; }
+.jim-wf-modal-overlay { position: fixed; inset: 0; background: rgba(9,30,66,.54); z-index: 10000; display: flex; align-items: center; justify-content: center; }
+.jim-wf-modal { background: #fff; border-radius: 10px; width: min(960px, 94vw); max-height: 92vh; overflow: auto; padding: 16px; position: relative; }
+.jim-wf-modal-close { position: absolute; top: 10px; inset-inline-end: 10px; }

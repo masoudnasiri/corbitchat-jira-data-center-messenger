@@ -103,6 +103,19 @@ extends Entity {
     public void setProjectKey(String var1);
 
     /**
+     * Phase 8C group send policy. {@code null}/empty/"ALL_MEMBERS" = every active member may
+     * send (legacy behavior — existing groups are never restricted after upgrade).
+     * "ADMINS_AND_ALLOWED" = only OWNER/ADMIN or members flagged {@code allowedSender} may send.
+     * Additive/nullable → AO auto-migration; legacy rows read null = ALL_MEMBERS.
+     */
+    @StringLength(value=32)
+    @Accessor(value="SEND_POLICY")
+    public String getSendPolicy();
+
+    @Mutator(value="SEND_POLICY")
+    public void setSendPolicy(String var1);
+
+    /**
      * Sprint 12 governance: 1 when a group has been soft-archived ("deleted" by
      * its owner). Archived groups are hidden from normal users but ALL history
      * (messages, members, attachments, reactions, audit) is retained for

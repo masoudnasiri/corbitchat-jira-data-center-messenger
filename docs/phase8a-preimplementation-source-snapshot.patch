@@ -1,0 +1,545 @@
+diff --git a/docs/deployment-production.md b/docs/deployment-production.md
+index 8386861..6924eb1 100644
+--- a/docs/deployment-production.md
++++ b/docs/deployment-production.md
+@@ -10,11 +10,11 @@ only in that it adds backup + smoke-test + rollback steps; the
+ underlying install mechanism is the same because production runs
+ the same single-container Docker layout as dev.
+ 
+-> **Current production plugin version: `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1`.**
+-> **Current production PWA: `1.0.0+102 / figma-phase7h-functional1-prod` (7G TECH).**
+-> **Status: Phase 7H Production deployed (2026-08-15). Gateway not restarted.**
++> **Current production plugin version: `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2`.**
++> **Current production PWA: `1.0.0+107 / figma-task-detail-person-spacing2-prod` (7G TECH).**
++> **Status: reportmetrics2 missed-count hotfix (2026-08-17). Gateway not restarted.**
+ > Gateway: `gateway-2.7-prod16` unchanged. Rollback:
+-> `/root/jira-backups/rollback-figmachat7h-20260815-110909/`.
++> `/root/jira-backups/rollback-figmachat7i-reportmetrics2-20260817-090409/`.
+ > Public basic-auth smoke may return `403 AUTHENTICATION_DENIED`
+ > (CAPTCHA / failed-login lock). That is not a plugin outage — do not
+ > retry the same credentials. Use browser/session or localhost 401/302.
+diff --git a/docs/production-baseline.md b/docs/production-baseline.md
+index ca98e71..89aaca1 100644
+--- a/docs/production-baseline.md
++++ b/docs/production-baseline.md
+@@ -1,13 +1,13 @@
+-# Production baseline — figmachat7h-functional1 + PWA +107
++# Production baseline — figmachat7i-reportmetrics2 + PWA +107
+ 
+-Updated: 2026-08-15. **Production status: Phase 7H plugin + mobile +107**
+-(7G TECH PWA only). Plugin, Gateway, Workspace Agent, and
+-report/calendar logic were **not** changed in the +107 swap. Hub was
+-**not** deployed. See `docs/phase7h-pwa107-production-rollout.md`.
++Updated: 2026-08-17. **Production status: plugin hotfix
++`figmachat7i-reportmetrics2`**. PWA stays `+107 / figma-task-detail-person-spacing2-prod`
++(7G TECH). Gateway and Workspace Agent were **not** restarted or changed.
++See `docs/phase7i-reportmetrics2-production-rollout.md`.
+ 
+ | Surface | Version |
+ |---|---|
+-| Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1` |
++| Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2` |
+ | PWA | `1.0.0+107 / figma-task-detail-person-spacing2-prod` (7G TECH) |
+ | Gateway | `gateway-2.7-prod16` / `mcp-atlassian-prod` (**unchanged**, StartedAt `2026-07-31T23:35:19Z`) |
+ 
+@@ -32,11 +32,11 @@ credential-based smokes. Owner UI test is the acceptance signal.
+ 
+ | Field | Value |
+ |---|---|
+-| Version | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1` |
++| Version | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2` |
+ | Plugin key | `com.corbitlogic.corbitchat.jira.dc` (never change) |
+-| Jar sha256 | `b3933dfed2ad986661c725fcaae13397a33f118175d7a7b80445239668a54949` |
+-| Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1.jar` |
+-| Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1.jar` (inside `jira-srv`) |
++| Jar sha256 | `8102a1b931d7df0dcc7450f9514999555257c2ff4f040a68237284ffa29a880e` |
++| Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2.jar` |
++| Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2.jar` (inside `jira-srv`) |
+ | Plugin source commit | `95f50c6ff9e0b02f83856a7f107b300ddb6e749b` |
+ | Production PWA | `1.0.0+107 / figma-task-detail-person-spacing2-prod` (7G TECH) |
+ | PWA sha256 | `87492330e09e9c6a0815613bbf293867eaad808adf89171cc440d7c208dcaeb9` |
+@@ -50,14 +50,14 @@ credential-based smokes. Owner UI test is the acceptance signal.
+ 
+ | Surface | Roll back to |
+ |---|---|
+-| Plugin | **Do not roll back** — plugin was not changed in +107 |
+-| PWA | `1.0.0+102 / figma-phase7h-functional1-prod` |
++| Plugin | `figmachat7i-reportmetrics1` |
++| PWA | **Do not roll back** — PWA was not changed in this hotfix |
+ | Gateway | **Do not roll back** — Gateway was not changed |
+ 
+-On `corbit-prod` (TS `20260815-174930`):
++On `corbit-prod` (TS `20260817-090409`):
+ 
+-- PWA: `/root/jira-backups/rollback-pwa-107-20260815-174930/ROLLBACK-pwa.sh`
+-- Previous 7H plugin rollback (unused for this swap): `/root/jira-backups/rollback-figmachat7h-20260815-110909/ROLLBACK-plugin.sh`
++- Plugin: `/root/jira-backups/rollback-figmachat7i-reportmetrics2-20260817-090409/ROLLBACK-plugin.sh`
++- Previous PWA +107 rollback (unused for this hotfix): `/root/jira-backups/rollback-pwa-107-20260815-174930/ROLLBACK-pwa.sh`
+ 
+ ## Root cause
+ 
+diff --git a/pom.xml b/pom.xml
+index 47538b3..af5b4e5 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -8,7 +8,7 @@
+ 
+     <groupId>com.corbitlogic</groupId>
+     <artifactId>corbitchat-jira-dc</artifactId>
+-    <version>1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1</version>
++    <version>1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2</version>
+     <packaging>atlassian-plugin</packaging>
+ 
+     <name>CorbitChat — Team Messenger for Jira (Internal Build + Board Gallery)</name>
+diff --git a/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileDashboardResource.java b/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileDashboardResource.java
+index 1ea0a4a..be0e6a3 100644
+--- a/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileDashboardResource.java
++++ b/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileDashboardResource.java
+@@ -16,9 +16,7 @@ import com.corbitlogic.jira.internalmessenger.mobile.JimMobileIssues;
+ import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
+ import com.atlassian.jira.user.util.UserManager;
+ import com.corbitlogic.jira.internalmessenger.mobile.JimMobileDates;
+-import com.corbitlogic.jira.internalmessenger.report.JimReportConfig;
+-import com.corbitlogic.jira.internalmessenger.report.JimReportService;
+-import com.corbitlogic.jira.internalmessenger.report.JimReportSummary;
++import com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService;
+ import com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig;
+ import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
+ import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
+@@ -59,9 +57,6 @@ public class CorbitMobileDashboardResource {
+     private static final Logger log = LoggerFactory.getLogger(CorbitMobileDashboardResource.class);
+     private static final int PREVIEW_SIZE = 5;
+     private static final int ACTIVITY_SIZE = 8;
+-    /** Hard cap on report-engine scans so dashboard never does unbounded N+1. */
+-    private static final int REPORT_SCAN_CAP = 25;
+-
+     private final JiraAuthenticationContext authenticationContext;
+     private final SearchService searchService;
+     private final AvatarService avatarService;
+@@ -71,7 +66,7 @@ public class CorbitMobileDashboardResource {
+     private final JimMobileFeatureService featureService;
+     private final JimMessageService messageService;
+     private final UserManager userManager;
+-    private final JimReportService reportService;
++    private final JimMobileReportMetricsService reportMetricsService;
+ 
+     @Inject
+     public CorbitMobileDashboardResource(JiraAuthenticationContext authenticationContext,
+@@ -83,7 +78,7 @@ public class CorbitMobileDashboardResource {
+                                          JimMobileFeatureService featureService,
+                                          JimMessageService messageService,
+                                          UserManager userManager,
+-                                         JimReportService reportService) {
++                                         JimMobileReportMetricsService reportMetricsService) {
+         this.authenticationContext = authenticationContext;
+         this.searchService = searchService;
+         this.avatarService = avatarService;
+@@ -93,7 +88,7 @@ public class CorbitMobileDashboardResource {
+         this.featureService = featureService;
+         this.messageService = messageService;
+         this.userManager = userManager;
+-        this.reportService = reportService;
++        this.reportMetricsService = reportMetricsService;
+     }
+ 
+     @GET
+@@ -137,7 +132,8 @@ public class CorbitMobileDashboardResource {
+             body.put("scheduleApprovals", scheduleApprovals(viewer));
+             // Report-engine summary for the Dashboard «گزارش‌ها» card.
+             // Additive. Older clients ignore it. Never copies task statusCounts.
+-            body.put("reportSummary", reportSummary(viewer));
++            body.put("reportSummary", this.reportMetricsService
++                    .dashboardSummary(this.reportMetricsService.snapshot(viewer, "all", null, null)));
+             return JimRestResponses.okJson(body);
+         } catch (Exception ex) {
+             return JimRestResponses.internalError(log,
+@@ -317,16 +313,16 @@ public class CorbitMobileDashboardResource {
+     }
+ 
+     /**
+-     * Period-filtered <em>report</em> donut counts. Field names
+-     * {@code done}/{@code inProgress}/{@code overdue} are kept for older
+-     * clients; they now mean report COMPLETE / ON_TRACK / OVERDUE — never
+-     * Jira task statusCategory. Week/month are omitted honestly
+-     * ({@code available=false}) because the report engine has no precomputed
+-     * week/month buckets.
++     * Period-filtered report metrics. Same service as {@code reportSummary}
++     * and {@code /issues/reports}. Legacy {@code done}/{@code inProgress}/
++     * {@code overdue} are aliases of valid / onTrack / missed so older
++     * clients do not invent task totals.
+      */
+     @GET
+     @Path("/report-status")
+-    public Response reportStatus(@QueryParam("period") @DefaultValue("all") String period) {
++    public Response reportStatus(@QueryParam("period") @DefaultValue("all") String period,
++                                 @QueryParam("from") String from,
++                                 @QueryParam("to") String to) {
+         ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+         if (viewer == null) {
+             return JimRestResponses.errorJson(401, "NOT_AUTHENTICATED",
+@@ -335,151 +331,23 @@ public class CorbitMobileDashboardResource {
+         if (!this.featureService.isAllowed(viewer, JimMobileFeatures.DASHBOARD)) {
+             return JimRestResponses.featureDisabled(JimMobileFeatures.DASHBOARD);
+         }
+-        String p = period == null ? "all" : period.trim().toLowerCase();
+-        if (!"day".equals(p) && !"week".equals(p) && !"month".equals(p)) {
+-            p = "all";
+-        }
++        JimMobileReportMetricsService.Snapshot snap =
++                this.reportMetricsService.snapshot(viewer, period, from, to);
++        Map<String, Object> metrics = this.reportMetricsService.metricsMap(snap);
+         Map<String, Object> body = new LinkedHashMap<>();
+-        body.put("period", p);
+-        body.put("source", "reports");
+-        if ("week".equals(p) || "month".equals(p)) {
+-            body.put("available", false);
+-            body.put("done", 0);
+-            body.put("inProgress", 0);
+-            body.put("overdue", 0);
+-            body.put("total", 0);
+-            return JimRestResponses.okJson(body);
+-        }
+-        Map<String, Object> summary = reportSummary(viewer);
+-        boolean available = Boolean.TRUE.equals(summary.get("available"));
+-        int done;
+-        int inProgress;
+-        int overdue;
+-        if ("day".equals(p)) {
+-            done = intOrZero(summary.get("todayComplete"));
+-            inProgress = intOrZero(summary.get("todayOnTrack"));
+-            overdue = intOrZero(summary.get("todayOverdue"));
+-        } else {
+-            done = intOrZero(summary.get("complete"));
+-            inProgress = intOrZero(summary.get("onTrack"));
+-            overdue = intOrZero(summary.get("overdue"));
+-        }
+-        body.put("available", available);
+-        body.put("done", done);
+-        body.put("inProgress", inProgress);
+-        body.put("overdue", overdue);
+-        body.put("total", done + inProgress + overdue);
+-        if (summary.get("capped") != null) {
+-            body.put("capped", summary.get("capped"));
+-        }
++        body.put("period", this.reportMetricsService.periodMap(snap.period));
++        body.put("reportMetrics", metrics);
++        body.put("source", "report-engine");
++        body.put("available", snap.metrics.available);
++        body.put("capped", snap.metrics.capped);
++        body.put("done", snap.metrics.valid);
++        body.put("inProgress", snap.metrics.onTrack);
++        body.put("overdue", snap.metrics.missed);
++        body.put("total", snap.metrics.valid + snap.metrics.missed + snap.metrics.outOfWindow);
++        body.put("items", this.reportMetricsService.itemMaps(snap));
+         return JimRestResponses.okJson(body);
+     }
+ 
+-    /**
+-     * Real report-engine snapshot for the current user's assigned,
+-     * report-configured issues. Bounded ({@link #REPORT_SCAN_CAP} summaries).
+-     * {@code available} is false when the feature is off or no configured
+-     * issues were found — counts are then omitted, not faked as task totals.
+-     */
+-    private Map<String, Object> reportSummary(ApplicationUser viewer) {
+-        Map<String, Object> out = new LinkedHashMap<>();
+-        out.put("source", "report-engine");
+-        out.put("available", false);
+-        if (!JimReportConfig.isOperational()) {
+-            return out;
+-        }
+-        try {
+-            String jql = assignedReportJql();
+-            SearchService.ParseResult pr = this.searchService.parseQuery(viewer, jql);
+-            if (pr == null || !pr.isValid()) {
+-                return out;
+-            }
+-            PagerFilter<Issue> pager = new PagerFilter<>(REPORT_SCAN_CAP);
+-            SearchResults<Issue> results =
+-                    this.searchService.search(viewer, pr.getQuery(), pager);
+-            if (results == null || results.getResults() == null) {
+-                return out;
+-            }
+-            int complete = 0;
+-            int onTrack = 0;
+-            int overdue = 0;
+-            int todayComplete = 0;
+-            int todayOnTrack = 0;
+-            int todayOverdue = 0;
+-            int validSubmitted = 0;
+-            int missed = 0;
+-            int configured = 0;
+-            for (Issue issue : results.getResults()) {
+-                JimReportSummary s = this.reportService.computeSummary(issue);
+-                if (s == null || !s.configured || s.levelCode == null || !s.applicable) {
+-                    continue;
+-                }
+-                configured++;
+-                validSubmitted += Math.max(0, s.validCount);
+-                missed += Math.max(0, s.missedCount);
+-                String code = s.statusCode == null ? "" : s.statusCode;
+-                if ("COMPLETE".equals(code)) {
+-                    complete++;
+-                } else if ("OVERDUE".equals(code)) {
+-                    overdue++;
+-                } else if ("ON_TRACK".equals(code)) {
+-                    onTrack++;
+-                }
+-                if (s.todayMissedCount > 0) {
+-                    todayOverdue++;
+-                } else if (s.todayRequiredCount > 0
+-                        && s.todayValidCount >= s.todayRequiredCount) {
+-                    todayComplete++;
+-                } else if (s.reportedToday && s.todayRequiredCount <= 0) {
+-                    todayComplete++;
+-                } else if (s.submitActive && s.todayRequiredCount > s.todayValidCount) {
+-                    todayOnTrack++;
+-                }
+-            }
+-            int issueTotal = results.getTotal();
+-            boolean capped = issueTotal > REPORT_SCAN_CAP;
+-            out.put("available", configured > 0);
+-            out.put("scanned", results.getResults().size());
+-            out.put("configuredCount", configured);
+-            out.put("issueTotal", issueTotal);
+-            out.put("capped", capped);
+-            if (configured > 0) {
+-                out.put("complete", complete);
+-                out.put("onTrack", onTrack);
+-                out.put("overdue", overdue);
+-                out.put("todayComplete", todayComplete);
+-                out.put("todayOnTrack", todayOnTrack);
+-                out.put("todayOverdue", todayOverdue);
+-                out.put("validSubmitted", validSubmitted);
+-                out.put("missed", missed);
+-            }
+-            return out;
+-        } catch (Exception ex) {
+-            log.warn("endpoint=GET /rest/corbit-mobile/1.0/dashboard stage=reportSummary outcome=degraded message={}",
+-                    ex.getMessage());
+-            return out;
+-        }
+-    }
+-
+-    /**
+-     * Assigned unresolved issues that have a follow-up level when that field
+-     * exists. Same permission boundary as {@code /issues/reports}.
+-     */
+-    private String assignedReportJql() {
+-        String level = JimReportConfig.levelFieldJql();
+-        StringBuilder sb = new StringBuilder(
+-                "assignee = currentUser() AND resolution is EMPTY");
+-        if (level != null) {
+-            sb.append(" AND ").append(level).append(" is not EMPTY");
+-        }
+-        sb.append(" ORDER BY updated DESC");
+-        return sb.toString();
+-    }
+-
+-    private static int intOrZero(Object v) {
+-        return (v instanceof Number) ? ((Number) v).intValue() : 0;
+-    }
+-
+     private int count(ApplicationUser viewer, String filter) {
+         try {
+             Query query = JimMobileIssues.buildQuery(viewer, this.searchService, filter);
+diff --git a/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileIssueResource.java b/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileIssueResource.java
+index 43bc0c2..43ff57e 100644
+--- a/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileIssueResource.java
++++ b/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileIssueResource.java
+@@ -95,6 +95,7 @@ public class CorbitMobileIssueResource {
+     private final JimAttachmentStorageService attachmentStorageService;
+     private final com.corbitlogic.jira.internalmessenger.report.JimReportService reportService;
+     private final com.corbitlogic.jira.internalmessenger.service.JimCommentReactionService commentReactionService;
++    private final com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService reportMetricsService;
+ 
+     @Inject
+     public CorbitMobileIssueResource(JiraAuthenticationContext authenticationContext,
+@@ -104,7 +105,8 @@ public class CorbitMobileIssueResource {
+                                      JimMobileFeatureService featureService,
+                                      JimAttachmentStorageService attachmentStorageService,
+                                      com.corbitlogic.jira.internalmessenger.report.JimReportService reportService,
+-                                     com.corbitlogic.jira.internalmessenger.service.JimCommentReactionService commentReactionService) {
++                                     com.corbitlogic.jira.internalmessenger.service.JimCommentReactionService commentReactionService,
++                                     com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService reportMetricsService) {
+         this.authenticationContext = authenticationContext;
+         this.searchService = searchService;
+         this.avatarService = avatarService;
+@@ -113,6 +115,7 @@ public class CorbitMobileIssueResource {
+         this.attachmentStorageService = attachmentStorageService;
+         this.reportService = reportService;
+         this.commentReactionService = commentReactionService;
++        this.reportMetricsService = reportMetricsService;
+     }
+ 
+     // --- Report compliance (Sprint 12 Phase D — mobile parity) ----------------
+@@ -519,16 +522,17 @@ public class CorbitMobileIssueResource {
+     }
+ 
+     /**
+-     * Bounded report-list for the redesigned Reports surface (Phase 3B-4R). Runs
+-     * the report summary for the caller's assigned, report-configured issues,
+-     * capped at {@code maxResults} (≤10) so it is never an unbounded N+1. Returns
+-     * per-issue report cards + a real aggregate (compliance score) for the gauge.
+-     * Degrades to an empty/available=false payload when nothing is configured.
++     * Report list + aggregate from the shared metrics service (Phase 7I).
++     * Same scan, cap, and period as Dashboard {@code reportSummary}.
++     * Aggregate is the full scan, not the current page.
+      */
+     @GET
+     @Path("/reports")
+     public Response reportList(@QueryParam("startAt") @DefaultValue("0") int startAt,
+-                               @QueryParam("maxResults") @DefaultValue("10") int maxResults) {
++                               @QueryParam("maxResults") @DefaultValue("25") int maxResults,
++                               @QueryParam("period") @DefaultValue("all") String period,
++                               @QueryParam("from") String from,
++                               @QueryParam("to") String to) {
+         ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+         if (viewer == null) {
+             return unauthenticated();
+@@ -537,51 +541,52 @@ public class CorbitMobileIssueResource {
+             return JimRestResponses.featureDisabled(JimMobileFeatures.TASKS);
+         }
+         int start = Math.max(0, startAt);
+-        int max = Math.min(Math.max(1, maxResults), 10); // hard cap — bounded, no unbounded N+1
++        int max = Math.min(Math.max(1, maxResults),
++                com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService.SCAN_CAP);
+         try {
+-            Query query = JimMobileIssues.buildQuery(viewer, this.searchService, "assigned");
+-            PagerFilter<Issue> pager = new PagerFilter<Issue>(max);
+-            pager.setStart(start);
+-            SearchResults<Issue> results = this.searchService.search(viewer, query, pager);
+-            List<Map<String, Object>> items = new ArrayList<Map<String, Object>>();
+-            long tot = 0, val = 0, oow = 0, missed = 0, reqSoFar = 0, valSoFar = 0;
+-            int configured = 0;
+-            for (Issue issue : results.getResults()) {
+-                com.corbitlogic.jira.internalmessenger.report.JimReportSummary s =
+-                        this.reportService.computeSummary(issue);
+-                if (s == null || !s.configured || s.levelCode == null || !s.applicable) {
+-                    continue; // out-of-scope issues are excluded from current reports
+-                }
+-                items.add(reportListItemMap(issue, s, viewer));
+-                configured++;
+-                tot += s.rawCount;
+-                val += s.validCount;
+-                oow += s.outOfWindowCount;
+-                missed += s.missedCount;
+-                reqSoFar += s.requiredSoFar;
+-                valSoFar += s.validSoFar;
+-            }
++            com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService.Snapshot snap =
++                    this.reportMetricsService.snapshot(viewer, period, from, to);
++            List<Map<String, Object>> allItems = new ArrayList<Map<String, Object>>();
++            for (com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService.IssueRow row
++                    : snap.rows) {
++                Map<String, Object> item = reportListItemMap(row.issue, row.summary, viewer);
++                item.put("validCount", row.counts.valid);
++                item.put("missedCount", row.counts.missed);
++                item.put("rawCount", row.counts.raw);
++                item.put("outOfWindowCount", row.counts.outOfWindow);
++                item.put("requiredCount", row.counts.required);
++                allItems.add(item);
++            }
++            int end = Math.min(allItems.size(), start + max);
++            List<Map<String, Object>> page = start >= allItems.size()
++                    ? new ArrayList<Map<String, Object>>()
++                    : new ArrayList<Map<String, Object>>(allItems.subList(start, end));
++            Map<String, Object> metrics = this.reportMetricsService.metricsMap(snap);
+             Map<String, Object> agg = new LinkedHashMap<String, Object>();
+-            agg.put("total", tot);
+-            agg.put("valid", val);
+-            agg.put("outOfWindow", oow);
+-            agg.put("missed", missed);
+-            agg.put("requiredSoFar", reqSoFar);
+-            agg.put("validSoFar", valSoFar);
+-            // Real compliance score in [0,1]: valid-so-far / required-so-far.
+-            double score = reqSoFar > 0
+-                    ? Math.max(0.0, Math.min(1.0, (double) valSoFar / (double) reqSoFar))
+-                    : (configured > 0 && oow == 0 && missed == 0 ? 1.0 : 0.0);
++            agg.put("total", snap.metrics.rawTotal);
++            agg.put("valid", snap.metrics.valid);
++            agg.put("outOfWindow", snap.metrics.outOfWindow);
++            agg.put("missed", snap.metrics.missed);
++            agg.put("requiredSoFar", snap.metrics.totalRequired);
++            agg.put("validSoFar", snap.metrics.valid);
++            int req = snap.metrics.totalRequired;
++            double score = req > 0
++                    ? Math.max(0.0, Math.min(1.0, (double) snap.metrics.valid / (double) req))
++                    : (snap.metrics.available && snap.metrics.outOfWindow == 0
++                    && snap.metrics.missed == 0 ? 1.0 : 0.0);
+             agg.put("score", score);
+-            agg.put("available", configured > 0);
++            agg.put("available", snap.metrics.available);
+             Map<String, Object> body = new LinkedHashMap<String, Object>();
+-            body.put("items", items);
++            body.put("items", page);
+             body.put("aggregate", agg);
++            body.put("reportMetrics", metrics);
++            body.put("period", this.reportMetricsService.periodMap(snap.period));
+             body.put("startAt", start);
+             body.put("maxResults", max);
+-            body.put("total", results.getTotal());
+-            body.put("isLast", start + results.getResults().size() >= results.getTotal());
+-            body.put("reportConfigured", configured > 0);
++            body.put("total", snap.rows.size());
++            body.put("isLast", end >= allItems.size());
++            body.put("reportConfigured", snap.metrics.available);
++            body.put("capped", snap.metrics.capped);
+             return JimRestResponses.okJson(body);
+         } catch (Exception ex) {
+             return JimRestResponses.internalError(log,
+diff --git a/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportServiceImpl.java b/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportServiceImpl.java
+index f4eae77..e93be9a 100644
+--- a/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportServiceImpl.java
++++ b/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportServiceImpl.java
+@@ -648,7 +648,7 @@ public class JimReportServiceImpl implements JimReportService {
+         s.satisfiedWindowCount = s.validCount;
+         s.missedWindowCount = s.missedCount;
+         s.todayValidCount = s.validCount;
+-        s.todayRequiredCount = s.requiredCount;
++        s.todayRequiredCount = s.requiredSoFar;
+         s.todayMissedCount = s.missedCount;
+     }
+ 
+@@ -877,7 +877,7 @@ public class JimReportServiceImpl implements JimReportService {
+      * = the configured minimum; valid = report comments inside the reporting
+      * window and at/before the endpoint (capped at required for compliance).
+      * Out-of-window reports stay raw-only. Not-yet-met is on-track while still
+-     * active and overdue once the endpoint has passed.
++     * active; {@code missedCount} stays 0 until the endpoint has passed.
+      */
+     private void computeFixedMinimum(JimReportSummary s, TimeZone tz) {
+         // Fully out of enforcement scope → no scoring obligation (history still shown).
+@@ -912,11 +912,14 @@ public class JimReportServiceImpl implements JimReportService {
+         s.validCount = Math.min(validInWindow, required);
+         s.duplicateCount = 0; // interval-duplicate logic does not apply
+         s.outOfWindowCount = Math.max(0, s.rawCount - validInWindow - outOfScope);
+-        s.requiredSoFar = required;
+-        s.validSoFar = s.validCount;
+-        s.missedCount = Math.max(required - s.validCount, 0);
+         boolean met = s.validCount >= required;
+         boolean ended = endpoint != null && now > endpoint;
++        // Obligation is "N by the end". Until the due/done endpoint, nothing
++        // has expired — not-yet-submitted is ON_TRACK, not missed.
++        // Do not use (minimumRequired - valid) while the window is still open.
++        s.requiredSoFar = (ended || met) ? required : 0;
++        s.validSoFar = s.validCount;
++        s.missedCount = (ended && !met) ? Math.max(required - s.validCount, 0) : 0;
+         s.compliance = met ? "on_track" : (ended ? "overdue" : "on_track");
+         s.nextExpectedMs = met ? null : endpoint;
+     }
+diff --git a/src/main/resources/atlassian-plugin.xml b/src/main/resources/atlassian-plugin.xml
+index 8a5e7c1..5c5f482 100644
+--- a/src/main/resources/atlassian-plugin.xml
++++ b/src/main/resources/atlassian-plugin.xml
+@@ -191,6 +191,11 @@
+         <interface>com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService</interface>
+     </component>
+ 
++    <component key="jimMobileReportMetricsService"
++               class="com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService">
++        <description>Shared report-engine metrics for Dashboard and Reports (Phase 7I)</description>
++    </component>
++
+     <component key="jimMobileDeviceService"
+                class="com.corbitlogic.jira.internalmessenger.service.JimMobileDeviceServiceImpl">
+         <description>Native mobile push device registration for CorbitHub Mobile</description>

@@ -26,6 +26,7 @@ import com.corbitlogic.jira.internalmessenger.dto.CreateGroupRequestDto;
 import com.corbitlogic.jira.internalmessenger.dto.GroupMemberRequestDto;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestJsonMapper;
 import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
+import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
 import com.corbitlogic.jira.internalmessenger.service.JimGroupService;
 import com.corbitlogic.jira.internalmessenger.service.JimLicenseService;
 import com.corbitlogic.jira.internalmessenger.service.JimMessengerException;
@@ -55,15 +56,17 @@ public class JimGroupResource {
     private final JimReadStateService readStateService;
     private final JimRestJsonMapper restJsonMapper;
     private final JimLicenseService licenseService;
+    private final JimConversationService conversationService;
 
     @Inject
-    public JimGroupResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimGroupService groupService, JimReadStateService readStateService, JimRestJsonMapper restJsonMapper, JimLicenseService licenseService) {
+    public JimGroupResource(JiraAuthenticationContext authenticationContext, JimPermissionService permissionService, JimGroupService groupService, JimReadStateService readStateService, JimRestJsonMapper restJsonMapper, JimLicenseService licenseService, JimConversationService conversationService) {
         this.authenticationContext = authenticationContext;
         this.permissionService = permissionService;
         this.groupService = groupService;
         this.readStateService = readStateService;
         this.restJsonMapper = restJsonMapper;
         this.licenseService = licenseService;
+        this.conversationService = conversationService;
     }
 
     @POST
@@ -125,8 +128,9 @@ public class JimGroupResource {
             String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
             ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
             List<JimGroupMember> members = this.groupService.listMembers(conversationId, currentUserKey);
+            JimConversation conversation = this.conversationService.getConversationForUser(conversationId, currentUserKey);
             LinkedHashMap<String, Object> body = new LinkedHashMap<String, Object>();
-            body.put("members", this.restJsonMapper.toGroupMemberMaps(members, viewer));
+            body.put("members", this.restJsonMapper.toGroupMemberMaps(members, viewer, conversation)); // Phase 8C: incl. allowedSender/canSend
             return JimRestResponses.okJson(body);
         }
         catch (JimMessengerException ex) {
@@ -242,6 +246,68 @@ public class JimGroupResource {
         }
         catch (Exception ex) {
             return JimRestResponses.internalError(log, "DELETE /rest/jim/1.0/groups/" + conversationId + "/members/" + memberUserKey, userKey, ex, "internal_error", "An internal error occurred while removing the group member.");
+        }
+    }
+
+    // ---- Phase 8C: group send policy ----
+
+    /** OWNER/ADMIN: set the group send policy ("ALL_MEMBERS" | "ADMINS_AND_ALLOWED"). */
+    @POST
+    @Path(value="/{conversationId}/send-policy")
+    @Consumes(value={"application/json"})
+    public Response setSendPolicy(@PathParam(value="conversationId") int conversationId, java.util.Map<String, Object> request) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        String policy = request != null && request.get("sendPolicy") != null ? String.valueOf(request.get("sendPolicy")) : null;
+        if (policy == null || policy.trim().isEmpty()) {
+            return JimRestResponses.errorJson(400, "bad_request", "sendPolicy is required");
+        }
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            JimConversation conversation = this.groupService.setSendPolicy(conversationId, currentUserKey, policy);
+            int unreadCount = this.readStateService.getUnreadCount(conversation.getID(), currentUserKey);
+            return JimRestResponses.okJson(this.restJsonMapper.toConversationMap(conversation, currentUserKey, viewer, unreadCount));
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST /rest/jim/1.0/groups/" + conversationId + "/send-policy", userKey, ex, "internal_error", "An internal error occurred while updating the send policy.");
+        }
+    }
+
+    /** OWNER/ADMIN: allow/disallow a specific non-admin member to send. Body: {userKey, allowed}. */
+    @POST
+    @Path(value="/{conversationId}/allowed-senders")
+    @Consumes(value={"application/json"})
+    public Response setAllowedSender(@PathParam(value="conversationId") int conversationId, java.util.Map<String, Object> request) {
+        String userKey = this.resolveCurrentUserKey();
+        if (userKey == null) {
+            return JimRestResponses.errorJson(401, "unauthorized", "User is not authenticated");
+        }
+        String targetUserKey = request != null && request.get("userKey") != null ? String.valueOf(request.get("userKey")) : null;
+        if (targetUserKey == null || targetUserKey.trim().isEmpty()) {
+            return JimRestResponses.errorJson(400, "bad_request", "userKey is required");
+        }
+        boolean allowed = request != null && Boolean.TRUE.equals(request.get("allowed"));
+        try {
+            String currentUserKey = this.permissionService.requireAuthenticatedUserKey();
+            ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+            this.groupService.setAllowedSender(conversationId, currentUserKey, targetUserKey, allowed);
+            List<JimGroupMember> members = this.groupService.listMembers(conversationId, currentUserKey);
+            JimConversation conversation = this.conversationService.getConversationForUser(conversationId, currentUserKey);
+            java.util.LinkedHashMap<String, Object> body = new java.util.LinkedHashMap<String, Object>();
+            body.put("members", this.restJsonMapper.toGroupMemberMaps(members, viewer, conversation));
+            return JimRestResponses.okJson(body);
+        }
+        catch (JimMessengerException ex) {
+            return JimRestResponses.errorJson(ex.getStatusCode(), "request_failed", ex.getMessage());
+        }
+        catch (Exception ex) {
+            return JimRestResponses.internalError(log, "POST /rest/jim/1.0/groups/" + conversationId + "/allowed-senders", userKey, ex, "internal_error", "An internal error occurred while updating allowed senders.");
         }
     }
 

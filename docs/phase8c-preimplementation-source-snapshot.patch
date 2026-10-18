@@ -1,0 +1,1549 @@
+diff --git a/docs/deployment-production.md b/docs/deployment-production.md
+index 8386861..6924eb1 100644
+--- a/docs/deployment-production.md
++++ b/docs/deployment-production.md
+@@ -10,11 +10,11 @@ only in that it adds backup + smoke-test + rollback steps; the
+ underlying install mechanism is the same because production runs
+ the same single-container Docker layout as dev.
+ 
+-> **Current production plugin version: `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1`.**
+-> **Current production PWA: `1.0.0+102 / figma-phase7h-functional1-prod` (7G TECH).**
+-> **Status: Phase 7H Production deployed (2026-08-15). Gateway not restarted.**
++> **Current production plugin version: `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2`.**
++> **Current production PWA: `1.0.0+107 / figma-task-detail-person-spacing2-prod` (7G TECH).**
++> **Status: reportmetrics2 missed-count hotfix (2026-08-17). Gateway not restarted.**
+ > Gateway: `gateway-2.7-prod16` unchanged. Rollback:
+-> `/root/jira-backups/rollback-figmachat7h-20260815-110909/`.
++> `/root/jira-backups/rollback-figmachat7i-reportmetrics2-20260817-090409/`.
+ > Public basic-auth smoke may return `403 AUTHENTICATION_DENIED`
+ > (CAPTCHA / failed-login lock). That is not a plugin outage — do not
+ > retry the same credentials. Use browser/session or localhost 401/302.
+diff --git a/docs/production-baseline.md b/docs/production-baseline.md
+index ca98e71..89aaca1 100644
+--- a/docs/production-baseline.md
++++ b/docs/production-baseline.md
+@@ -1,13 +1,13 @@
+-# Production baseline — figmachat7h-functional1 + PWA +107
++# Production baseline — figmachat7i-reportmetrics2 + PWA +107
+ 
+-Updated: 2026-08-15. **Production status: Phase 7H plugin + mobile +107**
+-(7G TECH PWA only). Plugin, Gateway, Workspace Agent, and
+-report/calendar logic were **not** changed in the +107 swap. Hub was
+-**not** deployed. See `docs/phase7h-pwa107-production-rollout.md`.
++Updated: 2026-08-17. **Production status: plugin hotfix
++`figmachat7i-reportmetrics2`**. PWA stays `+107 / figma-task-detail-person-spacing2-prod`
++(7G TECH). Gateway and Workspace Agent were **not** restarted or changed.
++See `docs/phase7i-reportmetrics2-production-rollout.md`.
+ 
+ | Surface | Version |
+ |---|---|
+-| Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1` |
++| Plugin | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2` |
+ | PWA | `1.0.0+107 / figma-task-detail-person-spacing2-prod` (7G TECH) |
+ | Gateway | `gateway-2.7-prod16` / `mcp-atlassian-prod` (**unchanged**, StartedAt `2026-07-31T23:35:19Z`) |
+ 
+@@ -32,11 +32,11 @@ credential-based smokes. Owner UI test is the acceptance signal.
+ 
+ | Field | Value |
+ |---|---|
+-| Version | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1` |
++| Version | `1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2` |
+ | Plugin key | `com.corbitlogic.corbitchat.jira.dc` (never change) |
+-| Jar sha256 | `b3933dfed2ad986661c725fcaae13397a33f118175d7a7b80445239668a54949` |
+-| Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1.jar` |
+-| Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1.jar` (inside `jira-srv`) |
++| Jar sha256 | `8102a1b931d7df0dcc7450f9514999555257c2ff4f040a68237284ffa29a880e` |
++| Release jar (build host) | `/root/jira-dev/releases/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2.jar` |
++| Installed on Production | `/var/jira/plugins/installed-plugins/corbitchat-jira-dc-1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2.jar` (inside `jira-srv`) |
+ | Plugin source commit | `95f50c6ff9e0b02f83856a7f107b300ddb6e749b` |
+ | Production PWA | `1.0.0+107 / figma-task-detail-person-spacing2-prod` (7G TECH) |
+ | PWA sha256 | `87492330e09e9c6a0815613bbf293867eaad808adf89171cc440d7c208dcaeb9` |
+@@ -50,14 +50,14 @@ credential-based smokes. Owner UI test is the acceptance signal.
+ 
+ | Surface | Roll back to |
+ |---|---|
+-| Plugin | **Do not roll back** — plugin was not changed in +107 |
+-| PWA | `1.0.0+102 / figma-phase7h-functional1-prod` |
++| Plugin | `figmachat7i-reportmetrics1` |
++| PWA | **Do not roll back** — PWA was not changed in this hotfix |
+ | Gateway | **Do not roll back** — Gateway was not changed |
+ 
+-On `corbit-prod` (TS `20260815-174930`):
++On `corbit-prod` (TS `20260817-090409`):
+ 
+-- PWA: `/root/jira-backups/rollback-pwa-107-20260815-174930/ROLLBACK-pwa.sh`
+-- Previous 7H plugin rollback (unused for this swap): `/root/jira-backups/rollback-figmachat7h-20260815-110909/ROLLBACK-plugin.sh`
++- Plugin: `/root/jira-backups/rollback-figmachat7i-reportmetrics2-20260817-090409/ROLLBACK-plugin.sh`
++- Previous PWA +107 rollback (unused for this hotfix): `/root/jira-backups/rollback-pwa-107-20260815-174930/ROLLBACK-pwa.sh`
+ 
+ ## Root cause
+ 
+diff --git a/pom.xml b/pom.xml
+index 47538b3..066770b 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -8,7 +8,7 @@
+ 
+     <groupId>com.corbitlogic</groupId>
+     <artifactId>corbitchat-jira-dc</artifactId>
+-    <version>1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7h-functional1</version>
++    <version>1.0.0-s12e-mcpcontrol13-report-calendar1-figmachat7i-reportmetrics2-8a-dynlevels1-8b-dayunit1</version>
+     <packaging>atlassian-plugin</packaging>
+ 
+     <name>CorbitChat — Team Messenger for Jira (Internal Build + Board Gallery)</name>
+diff --git a/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileDashboardResource.java b/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileDashboardResource.java
+index 1ea0a4a..be0e6a3 100644
+--- a/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileDashboardResource.java
++++ b/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileDashboardResource.java
+@@ -16,9 +16,7 @@ import com.corbitlogic.jira.internalmessenger.mobile.JimMobileIssues;
+ import com.corbitlogic.jira.internalmessenger.rest.JimRestResponses;
+ import com.atlassian.jira.user.util.UserManager;
+ import com.corbitlogic.jira.internalmessenger.mobile.JimMobileDates;
+-import com.corbitlogic.jira.internalmessenger.report.JimReportConfig;
+-import com.corbitlogic.jira.internalmessenger.report.JimReportService;
+-import com.corbitlogic.jira.internalmessenger.report.JimReportSummary;
++import com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService;
+ import com.corbitlogic.jira.internalmessenger.schedule.JimScheduleApprovalConfig;
+ import com.corbitlogic.jira.internalmessenger.service.JimConversationService;
+ import com.corbitlogic.jira.internalmessenger.service.JimMessageService;
+@@ -59,9 +57,6 @@ public class CorbitMobileDashboardResource {
+     private static final Logger log = LoggerFactory.getLogger(CorbitMobileDashboardResource.class);
+     private static final int PREVIEW_SIZE = 5;
+     private static final int ACTIVITY_SIZE = 8;
+-    /** Hard cap on report-engine scans so dashboard never does unbounded N+1. */
+-    private static final int REPORT_SCAN_CAP = 25;
+-
+     private final JiraAuthenticationContext authenticationContext;
+     private final SearchService searchService;
+     private final AvatarService avatarService;
+@@ -71,7 +66,7 @@ public class CorbitMobileDashboardResource {
+     private final JimMobileFeatureService featureService;
+     private final JimMessageService messageService;
+     private final UserManager userManager;
+-    private final JimReportService reportService;
++    private final JimMobileReportMetricsService reportMetricsService;
+ 
+     @Inject
+     public CorbitMobileDashboardResource(JiraAuthenticationContext authenticationContext,
+@@ -83,7 +78,7 @@ public class CorbitMobileDashboardResource {
+                                          JimMobileFeatureService featureService,
+                                          JimMessageService messageService,
+                                          UserManager userManager,
+-                                         JimReportService reportService) {
++                                         JimMobileReportMetricsService reportMetricsService) {
+         this.authenticationContext = authenticationContext;
+         this.searchService = searchService;
+         this.avatarService = avatarService;
+@@ -93,7 +88,7 @@ public class CorbitMobileDashboardResource {
+         this.featureService = featureService;
+         this.messageService = messageService;
+         this.userManager = userManager;
+-        this.reportService = reportService;
++        this.reportMetricsService = reportMetricsService;
+     }
+ 
+     @GET
+@@ -137,7 +132,8 @@ public class CorbitMobileDashboardResource {
+             body.put("scheduleApprovals", scheduleApprovals(viewer));
+             // Report-engine summary for the Dashboard «گزارش‌ها» card.
+             // Additive. Older clients ignore it. Never copies task statusCounts.
+-            body.put("reportSummary", reportSummary(viewer));
++            body.put("reportSummary", this.reportMetricsService
++                    .dashboardSummary(this.reportMetricsService.snapshot(viewer, "all", null, null)));
+             return JimRestResponses.okJson(body);
+         } catch (Exception ex) {
+             return JimRestResponses.internalError(log,
+@@ -317,16 +313,16 @@ public class CorbitMobileDashboardResource {
+     }
+ 
+     /**
+-     * Period-filtered <em>report</em> donut counts. Field names
+-     * {@code done}/{@code inProgress}/{@code overdue} are kept for older
+-     * clients; they now mean report COMPLETE / ON_TRACK / OVERDUE — never
+-     * Jira task statusCategory. Week/month are omitted honestly
+-     * ({@code available=false}) because the report engine has no precomputed
+-     * week/month buckets.
++     * Period-filtered report metrics. Same service as {@code reportSummary}
++     * and {@code /issues/reports}. Legacy {@code done}/{@code inProgress}/
++     * {@code overdue} are aliases of valid / onTrack / missed so older
++     * clients do not invent task totals.
+      */
+     @GET
+     @Path("/report-status")
+-    public Response reportStatus(@QueryParam("period") @DefaultValue("all") String period) {
++    public Response reportStatus(@QueryParam("period") @DefaultValue("all") String period,
++                                 @QueryParam("from") String from,
++                                 @QueryParam("to") String to) {
+         ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+         if (viewer == null) {
+             return JimRestResponses.errorJson(401, "NOT_AUTHENTICATED",
+@@ -335,151 +331,23 @@ public class CorbitMobileDashboardResource {
+         if (!this.featureService.isAllowed(viewer, JimMobileFeatures.DASHBOARD)) {
+             return JimRestResponses.featureDisabled(JimMobileFeatures.DASHBOARD);
+         }
+-        String p = period == null ? "all" : period.trim().toLowerCase();
+-        if (!"day".equals(p) && !"week".equals(p) && !"month".equals(p)) {
+-            p = "all";
+-        }
++        JimMobileReportMetricsService.Snapshot snap =
++                this.reportMetricsService.snapshot(viewer, period, from, to);
++        Map<String, Object> metrics = this.reportMetricsService.metricsMap(snap);
+         Map<String, Object> body = new LinkedHashMap<>();
+-        body.put("period", p);
+-        body.put("source", "reports");
+-        if ("week".equals(p) || "month".equals(p)) {
+-            body.put("available", false);
+-            body.put("done", 0);
+-            body.put("inProgress", 0);
+-            body.put("overdue", 0);
+-            body.put("total", 0);
+-            return JimRestResponses.okJson(body);
+-        }
+-        Map<String, Object> summary = reportSummary(viewer);
+-        boolean available = Boolean.TRUE.equals(summary.get("available"));
+-        int done;
+-        int inProgress;
+-        int overdue;
+-        if ("day".equals(p)) {
+-            done = intOrZero(summary.get("todayComplete"));
+-            inProgress = intOrZero(summary.get("todayOnTrack"));
+-            overdue = intOrZero(summary.get("todayOverdue"));
+-        } else {
+-            done = intOrZero(summary.get("complete"));
+-            inProgress = intOrZero(summary.get("onTrack"));
+-            overdue = intOrZero(summary.get("overdue"));
+-        }
+-        body.put("available", available);
+-        body.put("done", done);
+-        body.put("inProgress", inProgress);
+-        body.put("overdue", overdue);
+-        body.put("total", done + inProgress + overdue);
+-        if (summary.get("capped") != null) {
+-            body.put("capped", summary.get("capped"));
+-        }
++        body.put("period", this.reportMetricsService.periodMap(snap.period));
++        body.put("reportMetrics", metrics);
++        body.put("source", "report-engine");
++        body.put("available", snap.metrics.available);
++        body.put("capped", snap.metrics.capped);
++        body.put("done", snap.metrics.valid);
++        body.put("inProgress", snap.metrics.onTrack);
++        body.put("overdue", snap.metrics.missed);
++        body.put("total", snap.metrics.valid + snap.metrics.missed + snap.metrics.outOfWindow);
++        body.put("items", this.reportMetricsService.itemMaps(snap));
+         return JimRestResponses.okJson(body);
+     }
+ 
+-    /**
+-     * Real report-engine snapshot for the current user's assigned,
+-     * report-configured issues. Bounded ({@link #REPORT_SCAN_CAP} summaries).
+-     * {@code available} is false when the feature is off or no configured
+-     * issues were found — counts are then omitted, not faked as task totals.
+-     */
+-    private Map<String, Object> reportSummary(ApplicationUser viewer) {
+-        Map<String, Object> out = new LinkedHashMap<>();
+-        out.put("source", "report-engine");
+-        out.put("available", false);
+-        if (!JimReportConfig.isOperational()) {
+-            return out;
+-        }
+-        try {
+-            String jql = assignedReportJql();
+-            SearchService.ParseResult pr = this.searchService.parseQuery(viewer, jql);
+-            if (pr == null || !pr.isValid()) {
+-                return out;
+-            }
+-            PagerFilter<Issue> pager = new PagerFilter<>(REPORT_SCAN_CAP);
+-            SearchResults<Issue> results =
+-                    this.searchService.search(viewer, pr.getQuery(), pager);
+-            if (results == null || results.getResults() == null) {
+-                return out;
+-            }
+-            int complete = 0;
+-            int onTrack = 0;
+-            int overdue = 0;
+-            int todayComplete = 0;
+-            int todayOnTrack = 0;
+-            int todayOverdue = 0;
+-            int validSubmitted = 0;
+-            int missed = 0;
+-            int configured = 0;
+-            for (Issue issue : results.getResults()) {
+-                JimReportSummary s = this.reportService.computeSummary(issue);
+-                if (s == null || !s.configured || s.levelCode == null || !s.applicable) {
+-                    continue;
+-                }
+-                configured++;
+-                validSubmitted += Math.max(0, s.validCount);
+-                missed += Math.max(0, s.missedCount);
+-                String code = s.statusCode == null ? "" : s.statusCode;
+-                if ("COMPLETE".equals(code)) {
+-                    complete++;
+-                } else if ("OVERDUE".equals(code)) {
+-                    overdue++;
+-                } else if ("ON_TRACK".equals(code)) {
+-                    onTrack++;
+-                }
+-                if (s.todayMissedCount > 0) {
+-                    todayOverdue++;
+-                } else if (s.todayRequiredCount > 0
+-                        && s.todayValidCount >= s.todayRequiredCount) {
+-                    todayComplete++;
+-                } else if (s.reportedToday && s.todayRequiredCount <= 0) {
+-                    todayComplete++;
+-                } else if (s.submitActive && s.todayRequiredCount > s.todayValidCount) {
+-                    todayOnTrack++;
+-                }
+-            }
+-            int issueTotal = results.getTotal();
+-            boolean capped = issueTotal > REPORT_SCAN_CAP;
+-            out.put("available", configured > 0);
+-            out.put("scanned", results.getResults().size());
+-            out.put("configuredCount", configured);
+-            out.put("issueTotal", issueTotal);
+-            out.put("capped", capped);
+-            if (configured > 0) {
+-                out.put("complete", complete);
+-                out.put("onTrack", onTrack);
+-                out.put("overdue", overdue);
+-                out.put("todayComplete", todayComplete);
+-                out.put("todayOnTrack", todayOnTrack);
+-                out.put("todayOverdue", todayOverdue);
+-                out.put("validSubmitted", validSubmitted);
+-                out.put("missed", missed);
+-            }
+-            return out;
+-        } catch (Exception ex) {
+-            log.warn("endpoint=GET /rest/corbit-mobile/1.0/dashboard stage=reportSummary outcome=degraded message={}",
+-                    ex.getMessage());
+-            return out;
+-        }
+-    }
+-
+-    /**
+-     * Assigned unresolved issues that have a follow-up level when that field
+-     * exists. Same permission boundary as {@code /issues/reports}.
+-     */
+-    private String assignedReportJql() {
+-        String level = JimReportConfig.levelFieldJql();
+-        StringBuilder sb = new StringBuilder(
+-                "assignee = currentUser() AND resolution is EMPTY");
+-        if (level != null) {
+-            sb.append(" AND ").append(level).append(" is not EMPTY");
+-        }
+-        sb.append(" ORDER BY updated DESC");
+-        return sb.toString();
+-    }
+-
+-    private static int intOrZero(Object v) {
+-        return (v instanceof Number) ? ((Number) v).intValue() : 0;
+-    }
+-
+     private int count(ApplicationUser viewer, String filter) {
+         try {
+             Query query = JimMobileIssues.buildQuery(viewer, this.searchService, filter);
+diff --git a/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileIssueResource.java b/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileIssueResource.java
+index 43bc0c2..43ff57e 100644
+--- a/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileIssueResource.java
++++ b/src/main/java/com/corbitlogic/jira/internalmessenger/mobile/rest/CorbitMobileIssueResource.java
+@@ -95,6 +95,7 @@ public class CorbitMobileIssueResource {
+     private final JimAttachmentStorageService attachmentStorageService;
+     private final com.corbitlogic.jira.internalmessenger.report.JimReportService reportService;
+     private final com.corbitlogic.jira.internalmessenger.service.JimCommentReactionService commentReactionService;
++    private final com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService reportMetricsService;
+ 
+     @Inject
+     public CorbitMobileIssueResource(JiraAuthenticationContext authenticationContext,
+@@ -104,7 +105,8 @@ public class CorbitMobileIssueResource {
+                                      JimMobileFeatureService featureService,
+                                      JimAttachmentStorageService attachmentStorageService,
+                                      com.corbitlogic.jira.internalmessenger.report.JimReportService reportService,
+-                                     com.corbitlogic.jira.internalmessenger.service.JimCommentReactionService commentReactionService) {
++                                     com.corbitlogic.jira.internalmessenger.service.JimCommentReactionService commentReactionService,
++                                     com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService reportMetricsService) {
+         this.authenticationContext = authenticationContext;
+         this.searchService = searchService;
+         this.avatarService = avatarService;
+@@ -113,6 +115,7 @@ public class CorbitMobileIssueResource {
+         this.attachmentStorageService = attachmentStorageService;
+         this.reportService = reportService;
+         this.commentReactionService = commentReactionService;
++        this.reportMetricsService = reportMetricsService;
+     }
+ 
+     // --- Report compliance (Sprint 12 Phase D — mobile parity) ----------------
+@@ -519,16 +522,17 @@ public class CorbitMobileIssueResource {
+     }
+ 
+     /**
+-     * Bounded report-list for the redesigned Reports surface (Phase 3B-4R). Runs
+-     * the report summary for the caller's assigned, report-configured issues,
+-     * capped at {@code maxResults} (≤10) so it is never an unbounded N+1. Returns
+-     * per-issue report cards + a real aggregate (compliance score) for the gauge.
+-     * Degrades to an empty/available=false payload when nothing is configured.
++     * Report list + aggregate from the shared metrics service (Phase 7I).
++     * Same scan, cap, and period as Dashboard {@code reportSummary}.
++     * Aggregate is the full scan, not the current page.
+      */
+     @GET
+     @Path("/reports")
+     public Response reportList(@QueryParam("startAt") @DefaultValue("0") int startAt,
+-                               @QueryParam("maxResults") @DefaultValue("10") int maxResults) {
++                               @QueryParam("maxResults") @DefaultValue("25") int maxResults,
++                               @QueryParam("period") @DefaultValue("all") String period,
++                               @QueryParam("from") String from,
++                               @QueryParam("to") String to) {
+         ApplicationUser viewer = this.authenticationContext.getLoggedInUser();
+         if (viewer == null) {
+             return unauthenticated();
+@@ -537,51 +541,52 @@ public class CorbitMobileIssueResource {
+             return JimRestResponses.featureDisabled(JimMobileFeatures.TASKS);
+         }
+         int start = Math.max(0, startAt);
+-        int max = Math.min(Math.max(1, maxResults), 10); // hard cap — bounded, no unbounded N+1
++        int max = Math.min(Math.max(1, maxResults),
++                com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService.SCAN_CAP);
+         try {
+-            Query query = JimMobileIssues.buildQuery(viewer, this.searchService, "assigned");
+-            PagerFilter<Issue> pager = new PagerFilter<Issue>(max);
+-            pager.setStart(start);
+-            SearchResults<Issue> results = this.searchService.search(viewer, query, pager);
+-            List<Map<String, Object>> items = new ArrayList<Map<String, Object>>();
+-            long tot = 0, val = 0, oow = 0, missed = 0, reqSoFar = 0, valSoFar = 0;
+-            int configured = 0;
+-            for (Issue issue : results.getResults()) {
+-                com.corbitlogic.jira.internalmessenger.report.JimReportSummary s =
+-                        this.reportService.computeSummary(issue);
+-                if (s == null || !s.configured || s.levelCode == null || !s.applicable) {
+-                    continue; // out-of-scope issues are excluded from current reports
+-                }
+-                items.add(reportListItemMap(issue, s, viewer));
+-                configured++;
+-                tot += s.rawCount;
+-                val += s.validCount;
+-                oow += s.outOfWindowCount;
+-                missed += s.missedCount;
+-                reqSoFar += s.requiredSoFar;
+-                valSoFar += s.validSoFar;
+-            }
++            com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService.Snapshot snap =
++                    this.reportMetricsService.snapshot(viewer, period, from, to);
++            List<Map<String, Object>> allItems = new ArrayList<Map<String, Object>>();
++            for (com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService.IssueRow row
++                    : snap.rows) {
++                Map<String, Object> item = reportListItemMap(row.issue, row.summary, viewer);
++                item.put("validCount", row.counts.valid);
++                item.put("missedCount", row.counts.missed);
++                item.put("rawCount", row.counts.raw);
++                item.put("outOfWindowCount", row.counts.outOfWindow);
++                item.put("requiredCount", row.counts.required);
++                allItems.add(item);
++            }
++            int end = Math.min(allItems.size(), start + max);
++            List<Map<String, Object>> page = start >= allItems.size()
++                    ? new ArrayList<Map<String, Object>>()
++                    : new ArrayList<Map<String, Object>>(allItems.subList(start, end));
++            Map<String, Object> metrics = this.reportMetricsService.metricsMap(snap);
+             Map<String, Object> agg = new LinkedHashMap<String, Object>();
+-            agg.put("total", tot);
+-            agg.put("valid", val);
+-            agg.put("outOfWindow", oow);
+-            agg.put("missed", missed);
+-            agg.put("requiredSoFar", reqSoFar);
+-            agg.put("validSoFar", valSoFar);
+-            // Real compliance score in [0,1]: valid-so-far / required-so-far.
+-            double score = reqSoFar > 0
+-                    ? Math.max(0.0, Math.min(1.0, (double) valSoFar / (double) reqSoFar))
+-                    : (configured > 0 && oow == 0 && missed == 0 ? 1.0 : 0.0);
++            agg.put("total", snap.metrics.rawTotal);
++            agg.put("valid", snap.metrics.valid);
++            agg.put("outOfWindow", snap.metrics.outOfWindow);
++            agg.put("missed", snap.metrics.missed);
++            agg.put("requiredSoFar", snap.metrics.totalRequired);
++            agg.put("validSoFar", snap.metrics.valid);
++            int req = snap.metrics.totalRequired;
++            double score = req > 0
++                    ? Math.max(0.0, Math.min(1.0, (double) snap.metrics.valid / (double) req))
++                    : (snap.metrics.available && snap.metrics.outOfWindow == 0
++                    && snap.metrics.missed == 0 ? 1.0 : 0.0);
+             agg.put("score", score);
+-            agg.put("available", configured > 0);
++            agg.put("available", snap.metrics.available);
+             Map<String, Object> body = new LinkedHashMap<String, Object>();
+-            body.put("items", items);
++            body.put("items", page);
+             body.put("aggregate", agg);
++            body.put("reportMetrics", metrics);
++            body.put("period", this.reportMetricsService.periodMap(snap.period));
+             body.put("startAt", start);
+             body.put("maxResults", max);
+-            body.put("total", results.getTotal());
+-            body.put("isLast", start + results.getResults().size() >= results.getTotal());
+-            body.put("reportConfigured", configured > 0);
++            body.put("total", snap.rows.size());
++            body.put("isLast", end >= allItems.size());
++            body.put("reportConfigured", snap.metrics.available);
++            body.put("capped", snap.metrics.capped);
+             return JimRestResponses.okJson(body);
+         } catch (Exception ex) {
+             return JimRestResponses.internalError(log,
+diff --git a/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportCalculator.java b/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportCalculator.java
+index 1d68eb3..1d3a98b 100644
+--- a/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportCalculator.java
++++ b/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportCalculator.java
+@@ -98,6 +98,13 @@ public final class JimReportCalculator {
+          * (zero scored buckets). Composes with the working-day + pause gates.
+          */
+         public long scoredPeriodStartMs;
++        /**
++         * Phase 8B working-day interval (unit=days). When {@code > 0}, ONE required bucket is
++         * generated per {@code workingDayInterval} WORKING days (non-working days/holidays do
++         * not advance the counter), instead of intra-day {@code intervalMinutes} buckets. The
++         * working-day set comes from {@link #dayClassifier}. {@code 0} = disabled (minutes/hours).
++         */
++        public int workingDayInterval;
+     }
+ 
+     public static final class Result {
+@@ -144,6 +151,14 @@ public final class JimReportCalculator {
+     private static final class Bucket {
+         final long start;
+         final long end;
++        /**
++         * Point from which this bucket counts toward requiredSoFar/missed. Null = use
++         * {@link #start} (legacy intra-day buckets). For Phase 8B working-day-interval
++         * buckets this is the interval COMPLETION (end of the Nth working day), so the
++         * report is required only after N working days elapse — while {@code [start,end)}
++         * still spans the whole interval so an early report is valid.
++         */
++        Long requiredSinceMs;
+         boolean filled;
+         int rawCount;
+         int duplicateCount;
+@@ -155,6 +170,10 @@ public final class JimReportCalculator {
+             this.start = start;
+             this.end = end;
+         }
++
++        long requiredSince() {
++            return requiredSinceMs != null ? requiredSinceMs.longValue() : start;
++        }
+     }
+ 
+     public static Result compute(Input in) {
+@@ -165,23 +184,27 @@ public final class JimReportCalculator {
+         // Everything defaults to out-of-window until mapped to a bucket.
+         Arrays.fill(r.reportStatus, STATUS_OUT_OF_WINDOW);
+ 
+-        if (in.intervalMinutes <= 0 || in.windowEndMin <= in.windowStartMin) {
++        boolean workingDayMode = in.workingDayInterval > 0;
++        if ((in.intervalMinutes <= 0 && !workingDayMode) || in.windowEndMin <= in.windowStartMin) {
+             r.outOfWindowCount = r.rawCount;
+             return r; // schedule not usable → everything raw only
+         }
+ 
+         long genEnd;
+         long firstDayAnchor;
+-        if (in.daily) {
++        if (in.daily && !workingDayMode) {
+             // Current active day only.
+             firstDayAnchor = in.nowMs;
+             genEnd = endOfDayWindow(in.nowMs, in.windowEndMin, tz);
+         } else {
++            // Cumulative (and working-day-interval): from creation to the period end / now.
+             firstDayAnchor = in.issueCreatedMs;
+             genEnd = in.periodEndMs != null ? in.periodEndMs : in.nowMs;
+         }
+ 
+-        List<Bucket> buckets = buildBuckets(in, tz, firstDayAnchor, genEnd);
++        List<Bucket> buckets = workingDayMode
++                ? buildWorkingDayBuckets(in, tz, genEnd)
++                : buildBuckets(in, tz, firstDayAnchor, genEnd);
+ 
+         // Classify reports into buckets (sorted by time so the earliest report in
+         // a bucket is the valid one; later ones are duplicates).
+@@ -230,13 +253,15 @@ public final class JimReportCalculator {
+             if (b.filled) {
+                 r.validCount++;
+             }
+-            if (b.start <= in.nowMs) {
++            // requiredSince() == start for legacy buckets; == interval completion for
++            // Phase 8B working-day buckets (required only after N working days elapse).
++            if (b.requiredSince() <= in.nowMs) {
+                 elapsed++;
+                 if (b.filled) {
+                     validElapsed++;
+                 }
+             } else if (!b.filled && nextExpected == null) {
+-                nextExpected = b.start;
++                nextExpected = b.requiredSince();
+             }
+         }
+         r.requiredCount = buckets.size();
+@@ -347,6 +372,74 @@ public final class JimReportCalculator {
+         return buckets;
+     }
+ 
++    /**
++     * Phase 8B: one required bucket per {@code workingDayInterval} WORKING days.
++     * Walks working days (skipping non-working days/holidays via {@link Input#dayClassifier}),
++     * groups them into N‑working‑day intervals, and emits one bucket per interval spanning
++     * {@code [firstWorkingDayWindowStart, NthWorkingDayWindowEnd)} with
++     * {@code requiredSinceMs = completion} — so a report anywhere in the interval is valid, but
++     * the bucket is required (counts toward requiredSoFar/missed) only after N working days
++     * elapse. Non-working days never advance the counter.
++     */
++    private static List<Bucket> buildWorkingDayBuckets(Input in, TimeZone tz, long genEnd) {
++        List<Bucket> buckets = new ArrayList<>();
++        int n = in.workingDayInterval;
++        if (n <= 0 || in.scoredPeriodStartMs == Long.MAX_VALUE) {
++            return buckets;
++        }
++        long cursorDay = startOfDay(in.issueCreatedMs, tz);
++        if (in.scoredPeriodStartMs > 0L && in.scoredPeriodStartMs != Long.MAX_VALUE) {
++            long boundDay = startOfDay(in.scoredPeriodStartMs, tz);
++            if (boundDay > cursorDay) {
++                cursorDay = boundDay;
++            }
++        }
++        long lastDay = startOfDay(genEnd, tz);
++        List<long[]> workDays = new ArrayList<>(); // each: {segStart, windowEnd}
++        int guard = 0;
++        // Phase 1: collect working days up to genEnd (adjusted for creation / enforcement start).
++        while (cursorDay <= lastDay && guard++ < 8000) {
++            if (in.dayClassifier != null && !in.dayClassifier.isWorkingDay(cursorDay)) {
++                cursorDay = nextDayStart(cursorDay, tz);
++                continue;
++            }
++            long ws = atMinuteOfDay(cursorDay, in.windowStartMin, tz);
++            long we = atMinuteOfDay(cursorDay, in.windowEndMin, tz);
++            long segStart = ws;
++            if (sameDay(cursorDay, in.issueCreatedMs, tz)) {
++                segStart = Math.max(ws, in.issueCreatedMs);
++            }
++            if (in.scoredPeriodStartMs > 0L && in.scoredPeriodStartMs != Long.MAX_VALUE
++                    && sameDay(cursorDay, in.scoredPeriodStartMs, tz)) {
++                segStart = Math.max(segStart, in.scoredPeriodStartMs);
++            }
++            workDays.add(new long[]{segStart, we});
++            cursorDay = nextDayStart(cursorDay, tz);
++        }
++        // Phase 2: project forward to COMPLETE the final in-progress interval so it has a real
++        // completion instant (may be in the future → required only once it passes).
++        while (workDays.size() % n != 0 && guard++ < 8000) {
++            if (in.dayClassifier == null || in.dayClassifier.isWorkingDay(cursorDay)) {
++                long ws = atMinuteOfDay(cursorDay, in.windowStartMin, tz);
++                long we = atMinuteOfDay(cursorDay, in.windowEndMin, tz);
++                workDays.add(new long[]{ws, we});
++            }
++            cursorDay = nextDayStart(cursorDay, tz);
++        }
++        // Group into intervals of N working days → one bucket each.
++        for (int i = 0; i + n <= workDays.size(); i += n) {
++            long bStart = workDays.get(i)[0];
++            long completion = workDays.get(i + n - 1)[1];
++            if (isPaused(bStart, in.pausedIntervals)) {
++                continue; // assigned-to-receiver pause: no required/missed for this interval
++            }
++            Bucket b = new Bucket(bStart, completion);
++            b.requiredSinceMs = Long.valueOf(completion);
++            buckets.add(b);
++        }
++        return buckets;
++    }
++
+     private static Bucket findBucket(List<Bucket> buckets, long ts) {
+         for (Bucket b : buckets) {
+             if (ts >= b.start && ts < b.end) {
+diff --git a/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportConfig.java b/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportConfig.java
+index b84e90f..458544b 100644
+--- a/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportConfig.java
++++ b/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportConfig.java
+@@ -3,9 +3,16 @@ package com.corbitlogic.jira.internalmessenger.report;
+ import com.atlassian.jira.component.ComponentAccessor;
+ import com.atlassian.jira.issue.CustomFieldManager;
+ import com.atlassian.jira.issue.Issue;
++import com.atlassian.jira.issue.customfields.manager.OptionsManager;
+ import com.atlassian.jira.issue.customfields.option.Option;
++import com.atlassian.jira.issue.customfields.option.Options;
+ import com.atlassian.jira.issue.fields.CustomField;
++import com.atlassian.jira.issue.fields.config.FieldConfig;
++import com.atlassian.jira.issue.fields.config.FieldConfigScheme;
+ import com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService;
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.List;
+ import java.util.Map;
+ 
+ /**
+@@ -307,11 +314,149 @@ public final class JimReportConfig {
+ 
+     // --- Follow-up level ------------------------------------------------------
+ 
++    // --- Dynamic follow-up level options (Phase 8A) --------------------------
++
++    /**
++     * A follow-up level option discovered from the configured Jira select field.
++     * {@link #key} is the STABLE persistence key ({@code o<optionId>}); config
++     * survives an option rename because it is keyed by the option id, not text.
++     */
++    public static final class LevelOption {
++        public final String key;         // o<optionId>
++        public final long optionId;
++        public final String value;       // display label
++        public final boolean disabled;
++        public final Long contextId;     // field-config-scheme id (disambiguation)
++        public final String contextName;
++        public final String legacyCode;  // matched legacy code (normal/high/special/managerial) or null
++
++        LevelOption(long optionId, String value, boolean disabled, Long contextId, String contextName,
++                    String legacyCode) {
++            this.key = "o" + optionId;
++            this.optionId = optionId;
++            this.value = value;
++            this.disabled = disabled;
++            this.contextId = contextId;
++            this.contextName = contextName;
++            this.legacyCode = legacyCode;
++        }
++    }
++
++    /** Stable key for an option id. */
++    public static String keyForOptionId(long optionId) {
++        return "o" + optionId;
++    }
++
++    // Short cache for the resolved option list (enumeration hits Jira managers).
++    private static volatile long optionsCacheAt = 0L;
++    private static volatile List<LevelOption> optionsCache = null;
++    private static final long OPTIONS_CACHE_TTL_MS = 30000L;
++
++    /** Invalidate the option cache (call after admin settings/field changes). */
++    public static void invalidateOptionsCache() {
++        optionsCache = null;
++        optionsCacheAt = 0L;
++    }
++
++    /**
++     * Resolve all active follow-up level options from the configured select field,
++     * across every field context. Empty when the field is missing or not a
++     * select/radio list (graceful degrade — caller shows a warning). De-duplicated
++     * by option id; cached briefly.
++     */
++    public static List<LevelOption> resolveLevelOptions() {
++        long now = System.currentTimeMillis();
++        List<LevelOption> cached = optionsCache;
++        if (cached != null && (now - optionsCacheAt) < OPTIONS_CACHE_TTL_MS) {
++            return cached;
++        }
++        List<LevelOption> out = new ArrayList<LevelOption>();
++        try {
++            CustomField cf = resolveLevelField();
++            if (cf == null) {
++                optionsCache = out;
++                optionsCacheAt = now;
++                return out;
++            }
++            // Only select/radio fields have options; text fields have none (legacy fallback path).
++            String tk = cf.getCustomFieldType() != null && cf.getCustomFieldType().getKey() != null
++                    ? cf.getCustomFieldType().getKey().toLowerCase() : "";
++            if (!(tk.contains("select") || tk.contains("radiobuttons"))) {
++                optionsCache = out;
++                optionsCacheAt = now;
++                return out;
++            }
++            OptionsManager om = ComponentAccessor.getComponent(OptionsManager.class);
++            LinkedHashMap<Long, LevelOption> byId = new LinkedHashMap<Long, LevelOption>();
++            List<FieldConfigScheme> schemes = cf.getConfigurationSchemes();
++            if (schemes != null && om != null) {
++                for (FieldConfigScheme scheme : schemes) {
++                    if (scheme == null) {
++                        continue;
++                    }
++                    Long ctxId = scheme.getId();
++                    String ctxName = scheme.getName();
++                    Map<String, FieldConfig> configs = scheme.getConfigs();
++                    if (configs == null) {
++                        continue;
++                    }
++                    for (FieldConfig fcfg : configs.values()) {
++                        Options opts;
++                        try {
++                            opts = om.getOptions(fcfg);
++                        } catch (Throwable t) {
++                            continue;
++                        }
++                        if (opts == null) {
++                            continue;
++                        }
++                        for (Object oo : opts) {
++                            if (!(oo instanceof Option)) {
++                                continue;
++                            }
++                            Option o = (Option) oo;
++                            Long oid = o.getOptionId();
++                            if (oid == null || byId.containsKey(oid)) {
++                                continue;
++                            }
++                            boolean disabled = Boolean.TRUE.equals(o.getDisabled());
++                            String val = o.getValue();
++                            byId.put(oid, new LevelOption(oid.longValue(), val, disabled, ctxId, ctxName,
++                                    codeForLevelText(val)));
++                        }
++                    }
++                }
++            }
++            out.addAll(byId.values());
++        } catch (Throwable ignored) {
++            // graceful: return whatever was collected (possibly empty)
++        }
++        optionsCache = out;
++        optionsCacheAt = now;
++        return out;
++    }
++
++    /** The LevelOption for a stable key ({@code o<id>}), or null. */
++    public static LevelOption optionForKey(String key) {
++        if (key == null) {
++            return null;
++        }
++        for (LevelOption o : resolveLevelOptions()) {
++            if (o.key.equals(key)) {
++                return o;
++            }
++        }
++        return null;
++    }
++
+     /**
+-     * Read the issue's follow-up level and map it to an internal level code
+-     * ({@code normal|high|special|managerial}), or null when unset/unknown.
+-     * Tolerates select options and plain text, and normalizes Arabic/Persian
+-     * yeh/kaf so option text differences never break matching.
++     * Read the issue's follow-up level and map it to the STABLE level key.
++     *
++     * <p>For a select option this is {@code o<optionId>} (Phase 8A dynamic key),
++     * so config survives an option rename. For a plain-text field (no option id)
++     * it falls back to the legacy code ({@code normal|high|special|managerial}).
++     * Null when unset/unknown. The report engine looks up the per-level config by
++     * this exact key (the settings service merges legacy config as a fallback).</p>
+      */
+     public static String levelCodeOf(Issue issue) {
+         CustomField cf = resolveLevelField();
+@@ -324,13 +469,17 @@ public final class JimReportConfig {
+         } catch (Throwable t) {
+             return null;
+         }
+-        String text = null;
+         if (raw instanceof Option) {
+-            text = ((Option) raw).getValue();
+-        } else if (raw != null) {
+-            text = String.valueOf(raw);
++            Long oid = ((Option) raw).getOptionId();
++            if (oid != null) {
++                return keyForOptionId(oid.longValue());
++            }
++            return codeForLevelText(((Option) raw).getValue()); // option without id → legacy text map
+         }
+-        return codeForLevelText(text);
++        if (raw != null) {
++            return codeForLevelText(String.valueOf(raw)); // text field → legacy text map
++        }
++        return null;
+     }
+ 
+     /** Map a Persian follow-up-level label to an internal code (null if unknown). */
+@@ -353,11 +502,21 @@ public final class JimReportConfig {
+         }
+     }
+ 
+-    /** Persian display label for a level code (for UI), or the code itself if unknown. */
++    /**
++     * Display label for a level key. For a dynamic option key ({@code o<id>}) this
++     * is the Jira option's display value; for a legacy code it is the Persian label;
++     * otherwise the key itself.
++     */
+     public static String levelLabelFa(String code) {
+         if (code == null) {
+             return "";
+         }
++        if (code.startsWith("o") && code.length() > 1 && code.substring(1).matches("\\d+")) {
++            LevelOption opt = optionForKey(code);
++            if (opt != null && opt.value != null) {
++                return opt.value;
++            }
++        }
+         switch (code) {
+             case "normal":     return "\u0639\u0627\u062f\u06cc";               // عادی
+             case "high":       return "\u0628\u0627\u0644\u0627";               // بالا
+@@ -435,11 +594,18 @@ public final class JimReportConfig {
+         public final int intervalMinutes;
+         public final int windowStartMinute;
+         public final int windowEndMinute;
++        /** Phase 8B: when {@code > 0}, one report per this many WORKING days (unit=days); intervalMinutes is 0. */
++        public final int workingDayInterval;
+ 
+         ReportSchedule(int intervalMinutes, int windowStartMinute, int windowEndMinute) {
++            this(intervalMinutes, windowStartMinute, windowEndMinute, 0);
++        }
++
++        ReportSchedule(int intervalMinutes, int windowStartMinute, int windowEndMinute, int workingDayInterval) {
+             this.intervalMinutes = intervalMinutes;
+             this.windowStartMinute = windowStartMinute;
+             this.windowEndMinute = windowEndMinute;
++            this.workingDayInterval = workingDayInterval;
+         }
+     }
+ 
+@@ -475,10 +641,14 @@ public final class JimReportConfig {
+             return null;
+         }
+         String unit = String.valueOf(level.get("unit"));
+-        int intervalMinutes = "hours".equals(unit) ? intervalValue * 60 : intervalValue;
+         int start = parseHHmm(String.valueOf(level.get("start")), globalWindowStartMinute());
+         int end = parseHHmm(String.valueOf(level.get("end")), globalWindowEndMinute());
+-        return new ReportSchedule(intervalMinutes, start, end);
++        if ("days".equals(unit)) {
++            // Phase 8B: N WORKING days per required report (not minutes/hours).
++            return new ReportSchedule(0, start, end, intervalValue);
++        }
++        int intervalMinutes = "hours".equals(unit) ? intervalValue * 60 : intervalValue;
++        return new ReportSchedule(intervalMinutes, start, end, 0);
+     }
+ 
+     /**
+diff --git a/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportServiceImpl.java b/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportServiceImpl.java
+index f4eae77..3345414 100644
+--- a/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportServiceImpl.java
++++ b/src/main/java/com/corbitlogic/jira/internalmessenger/report/JimReportServiceImpl.java
+@@ -212,6 +212,7 @@ public class JimReportServiceImpl implements JimReportService {
+         in.intervalMinutes = sch.intervalMinutes;
+         in.windowStartMin = sch.windowStartMinute;
+         in.windowEndMin = sch.windowEndMinute;
++        in.workingDayInterval = sch.workingDayInterval; // Phase 8B: unit=days → N working days
+         in.nowMs = System.currentTimeMillis();
+         in.daily = "daily".equals(s.countMode);
+         in.periodEndMs = countPeriodEnd(s, isDoneNow);
+@@ -648,7 +649,7 @@ public class JimReportServiceImpl implements JimReportService {
+         s.satisfiedWindowCount = s.validCount;
+         s.missedWindowCount = s.missedCount;
+         s.todayValidCount = s.validCount;
+-        s.todayRequiredCount = s.requiredCount;
++        s.todayRequiredCount = s.requiredSoFar;
+         s.todayMissedCount = s.missedCount;
+     }
+ 
+@@ -759,7 +760,12 @@ public class JimReportServiceImpl implements JimReportService {
+             String activeUntil = level != null ? JimReportConfig.activeUntilForLevel(level) : null;
+             JimReportConfig.ReportSchedule sch = level != null ? JimReportConfig.scheduleForLevel(level) : null;
+             String schedSig = sch != null
+-                    ? (sch.intervalMinutes + "/" + sch.windowStartMinute + "-" + sch.windowEndMinute) : "none";
++                    ? (sch.intervalMinutes + "/" + sch.windowStartMinute + "-" + sch.windowEndMinute
++                        + "/wd" + sch.workingDayInterval) : "none";
++            // Include the fixed-minimum count so a minCount change for the issue's
++            // (dynamic) level invalidates the cached ledger (Phase 8A).
++            int minCount = level != null ? JimReportConfig.minCountForLevel(level) : 0;
++            schedSig = schedSig + "/min" + minCount;
+             String cfgSig = JimReportConfig.marker()
+                     + "|" + JimReportConfig.globalWindowStartMinute()
+                     + "|" + JimReportConfig.globalWindowEndMinute()
+@@ -877,7 +883,7 @@ public class JimReportServiceImpl implements JimReportService {
+      * = the configured minimum; valid = report comments inside the reporting
+      * window and at/before the endpoint (capped at required for compliance).
+      * Out-of-window reports stay raw-only. Not-yet-met is on-track while still
+-     * active and overdue once the endpoint has passed.
++     * active; {@code missedCount} stays 0 until the endpoint has passed.
+      */
+     private void computeFixedMinimum(JimReportSummary s, TimeZone tz) {
+         // Fully out of enforcement scope → no scoring obligation (history still shown).
+@@ -912,11 +918,14 @@ public class JimReportServiceImpl implements JimReportService {
+         s.validCount = Math.min(validInWindow, required);
+         s.duplicateCount = 0; // interval-duplicate logic does not apply
+         s.outOfWindowCount = Math.max(0, s.rawCount - validInWindow - outOfScope);
+-        s.requiredSoFar = required;
+-        s.validSoFar = s.validCount;
+-        s.missedCount = Math.max(required - s.validCount, 0);
+         boolean met = s.validCount >= required;
+         boolean ended = endpoint != null && now > endpoint;
++        // Obligation is "N by the end". Until the due/done endpoint, nothing
++        // has expired — not-yet-submitted is ON_TRACK, not missed.
++        // Do not use (minimumRequired - valid) while the window is still open.
++        s.requiredSoFar = (ended || met) ? required : 0;
++        s.validSoFar = s.validCount;
++        s.missedCount = (ended && !met) ? Math.max(required - s.validCount, 0) : 0;
+         s.compliance = met ? "on_track" : (ended ? "overdue" : "on_track");
+         s.nextExpectedMs = met ? null : endpoint;
+     }
+diff --git a/src/main/java/com/corbitlogic/jira/internalmessenger/rest/JimAdminResource.java b/src/main/java/com/corbitlogic/jira/internalmessenger/rest/JimAdminResource.java
+index dd861fc..6e65c3e 100644
+--- a/src/main/java/com/corbitlogic/jira/internalmessenger/rest/JimAdminResource.java
++++ b/src/main/java/com/corbitlogic/jira/internalmessenger/rest/JimAdminResource.java
+@@ -584,6 +584,17 @@ public class JimAdminResource {
+ 
+     // ===== Reporting dashboard / diagnostics / export / backfill (Phase 6/7) =====
+ 
++    @GET
++    @Path(value="/reporting/levels")
++    public Response getReportingLevels() {
++        try {
++            this.requireSysAdmin();
++            return JimRestResponses.okJson(this.adminSettingsService.getReportLevelModel());
++        } catch (Exception ex) {
++            return this.internalError("GET /admin/reporting/levels", ex);
++        }
++    }
++
+     @GET
+     @Path(value="/reporting/diagnostics")
+     public Response getReportingDiagnostics() {
+@@ -598,6 +609,8 @@ public class JimAdminResource {
+             // Working-day source + report-receiver pause diagnostics (Report Replies & Working-Days).
+             body.put("workingDays",
+                     com.corbitlogic.jira.internalmessenger.report.ReportWorkingCalendarService.diagnostics());
++            // Dynamic follow-up level model (Phase 8A): field/options/config/orphans/warnings.
++            body.put("followUpLevels", this.adminSettingsService.getReportLevelModel());
+             LinkedHashMap<String, Object> receiver = new LinkedHashMap<String, Object>();
+             receiver.put("pauseEnabled",
+                     com.corbitlogic.jira.internalmessenger.report.ReportResponsibilityService.isPauseEnabled());
+diff --git a/src/main/java/com/corbitlogic/jira/internalmessenger/service/JimAdminSettingsService.java b/src/main/java/com/corbitlogic/jira/internalmessenger/service/JimAdminSettingsService.java
+index 55ac2bb..d7a0907 100644
+--- a/src/main/java/com/corbitlogic/jira/internalmessenger/service/JimAdminSettingsService.java
++++ b/src/main/java/com/corbitlogic/jira/internalmessenger/service/JimAdminSettingsService.java
+@@ -90,6 +90,14 @@ public interface JimAdminSettingsService {
+      */
+     public Map<String, Map<String, Object>> getReportLevelSchedules();
+ 
++    /**
++     * Dynamic follow-up level model for the admin UI + diagnostics: the configured
++     * field, its resolved options (stable {@code o<id>} keys), each option's config
++     * state (configured / legacy-fallback / unconfigured), orphaned configs, and
++     * warnings. Never throws; degrades gracefully when the field is missing.
++     */
++    public Map<String, Object> getReportLevelModel();
++
+     /**
+      * Allow submitting report comments even when the follow-up level or report
+      * fields are not configured (report still created as a {@code #گزارش}
+diff --git a/src/main/java/com/corbitlogic/jira/internalmessenger/service/JimAdminSettingsServiceImpl.java b/src/main/java/com/corbitlogic/jira/internalmessenger/service/JimAdminSettingsServiceImpl.java
+index 1ea47d1..b001d28 100644
+--- a/src/main/java/com/corbitlogic/jira/internalmessenger/service/JimAdminSettingsServiceImpl.java
++++ b/src/main/java/com/corbitlogic/jira/internalmessenger/service/JimAdminSettingsServiceImpl.java
+@@ -52,7 +52,8 @@ implements JimAdminSettingsService {
+     static final String DEFAULT_REPORT_REQUIRED_FIELD = "customfield_11900";
+     /** Internal follow-up level codes (stable; independent of Persian option text). */
+     static final List<String> REPORT_LEVEL_CODES = Arrays.asList("normal", "high", "special", "managerial");
+-    private static final List<String> INTERVAL_UNITS = Arrays.asList("minutes", "hours");
++    // Phase 8B: "days" = WORKING days (resolved via ReportWorkingCalendarService), not 24h.
++    private static final List<String> INTERVAL_UNITS = Arrays.asList("minutes", "hours", "days");
+     /** Per-level reporting lifecycle / end condition. */
+     private static final List<String> REPORT_ACTIVE_UNTIL = Arrays.asList("due", "done", "earlier");
+     /** Per-level required-count counting mode. */
+@@ -67,6 +68,10 @@ implements JimAdminSettingsService {
+     static final String KEY_REPORT_WORKING_DAYS_ENABLED = "reportWorkingDaysEnabled";
+     static final String KEY_REPORT_WORKING_DAYS_CSV = "reportWorkingDaysCsv";
+     static final String KEY_REPORT_HOLIDAYS_CSV = "reportHolidaysCsv";
++    // --- Dynamic follow-up levels (Phase 8A): index of level keys that have been
++    // configured (interval>0), so orphaned configs can be surfaced in diagnostics
++    // even though PluginSettings cannot enumerate keys by prefix. ---
++    static final String KEY_REPORT_DYNAMIC_KEYS = "reportDynamicConfiguredKeys";
+     // --- Working calendar (board vs plugin) source selection ---
+     static final String KEY_REPORT_WORKING_CALENDAR_SOURCE = "reportWorkingCalendarSource";
+     static final String KEY_REPORT_DEFAULT_BOARD_ID = "reportDefaultBoardId";
+@@ -362,19 +367,190 @@ implements JimAdminSettingsService {
+         return out;
+     }
+ 
++    /** Read the per-level config block for a given key (legacy code or dynamic {@code o<id>}). */
++    private Map<String, Object> readLevelConfig(String key) {
++        LinkedHashMap<String, Object> level = new LinkedHashMap<String, Object>();
++        level.put("interval", this.intValue("reportInterval_" + key, 0, 0, 100000));
++        level.put("unit", this.unitValue("reportIntervalUnit_" + key));
++        level.put("start", this.timeOverrideValue("reportStart_" + key));
++        level.put("end", this.timeOverrideValue("reportEnd_" + key));
++        level.put("activeUntil", this.enumLowerValue("reportActiveUntil_" + key, REPORT_ACTIVE_UNTIL, DEFAULT_ACTIVE_UNTIL));
++        level.put("countMode", this.enumLowerValue("reportCountMode_" + key, REPORT_COUNT_MODES, DEFAULT_COUNT_MODE));
++        level.put("minCount", this.intValue("reportMinCount_" + key, 1, 1, 1000));
++        return level;
++    }
++
++    private static boolean isConfigured(Map<String, Object> cfg) {
++        return cfg != null && cfg.get("interval") instanceof Number
++                && ((Number) cfg.get("interval")).intValue() > 0;
++    }
++
+     @Override
+     public Map<String, Map<String, Object>> getReportLevelSchedules() {
+         LinkedHashMap<String, Map<String, Object>> out = new LinkedHashMap<String, Map<String, Object>>();
++        // 1) Legacy code entries — always present (text-field fallback + back-compat).
++        for (String code : REPORT_LEVEL_CODES) {
++            out.put(code, readLevelConfig(code));
++        }
++        // 2) Dynamic option entries keyed by o<optionId>. Read dynamic config first;
++        //    if unconfigured and the option maps to a legacy code that IS configured,
++        //    apply the legacy config as a READ-THROUGH fallback (never written back),
++        //    so existing production settings keep applying to the matching option.
++        try {
++            for (com.corbitlogic.jira.internalmessenger.report.JimReportConfig.LevelOption opt
++                    : com.corbitlogic.jira.internalmessenger.report.JimReportConfig.resolveLevelOptions()) {
++                Map<String, Object> dyn = readLevelConfig(opt.key);
++                if (!isConfigured(dyn) && opt.legacyCode != null) {
++                    Map<String, Object> legacy = out.get(opt.legacyCode);
++                    if (isConfigured(legacy)) {
++                        out.put(opt.key, legacy);
++                        continue;
++                    }
++                }
++                out.put(opt.key, dyn);
++            }
++        } catch (Throwable ignore) {
++            // graceful: dynamic options unavailable → legacy entries still serve
++        }
++        return out;
++    }
++
++    @Override
++    public Map<String, Object> getReportLevelModel() {
++        LinkedHashMap<String, Object> model = new LinkedHashMap<String, Object>();
++        java.util.ArrayList<String> warnings = new java.util.ArrayList<String>();
++        String fieldId = this.getReportLevelFieldId();
++        model.put("fieldId", fieldId);
++        com.atlassian.jira.issue.fields.CustomField cf = null;
++        String fieldName = null;
++        String fieldType = null;
++        boolean isSelect = false;
++        try {
++            com.atlassian.jira.issue.CustomFieldManager cfm =
++                    com.atlassian.jira.component.ComponentAccessor.getCustomFieldManager();
++            cf = (cfm != null && fieldId != null && !fieldId.isEmpty()) ? cfm.getCustomFieldObject(fieldId) : null;
++            if (cf != null) {
++                fieldName = cf.getName();
++                if (cf.getCustomFieldType() != null) {
++                    fieldType = cf.getCustomFieldType().getKey();
++                    String lt = fieldType == null ? "" : fieldType.toLowerCase(Locale.ROOT);
++                    isSelect = lt.contains("select") || lt.contains("radiobuttons");
++                }
++            }
++        } catch (Throwable ignore) {
++        }
++        model.put("fieldName", fieldName);
++        model.put("fieldType", fieldType);
++        model.put("fieldConfigured", cf != null);
++        model.put("isSelect", isSelect);
++        if (cf == null) {
++            warnings.add("follow_up_level_field_missing");
++        } else if (!isSelect) {
++            warnings.add("follow_up_level_field_not_select");
++        }
++
++        java.util.List<com.corbitlogic.jira.internalmessenger.report.JimReportConfig.LevelOption> options =
++                java.util.Collections.emptyList();
++        try {
++            options = com.corbitlogic.jira.internalmessenger.report.JimReportConfig.resolveLevelOptions();
++        } catch (Throwable ignore) {
++        }
++        java.util.HashSet<Long> contexts = new java.util.HashSet<Long>();
++        java.util.HashMap<String, Integer> labelCounts = new java.util.HashMap<String, Integer>();
++        for (com.corbitlogic.jira.internalmessenger.report.JimReportConfig.LevelOption o : options) {
++            if (o.contextId != null) {
++                contexts.add(o.contextId);
++            }
++            String lv = o.value == null ? "" : o.value;
++            labelCounts.put(lv, (labelCounts.containsKey(lv) ? labelCounts.get(lv) : 0) + 1);
++        }
++        java.util.ArrayList<Map<String, Object>> optList = new java.util.ArrayList<Map<String, Object>>();
++        java.util.HashSet<String> currentKeys = new java.util.HashSet<String>();
++        for (com.corbitlogic.jira.internalmessenger.report.JimReportConfig.LevelOption o : options) {
++            currentKeys.add(o.key);
++            Map<String, Object> raw = readLevelConfig(o.key);
++            boolean directlyConfigured = isConfigured(raw);
++            boolean legacyFallbackUsed = false;
++            Map<String, Object> effective = raw;
++            if (!directlyConfigured && o.legacyCode != null) {
++                Map<String, Object> legacy = readLevelConfig(o.legacyCode);
++                if (isConfigured(legacy)) {
++                    effective = legacy;
++                    legacyFallbackUsed = true;
++                }
++            }
++            LinkedHashMap<String, Object> row = new LinkedHashMap<String, Object>();
++            row.put("key", o.key);
++            row.put("optionId", o.optionId);
++            row.put("value", o.value);
++            row.put("disabled", o.disabled);
++            row.put("contextId", o.contextId);
++            row.put("contextName", o.contextName);
++            row.put("legacyCode", o.legacyCode);
++            row.put("configured", directlyConfigured || legacyFallbackUsed);
++            row.put("directlyConfigured", directlyConfigured);
++            row.put("legacyFallbackUsed", legacyFallbackUsed);
++            row.put("duplicateLabel", labelCounts.containsKey(o.value) && labelCounts.get(o.value) > 1);
++            // Effective config (what the engine will apply) + the raw persisted dynamic config.
++            row.put("interval", effective.get("interval"));
++            row.put("unit", effective.get("unit"));
++            row.put("start", effective.get("start"));
++            row.put("end", effective.get("end"));
++            row.put("activeUntil", effective.get("activeUntil"));
++            row.put("countMode", effective.get("countMode"));
++            row.put("minCount", effective.get("minCount"));
++            optList.add(row);
++            if (labelCounts.containsKey(o.value) && labelCounts.get(o.value) > 1) {
++                warnings.add("duplicate_option_label:" + o.value);
++            }
++        }
++        model.put("contextsCount", contexts.size());
++        model.put("optionsCount", options.size());
++        model.put("options", optList);
++
++        // Orphaned configs: (a) dynamic o<id> keys previously configured but no longer
++        // present as options; (b) legacy codes configured but not mapped to any current option.
++        java.util.ArrayList<Map<String, Object>> orphans = new java.util.ArrayList<Map<String, Object>>();
++        for (String k : parseCsvKeys(this.stringValue(KEY_REPORT_DYNAMIC_KEYS))) {
++            if (k.startsWith("o") && !currentKeys.contains(k) && isConfigured(readLevelConfig(k))) {
++                Map<String, Object> orphan = new LinkedHashMap<String, Object>(readLevelConfig(k));
++                orphan.put("key", k);
++                orphan.put("reason", "option_no_longer_present");
++                orphans.add(orphan);
++            }
++        }
++        java.util.HashSet<String> mappedLegacy = new java.util.HashSet<String>();
++        for (com.corbitlogic.jira.internalmessenger.report.JimReportConfig.LevelOption o : options) {
++            if (o.legacyCode != null) {
++                mappedLegacy.add(o.legacyCode);
++            }
++        }
+         for (String code : REPORT_LEVEL_CODES) {
+-            LinkedHashMap<String, Object> level = new LinkedHashMap<String, Object>();
+-            level.put("interval", this.intValue("reportInterval_" + code, 0, 0, 100000));
+-            level.put("unit", this.unitValue("reportIntervalUnit_" + code));
+-            level.put("start", this.timeOverrideValue("reportStart_" + code));
+-            level.put("end", this.timeOverrideValue("reportEnd_" + code));
+-            level.put("activeUntil", this.enumLowerValue("reportActiveUntil_" + code, REPORT_ACTIVE_UNTIL, DEFAULT_ACTIVE_UNTIL));
+-            level.put("countMode", this.enumLowerValue("reportCountMode_" + code, REPORT_COUNT_MODES, DEFAULT_COUNT_MODE));
+-            level.put("minCount", this.intValue("reportMinCount_" + code, 1, 1, 1000));
+-            out.put(code, level);
++            if (!mappedLegacy.contains(code) && isConfigured(readLevelConfig(code))) {
++                Map<String, Object> orphan = new LinkedHashMap<String, Object>(readLevelConfig(code));
++                orphan.put("key", code);
++                orphan.put("reason", "legacy_code_no_matching_option");
++                orphans.add(orphan);
++            }
++        }
++        model.put("orphans", orphans);
++        if (!orphans.isEmpty()) {
++            warnings.add("orphaned_configs:" + orphans.size());
++        }
++        model.put("warnings", warnings);
++        return model;
++    }
++
++    private static java.util.List<String> parseCsvKeys(String csv) {
++        java.util.ArrayList<String> out = new java.util.ArrayList<String>();
++        if (csv == null) {
++            return out;
++        }
++        for (String t : csv.split(",")) {
++            String s = t.trim();
++            if (!s.isEmpty() && !out.contains(s)) {
++                out.add(s);
++            }
+         }
+         return out;
+     }
+@@ -456,16 +632,67 @@ implements JimAdminSettingsService {
+         }
+         this.validateTimeOrder(normalizedChanges, before);
+         ArrayList<String> descriptions = new ArrayList<String>();
++        boolean levelKeysTouched = false;
+         for (Map.Entry<String, String> entry : normalizedChanges.entrySet()) {
+             String key = entry.getKey();
+             String normalized = entry.getValue();
+             Object oldValue = before.get(key);
+             this.settings().put(KEY_PREFIX + key, (Object)normalized);
+             descriptions.add(key + ": " + String.valueOf(oldValue) + " -> " + normalized);
++            // Maintain the dynamic-level index so orphaned configs are discoverable
++            // (PluginSettings cannot enumerate keys by prefix).
++            if (key.startsWith("reportInterval_") && !key.startsWith("reportIntervalUnit_")) {
++                String lvlKey = key.substring("reportInterval_".length());
++                int iv;
++                try {
++                    iv = Integer.parseInt(normalized);
++                } catch (NumberFormatException ex) {
++                    iv = 0;
++                }
++                this.updateDynamicLevelIndex(lvlKey, iv > 0);
++            }
++            if (KEY_REPORT_LEVEL_FIELD.equals(key)) {
++                levelKeysTouched = true;
++            }
++        }
++        // The follow-up-level field changed → invalidate the option cache so the
++        // admin UI + engine re-resolve options immediately.
++        if (levelKeysTouched) {
++            try {
++                com.corbitlogic.jira.internalmessenger.report.JimReportConfig.invalidateOptionsCache();
++            } catch (Throwable ignore) {
++            }
+         }
+         return descriptions;
+     }
+ 
++    /** Add/remove a level key from the dynamic-configured-keys index (for orphan diagnostics). */
++    private void updateDynamicLevelIndex(String levelKey, boolean configured) {
++        if (levelKey == null || levelKey.isEmpty()) {
++            return;
++        }
++        java.util.List<String> keys = parseCsvKeys(this.stringValue(KEY_REPORT_DYNAMIC_KEYS));
++        boolean changed = false;
++        if (configured) {
++            if (!keys.contains(levelKey)) {
++                keys.add(levelKey);
++                changed = true;
++            }
++        } else if (keys.remove(levelKey)) {
++            changed = true;
++        }
++        if (changed) {
++            StringBuilder sb = new StringBuilder();
++            for (String k : keys) {
++                if (sb.length() > 0) {
++                    sb.append(',');
++                }
++                sb.append(k);
++            }
++            this.settings().put(KEY_PREFIX + KEY_REPORT_DYNAMIC_KEYS, (Object) sb.toString());
++        }
++    }
++
+     private String normalizeAndValidate(String key, Object rawValue) {
+         String value = rawValue == null ? "" : String.valueOf(rawValue).trim();
+         if (key.startsWith("report")) {
+@@ -809,7 +1036,8 @@ implements JimAdminSettingsService {
+         if (key.startsWith("reportIntervalUnit_")) {
+             String lower = value.toLowerCase(Locale.ROOT);
+             if (!INTERVAL_UNITS.contains(lower)) {
+-                throw JimMessengerException.badRequest(key + " must be minutes or hours");
++                throw JimMessengerException.badRequest(key + " must be one of " + INTERVAL_UNITS
++                        + " (days = working days)");
+             }
+             return lower;
+         }
+@@ -850,6 +1078,20 @@ implements JimAdminSettingsService {
+         for (String code : REPORT_LEVEL_CODES) {
+             requireStartBeforeEnd("reportStart_" + code, "reportEnd_" + code, changes, before, true);
+         }
++        // Dynamic level keys (Phase 8A): validate any reportStart_<key>/reportEnd_<key>
++        // pair present in the change set (covers o<optionId> and any suffix).
++        java.util.HashSet<String> seen = new java.util.HashSet<String>();
++        for (String k : changes.keySet()) {
++            String suffix = null;
++            if (k.startsWith("reportStart_")) {
++                suffix = k.substring("reportStart_".length());
++            } else if (k.startsWith("reportEnd_")) {
++                suffix = k.substring("reportEnd_".length());
++            }
++            if (suffix != null && !REPORT_LEVEL_CODES.contains(suffix) && seen.add(suffix)) {
++                requireStartBeforeEnd("reportStart_" + suffix, "reportEnd_" + suffix, changes, before, true);
++            }
++        }
+     }
+ 
+     private void requireStartBeforeEnd(String startKey, String endKey,
+diff --git a/src/main/resources/atlassian-plugin.xml b/src/main/resources/atlassian-plugin.xml
+index 8a5e7c1..5c5f482 100644
+--- a/src/main/resources/atlassian-plugin.xml
++++ b/src/main/resources/atlassian-plugin.xml
+@@ -191,6 +191,11 @@
+         <interface>com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService</interface>
+     </component>
+ 
++    <component key="jimMobileReportMetricsService"
++               class="com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService">
++        <description>Shared report-engine metrics for Dashboard and Reports (Phase 7I)</description>
++    </component>
++
+     <component key="jimMobileDeviceService"
+                class="com.corbitlogic.jira.internalmessenger.service.JimMobileDeviceServiceImpl">
+         <description>Native mobile push device registration for CorbitHub Mobile</description>
+diff --git a/src/main/resources/js/jim-admin.js b/src/main/resources/js/jim-admin.js
+index b33baf7..9c0874b 100644
+--- a/src/main/resources/js/jim-admin.js
++++ b/src/main/resources/js/jim-admin.js
+@@ -284,16 +284,79 @@
+         setVal('jim-set-reportLevelFieldId', settings.reportLevelFieldId || '');
+         setVal('jim-set-reportValidCountFieldId', settings.reportValidCountFieldId || '');
+         setVal('jim-set-reportRequiredCountFieldId', settings.reportRequiredCountFieldId || '');
+-        for (var i = 0; i < REPORT_LEVEL_CODES.length; i++) {
+-            var c = REPORT_LEVEL_CODES[i];
+-            setVal('jim-set-reportInterval_' + c, settings['reportInterval_' + c] != null ? settings['reportInterval_' + c] : 0);
+-            setVal('jim-set-reportIntervalUnit_' + c, settings['reportIntervalUnit_' + c] || 'hours');
+-            setVal('jim-set-reportStart_' + c, settings['reportStart_' + c] || '');
+-            setVal('jim-set-reportEnd_' + c, settings['reportEnd_' + c] || '');
+-            setVal('jim-set-reportActiveUntil_' + c, settings['reportActiveUntil_' + c] || 'earlier');
+-            setVal('jim-set-reportCountMode_' + c, settings['reportCountMode_' + c] || 'daily');
+-            setVal('jim-set-reportMinCount_' + c, settings['reportMinCount_' + c] != null ? settings['reportMinCount_' + c] : 1);
++        // Follow-up levels are now dynamic (Phase 8A): fetch options from the
++        // configured Jira custom field and render an editable row per option.
++        loadReportLevels();
++    }
++
++    function esc(s) {
++        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
++            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
++        });
++    }
++
++    function levelRowHtml(row, isOrphan) {
++        var key = row.key;
++        var label = esc(row.value != null ? row.value : key);
++        var badges = '';
++        if (isOrphan) {
++            badges += ' <span class="jim-admin-hint" style="color:#a54;">(orphan / یتیم: ' + esc(row.reason || '') + ')</span>';
++        } else {
++            if (!row.configured) { badges += ' <span class="jim-admin-hint">(not configured / تنظیم‌نشده)</span>'; }
++            if (row.legacyFallbackUsed) { badges += ' <span class="jim-admin-hint" style="color:#586;">(legacy fallback)</span>'; }
++            if (row.disabled) { badges += ' <span class="jim-admin-hint" style="color:#a54;">(disabled option)</span>'; }
++            if (row.duplicateLabel && row.contextName) { badges += ' <span class="jim-admin-hint">[' + esc(row.contextName) + ']</span>'; }
+         }
++        var au = row.activeUntil || 'earlier';
++        var cm = row.countMode || 'daily';
++        var unit = row.unit || 'hours';
++        function opt(v, t, sel) { return '<option value="' + v + '"' + (sel === v ? ' selected' : '') + '>' + t + '</option>'; }
++        return '<tr data-levelkey="' + esc(key) + '">'
++            + '<td>' + label + ' <span class="jim-admin-hint" title="stable option key">(' + esc(key) + ')</span>' + badges + '</td>'
++            + '<td><input type="number" min="0" id="jim-set-reportInterval_' + esc(key) + '" class="text" style="max-width:70px;" value="' + esc(row.interval != null ? row.interval : 0) + '"/></td>'
++            + '<td><select id="jim-set-reportIntervalUnit_' + esc(key) + '" class="select" title="Days = working days (Jira working-day settings) / روز = روز کاری">' + opt('hours', 'hours', unit) + opt('minutes', 'minutes', unit) + opt('days', 'days / روز', unit) + '</select></td>'
++            + '<td><input type="text" id="jim-set-reportStart_' + esc(key) + '" class="text" style="max-width:64px;" placeholder="08:00" value="' + esc(row.start || '') + '"/></td>'
++            + '<td><input type="text" id="jim-set-reportEnd_' + esc(key) + '" class="text" style="max-width:64px;" placeholder="21:00" value="' + esc(row.end || '') + '"/></td>'
++            + '<td><select id="jim-set-reportActiveUntil_' + esc(key) + '" class="select">' + opt('earlier', 'Earlier / زودتر', au) + opt('due', 'Due / تا Due', au) + opt('done', 'Done / تا Done', au) + '</select></td>'
++            + '<td><select id="jim-set-reportCountMode_' + esc(key) + '" class="select">'
++                + opt('daily', 'Daily / روزانه', cm) + opt('cumulative_due', 'Cumulative Due', cm)
++                + opt('cumulative_done', 'Cumulative Done', cm) + opt('cumulative_earlier', 'Cumulative earlier', cm)
++                + opt('fixed_minimum', 'Fixed minimum', cm) + '</select></td>'
++            + '<td><input type="number" min="1" max="1000" id="jim-set-reportMinCount_' + esc(key) + '" class="text" style="max-width:64px;" value="' + esc(row.minCount != null ? row.minCount : 1) + '"/></td>'
++            + '</tr>';
++    }
++
++    function loadReportLevels() {
++        var body = el('jim-report-levels-body');
++        var warn = el('jim-report-levels-warning');
++        var orphansEl = el('jim-report-levels-orphans');
++        if (!body) { return; }
++        request('GET', '/reporting/levels').then(function (model) {
++            var rows = (model && model.options) || [];
++            var html = '';
++            for (var i = 0; i < rows.length; i++) { html += levelRowHtml(rows[i], false); }
++            var orphans = (model && model.orphans) || [];
++            for (var j = 0; j < orphans.length; j++) { html += levelRowHtml(orphans[j], true); }
++            if (!html) {
++                html = '<tr><td colspan="8" class="jim-admin-hint" dir="rtl" lang="fa">هیچ گزینه‌ای برای فیلد سطح پیگیری یافت نشد.</td></tr>';
++            }
++            body.innerHTML = html;
++            if (warn) {
++                var w = (model && model.warnings) || [];
++                var msgs = [];
++                if (model && model.fieldConfigured === false) { msgs.push('فیلد «سطح پیگیری» پیدا نشد — سطوح پویا غیرفعال است.'); }
++                else if (model && model.isSelect === false) { msgs.push('فیلد «سطح پیگیری» از نوع select/list نیست.'); }
++                for (var k = 0; k < w.length; k++) { if (w[k].indexOf('duplicate_option_label') === 0) { msgs.push('برچسب گزینهٔ تکراری در چند کانتکست: ' + w[k].split(':')[1]); } }
++                warn.style.display = msgs.length ? '' : 'none';
++                warn.textContent = msgs.join('  |  ');
++            }
++            if (orphansEl) {
++                orphansEl.style.display = orphans.length ? '' : 'none';
++                orphansEl.textContent = orphans.length ? ('تنظیمات یتیم (گزینهٔ حذف/تغییر یافته): ' + orphans.length + ' — برای پاک‌سازی، بازه را ۰ کنید و ذخیره نمایید.') : '';
++            }
++        }).catch(function (err) {
++            body.innerHTML = '<tr><td colspan="8" class="jim-admin-hint" style="color:#a54;">خطا در بارگذاری سطوح / error: ' + esc(err && err.message ? err.message : err) + '</td></tr>';
++        });
+     }
+ 
+     function setVal(id, value) {
+@@ -396,9 +459,15 @@
+                     reportValidCountFieldId: (el('jim-set-reportValidCountFieldId').value || '').trim(),
+                     reportRequiredCountFieldId: (el('jim-set-reportRequiredCountFieldId').value || '').trim()
+                 };
+-                for (var i = 0; i < REPORT_LEVEL_CODES.length; i++) {
+-                    var c = REPORT_LEVEL_CODES[i];
+-                    changes['reportInterval_' + c] = (el('jim-set-reportInterval_' + c).value || '0').trim();
++                // Collect per-level config from the DYNAMIC rows (Phase 8A): one row
++                // per Jira follow-up-level option (stable key o<optionId>) + any orphan rows.
++                var levelRows = document.querySelectorAll('#jim-report-levels-body tr[data-levelkey]');
++                for (var i = 0; i < levelRows.length; i++) {
++                    var c = levelRows[i].getAttribute('data-levelkey');
++                    if (!c) { continue; }
++                    var ivEl = el('jim-set-reportInterval_' + c);
++                    if (!ivEl) { continue; }
++                    changes['reportInterval_' + c] = (ivEl.value || '0').trim();
+                     changes['reportIntervalUnit_' + c] = el('jim-set-reportIntervalUnit_' + c).value;
+                     changes['reportStart_' + c] = (el('jim-set-reportStart_' + c).value || '').trim();
+                     changes['reportEnd_' + c] = (el('jim-set-reportEnd_' + c).value || '').trim();
+diff --git a/src/main/resources/templates/admin.vm b/src/main/resources/templates/admin.vm
+index 16cc6b0..5793835 100644
+--- a/src/main/resources/templates/admin.vm
++++ b/src/main/resources/templates/admin.vm
+@@ -238,10 +238,18 @@
+ 
+         <h3 style="margin-top:20px;">Follow-up level intervals</h3>
+         <p class="jim-admin-hint">
+-            Interval per level. Leave a level's interval at 0 to treat that level as "not configured".
+-            Per-level start/end are optional overrides; leave blank to use the global window above.
++            Levels are read dynamically from the configured Follow-up level Jira custom field options below.
++            Add a new option to that Jira field and it appears here after reload. Leave a level's interval at 0
++            to treat that option as "not configured" (no required/missed reports). Per-level start/end are
++            optional overrides; leave blank to use the global window above.
++            <span dir="rtl" lang="fa">سطوح به‌صورت پویا از گزینه‌های فیلد «سطح پیگیری» خوانده می‌شوند. افزودن گزینهٔ جدید در Jira پس از بارگذاری مجدد این جدول را به‌روز می‌کند. مقدار بازه ۰ یعنی «تنظیم‌نشده».</span>
+         </p>
+-        <table class="aui" style="max-width:920px;">
++        <p class="jim-admin-hint" dir="rtl" lang="fa">
++            واحد «روز» یعنی «روز کاری» بر اساس تنظیمات روزهای کاری Jira (تعطیلات و روزهای غیرکاری شمرده نمی‌شوند)؛ نه ۲۴ ساعت و نه روز تقویمی. مثال: بازه ۷ روز یعنی یک گزارش در هر ۷ روز کاری.
++            <span dir="ltr" lang="en">Days = working days per Jira working-day settings (holidays/non-working days are skipped), not 24h/calendar days. e.g. interval 7 days = one report per 7 working days.</span>
++        </p>
++        <div id="jim-report-levels-warning" class="jim-admin-hint" dir="rtl" lang="fa" style="display:none;color:#a54;margin-bottom:8px;"></div>
++        <table class="aui" style="max-width:960px;">
+             <thead>
+                 <tr>
+                     <th>Level / سطح</th>
+@@ -254,41 +262,11 @@
+                     <th>Min (fixed) / حداقل</th>
+                 </tr>
+             </thead>
+-            <tbody>
+-                #set($levels = [["normal","عادی"],["high","بالا"],["special","ویژه"],["managerial","مدیریتی"]])
+-                #foreach($lvl in $levels)
+-                <tr>
+-                    <td>$lvl.get(1) <span class="jim-admin-hint">($lvl.get(0))</span></td>
+-                    <td><input type="number" min="0" id="jim-set-reportInterval_$lvl.get(0)" class="text" style="max-width:70px;"/></td>
+-                    <td>
+-                        <select id="jim-set-reportIntervalUnit_$lvl.get(0)" class="select">
+-                            <option value="hours">hours</option>
+-                            <option value="minutes">minutes</option>
+-                        </select>
+-                    </td>
+-                    <td><input type="text" id="jim-set-reportStart_$lvl.get(0)" class="text" style="max-width:64px;" placeholder="08:00"/></td>
+-                    <td><input type="text" id="jim-set-reportEnd_$lvl.get(0)" class="text" style="max-width:64px;" placeholder="21:00"/></td>
+-                    <td>
+-                        <select id="jim-set-reportActiveUntil_$lvl.get(0)" class="select">
+-                            <option value="earlier">Earlier of Due/Done / هر کدام زودتر</option>
+-                            <option value="due">Due Date / تا Due Date</option>
+-                            <option value="done">Done / تا Done شدن</option>
+-                        </select>
+-                    </td>
+-                    <td>
+-                        <select id="jim-set-reportCountMode_$lvl.get(0)" class="select">
+-                            <option value="daily">Daily / روزانه</option>
+-                            <option value="cumulative_due">Cumulative to Due / تجمیعی تا Due</option>
+-                            <option value="cumulative_done">Cumulative to Done / تجمیعی تا Done</option>
+-                            <option value="cumulative_earlier">Cumulative to earlier / تجمیعی تا زودتر</option>
+-                            <option value="fixed_minimum">Fixed minimum until end / حداقل ثابت تا پایان</option>
+-                        </select>
+-                    </td>
+-                    <td><input type="number" min="1" max="1000" id="jim-set-reportMinCount_$lvl.get(0)" class="text" style="max-width:64px;" title="Minimum required reports (fixed_minimum) / حداقل تعداد گزارش موردنیاز"/></td>
+-                </tr>
+-                #end
++            <tbody id="jim-report-levels-body">
++                <tr><td colspan="8" class="jim-admin-hint">در حال بارگذاری سطوح… / loading levels…</td></tr>
+             </tbody>
+         </table>
++        <p class="jim-admin-hint" id="jim-report-levels-orphans" dir="rtl" lang="fa" style="display:none;"></p>
+ 
+         <h3 style="margin-top:20px;">Custom field mapping</h3>
+         <p class="jim-admin-hint">

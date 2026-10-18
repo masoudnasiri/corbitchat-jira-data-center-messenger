@@ -245,6 +245,16 @@
             return request('POST', '/groups/' + conversationId + '/rename', { name: name });
         },
 
+        // Phase 8C: set the group send policy (owner/admin). Returns the updated conversation.
+        setGroupSendPolicy: function (conversationId, sendPolicy) {
+            return request('POST', '/groups/' + conversationId + '/send-policy', { sendPolicy: sendPolicy });
+        },
+
+        // Phase 8C: allow/disallow a non-admin member to send (owner/admin). Returns { members }.
+        setGroupAllowedSender: function (conversationId, userKey, allowed) {
+            return request('POST', '/groups/' + conversationId + '/allowed-senders', { userKey: userKey, allowed: !!allowed });
+        },
+
         // Reset (remove) the group/project custom avatar (owner/admin).
         deleteConversationAvatar: function (conversationId) {
             return request('DELETE', '/conversations/' + conversationId + '/avatar');

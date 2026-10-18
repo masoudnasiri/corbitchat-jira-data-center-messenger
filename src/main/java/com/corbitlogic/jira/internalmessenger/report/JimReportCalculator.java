@@ -98,6 +98,13 @@ public final class JimReportCalculator {
          * (zero scored buckets). Composes with the working-day + pause gates.
          */
         public long scoredPeriodStartMs;
+        /**
+         * Phase 8B working-day interval (unit=days). When {@code > 0}, ONE required bucket is
+         * generated per {@code workingDayInterval} WORKING days (non-working days/holidays do
+         * not advance the counter), instead of intra-day {@code intervalMinutes} buckets. The
+         * working-day set comes from {@link #dayClassifier}. {@code 0} = disabled (minutes/hours).
+         */
+        public int workingDayInterval;
     }
 
     public static final class Result {
@@ -144,6 +151,14 @@ public final class JimReportCalculator {
     private static final class Bucket {
         final long start;
         final long end;
+        /**
+         * Point from which this bucket counts toward requiredSoFar/missed. Null = use
+         * {@link #start} (legacy intra-day buckets). For Phase 8B working-day-interval
+         * buckets this is the interval COMPLETION (end of the Nth working day), so the
+         * report is required only after N working days elapse — while {@code [start,end)}
+         * still spans the whole interval so an early report is valid.
+         */
+        Long requiredSinceMs;
         boolean filled;
         int rawCount;
         int duplicateCount;
@@ -155,6 +170,10 @@ public final class JimReportCalculator {
             this.start = start;
             this.end = end;
         }
+
+        long requiredSince() {
+            return requiredSinceMs != null ? requiredSinceMs.longValue() : start;
+        }
     }
 
     public static Result compute(Input in) {
@@ -165,23 +184,27 @@ public final class JimReportCalculator {
         // Everything defaults to out-of-window until mapped to a bucket.
         Arrays.fill(r.reportStatus, STATUS_OUT_OF_WINDOW);
 
-        if (in.intervalMinutes <= 0 || in.windowEndMin <= in.windowStartMin) {
+        boolean workingDayMode = in.workingDayInterval > 0;
+        if ((in.intervalMinutes <= 0 && !workingDayMode) || in.windowEndMin <= in.windowStartMin) {
             r.outOfWindowCount = r.rawCount;
             return r; // schedule not usable → everything raw only
         }
 
         long genEnd;
         long firstDayAnchor;
-        if (in.daily) {
+        if (in.daily && !workingDayMode) {
             // Current active day only.
             firstDayAnchor = in.nowMs;
             genEnd = endOfDayWindow(in.nowMs, in.windowEndMin, tz);
         } else {
+            // Cumulative (and working-day-interval): from creation to the period end / now.
             firstDayAnchor = in.issueCreatedMs;
             genEnd = in.periodEndMs != null ? in.periodEndMs : in.nowMs;
         }
 
-        List<Bucket> buckets = buildBuckets(in, tz, firstDayAnchor, genEnd);
+        List<Bucket> buckets = workingDayMode
+                ? buildWorkingDayBuckets(in, tz, genEnd)
+                : buildBuckets(in, tz, firstDayAnchor, genEnd);
 
         // Classify reports into buckets (sorted by time so the earliest report in
         // a bucket is the valid one; later ones are duplicates).
@@ -230,13 +253,15 @@ public final class JimReportCalculator {
             if (b.filled) {
                 r.validCount++;
             }
-            if (b.start <= in.nowMs) {
+            // requiredSince() == start for legacy buckets; == interval completion for
+            // Phase 8B working-day buckets (required only after N working days elapse).
+            if (b.requiredSince() <= in.nowMs) {
                 elapsed++;
                 if (b.filled) {
                     validElapsed++;
                 }
             } else if (!b.filled && nextExpected == null) {
-                nextExpected = b.start;
+                nextExpected = b.requiredSince();
             }
         }
         r.requiredCount = buckets.size();
@@ -343,6 +368,74 @@ public final class JimReportCalculator {
                 buckets.add(new Bucket(t, Math.min(t + intervalMs, dayWindowEnd)));
             }
             cursorDay = nextDayStart(cursorDay, tz);
+        }
+        return buckets;
+    }
+
+    /**
+     * Phase 8B: one required bucket per {@code workingDayInterval} WORKING days.
+     * Walks working days (skipping non-working days/holidays via {@link Input#dayClassifier}),
+     * groups them into N‑working‑day intervals, and emits one bucket per interval spanning
+     * {@code [firstWorkingDayWindowStart, NthWorkingDayWindowEnd)} with
+     * {@code requiredSinceMs = completion} — so a report anywhere in the interval is valid, but
+     * the bucket is required (counts toward requiredSoFar/missed) only after N working days
+     * elapse. Non-working days never advance the counter.
+     */
+    private static List<Bucket> buildWorkingDayBuckets(Input in, TimeZone tz, long genEnd) {
+        List<Bucket> buckets = new ArrayList<>();
+        int n = in.workingDayInterval;
+        if (n <= 0 || in.scoredPeriodStartMs == Long.MAX_VALUE) {
+            return buckets;
+        }
+        long cursorDay = startOfDay(in.issueCreatedMs, tz);
+        if (in.scoredPeriodStartMs > 0L && in.scoredPeriodStartMs != Long.MAX_VALUE) {
+            long boundDay = startOfDay(in.scoredPeriodStartMs, tz);
+            if (boundDay > cursorDay) {
+                cursorDay = boundDay;
+            }
+        }
+        long lastDay = startOfDay(genEnd, tz);
+        List<long[]> workDays = new ArrayList<>(); // each: {segStart, windowEnd}
+        int guard = 0;
+        // Phase 1: collect working days up to genEnd (adjusted for creation / enforcement start).
+        while (cursorDay <= lastDay && guard++ < 8000) {
+            if (in.dayClassifier != null && !in.dayClassifier.isWorkingDay(cursorDay)) {
+                cursorDay = nextDayStart(cursorDay, tz);
+                continue;
+            }
+            long ws = atMinuteOfDay(cursorDay, in.windowStartMin, tz);
+            long we = atMinuteOfDay(cursorDay, in.windowEndMin, tz);
+            long segStart = ws;
+            if (sameDay(cursorDay, in.issueCreatedMs, tz)) {
+                segStart = Math.max(ws, in.issueCreatedMs);
+            }
+            if (in.scoredPeriodStartMs > 0L && in.scoredPeriodStartMs != Long.MAX_VALUE
+                    && sameDay(cursorDay, in.scoredPeriodStartMs, tz)) {
+                segStart = Math.max(segStart, in.scoredPeriodStartMs);
+            }
+            workDays.add(new long[]{segStart, we});
+            cursorDay = nextDayStart(cursorDay, tz);
+        }
+        // Phase 2: project forward to COMPLETE the final in-progress interval so it has a real
+        // completion instant (may be in the future → required only once it passes).
+        while (workDays.size() % n != 0 && guard++ < 8000) {
+            if (in.dayClassifier == null || in.dayClassifier.isWorkingDay(cursorDay)) {
+                long ws = atMinuteOfDay(cursorDay, in.windowStartMin, tz);
+                long we = atMinuteOfDay(cursorDay, in.windowEndMin, tz);
+                workDays.add(new long[]{ws, we});
+            }
+            cursorDay = nextDayStart(cursorDay, tz);
+        }
+        // Group into intervals of N working days → one bucket each.
+        for (int i = 0; i + n <= workDays.size(); i += n) {
+            long bStart = workDays.get(i)[0];
+            long completion = workDays.get(i + n - 1)[1];
+            if (isPaused(bStart, in.pausedIntervals)) {
+                continue; // assigned-to-receiver pause: no required/missed for this interval
+            }
+            Bucket b = new Bucket(bStart, completion);
+            b.requiredSinceMs = Long.valueOf(completion);
+            buckets.add(b);
         }
         return buckets;
     }

@@ -91,6 +91,14 @@ public interface JimAdminSettingsService {
     public Map<String, Map<String, Object>> getReportLevelSchedules();
 
     /**
+     * Dynamic follow-up level model for the admin UI + diagnostics: the configured
+     * field, its resolved options (stable {@code o<id>} keys), each option's config
+     * state (configured / legacy-fallback / unconfigured), orphaned configs, and
+     * warnings. Never throws; degrades gracefully when the field is missing.
+     */
+    public Map<String, Object> getReportLevelModel();
+
+    /**
      * Allow submitting report comments even when the follow-up level or report
      * fields are not configured (report still created as a {@code #گزارش}
      * comment; never counted as a valid scheduled report). Default false.

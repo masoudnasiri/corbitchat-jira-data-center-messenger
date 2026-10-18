@@ -46,5 +46,29 @@ public interface JimGroupService {
 
     /** Reset (remove) the custom avatar (OWNER/ADMIN). Returns the updated conversation. */
     public JimConversation resetAvatar(int conversationId, String actorUserKey);
+
+    // ---- Phase 8C: group send policy ----
+
+    /** Effective send policy: "ALL_MEMBERS" (default) or "ADMINS_AND_ALLOWED". Never null. */
+    public String getSendPolicy(JimConversation conversation);
+
+    /**
+     * Backend enforcement: can {@code userKey} send a message into this conversation?
+     * True for non-group conversations and for ALL_MEMBERS groups; for ADMINS_AND_ALLOWED
+     * only OWNER/ADMIN or an allowed member may send.
+     */
+    public boolean canSend(JimConversation conversation, String userKey);
+
+    /** Throws 403 (Persian-friendly) when {@link #canSend} is false. Call before any insert. */
+    public void requireCanSend(JimConversation conversation, String userKey);
+
+    /** True if this member is explicitly flagged as an allowed sender. */
+    public boolean isAllowedSender(JimConversation conversation, String userKey);
+
+    /** OWNER/ADMIN only: set the group send policy ("ALL_MEMBERS" | "ADMINS_AND_ALLOWED"). */
+    public JimConversation setSendPolicy(int conversationId, String actorUserKey, String policy);
+
+    /** OWNER/ADMIN only: allow/disallow a specific non-admin participant to send. */
+    public void setAllowedSender(int conversationId, String actorUserKey, String targetUserKey, boolean allowed);
 }
 

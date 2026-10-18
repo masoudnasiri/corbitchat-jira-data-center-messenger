@@ -4821,3 +4821,10 @@
     background: rgba(15, 23, 32, 0.72);
     color: #fff;
 }
+
+/* Phase 8C — group send policy controls (scoped under #jim-messenger-app). */
+#jim-messenger-app .jim-settings-sendpolicy { display: flex; flex-direction: column; gap: 6px; }
+#jim-messenger-app .jim-sendpolicy-option { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+#jim-messenger-app .jim-sendpolicy-option input { margin: 0; }
+#jim-messenger-app .jim-member-allow-btn { margin-inline-start: 8px; font-size: 12px; padding: 2px 8px; border-radius: 12px; border: 1px solid var(--jim-border, #d0d0d0); background: transparent; cursor: pointer; }
+#jim-messenger-app .jim-member-allow-btn.is-allowed { background: var(--jim-accent, #2f7d32); color: #fff; border-color: transparent; }

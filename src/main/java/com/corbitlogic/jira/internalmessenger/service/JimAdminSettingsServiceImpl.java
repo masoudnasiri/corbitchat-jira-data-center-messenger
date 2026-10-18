@@ -52,7 +52,8 @@ implements JimAdminSettingsService {
     static final String DEFAULT_REPORT_REQUIRED_FIELD = "customfield_11900";
     /** Internal follow-up level codes (stable; independent of Persian option text). */
     static final List<String> REPORT_LEVEL_CODES = Arrays.asList("normal", "high", "special", "managerial");
-    private static final List<String> INTERVAL_UNITS = Arrays.asList("minutes", "hours");
+    // Phase 8B: "days" = WORKING days (resolved via ReportWorkingCalendarService), not 24h.
+    private static final List<String> INTERVAL_UNITS = Arrays.asList("minutes", "hours", "days");
     /** Per-level reporting lifecycle / end condition. */
     private static final List<String> REPORT_ACTIVE_UNTIL = Arrays.asList("due", "done", "earlier");
     /** Per-level required-count counting mode. */
@@ -67,6 +68,10 @@ implements JimAdminSettingsService {
     static final String KEY_REPORT_WORKING_DAYS_ENABLED = "reportWorkingDaysEnabled";
     static final String KEY_REPORT_WORKING_DAYS_CSV = "reportWorkingDaysCsv";
     static final String KEY_REPORT_HOLIDAYS_CSV = "reportHolidaysCsv";
+    // --- Dynamic follow-up levels (Phase 8A): index of level keys that have been
+    // configured (interval>0), so orphaned configs can be surfaced in diagnostics
+    // even though PluginSettings cannot enumerate keys by prefix. ---
+    static final String KEY_REPORT_DYNAMIC_KEYS = "reportDynamicConfiguredKeys";
     // --- Working calendar (board vs plugin) source selection ---
     static final String KEY_REPORT_WORKING_CALENDAR_SOURCE = "reportWorkingCalendarSource";
     static final String KEY_REPORT_DEFAULT_BOARD_ID = "reportDefaultBoardId";
@@ -362,19 +367,190 @@ implements JimAdminSettingsService {
         return out;
     }
 
+    /** Read the per-level config block for a given key (legacy code or dynamic {@code o<id>}). */
+    private Map<String, Object> readLevelConfig(String key) {
+        LinkedHashMap<String, Object> level = new LinkedHashMap<String, Object>();
+        level.put("interval", this.intValue("reportInterval_" + key, 0, 0, 100000));
+        level.put("unit", this.unitValue("reportIntervalUnit_" + key));
+        level.put("start", this.timeOverrideValue("reportStart_" + key));
+        level.put("end", this.timeOverrideValue("reportEnd_" + key));
+        level.put("activeUntil", this.enumLowerValue("reportActiveUntil_" + key, REPORT_ACTIVE_UNTIL, DEFAULT_ACTIVE_UNTIL));
+        level.put("countMode", this.enumLowerValue("reportCountMode_" + key, REPORT_COUNT_MODES, DEFAULT_COUNT_MODE));
+        level.put("minCount", this.intValue("reportMinCount_" + key, 1, 1, 1000));
+        return level;
+    }
+
+    private static boolean isConfigured(Map<String, Object> cfg) {
+        return cfg != null && cfg.get("interval") instanceof Number
+                && ((Number) cfg.get("interval")).intValue() > 0;
+    }
+
     @Override
     public Map<String, Map<String, Object>> getReportLevelSchedules() {
         LinkedHashMap<String, Map<String, Object>> out = new LinkedHashMap<String, Map<String, Object>>();
+        // 1) Legacy code entries — always present (text-field fallback + back-compat).
         for (String code : REPORT_LEVEL_CODES) {
-            LinkedHashMap<String, Object> level = new LinkedHashMap<String, Object>();
-            level.put("interval", this.intValue("reportInterval_" + code, 0, 0, 100000));
-            level.put("unit", this.unitValue("reportIntervalUnit_" + code));
-            level.put("start", this.timeOverrideValue("reportStart_" + code));
-            level.put("end", this.timeOverrideValue("reportEnd_" + code));
-            level.put("activeUntil", this.enumLowerValue("reportActiveUntil_" + code, REPORT_ACTIVE_UNTIL, DEFAULT_ACTIVE_UNTIL));
-            level.put("countMode", this.enumLowerValue("reportCountMode_" + code, REPORT_COUNT_MODES, DEFAULT_COUNT_MODE));
-            level.put("minCount", this.intValue("reportMinCount_" + code, 1, 1, 1000));
-            out.put(code, level);
+            out.put(code, readLevelConfig(code));
+        }
+        // 2) Dynamic option entries keyed by o<optionId>. Read dynamic config first;
+        //    if unconfigured and the option maps to a legacy code that IS configured,
+        //    apply the legacy config as a READ-THROUGH fallback (never written back),
+        //    so existing production settings keep applying to the matching option.
+        try {
+            for (com.corbitlogic.jira.internalmessenger.report.JimReportConfig.LevelOption opt
+                    : com.corbitlogic.jira.internalmessenger.report.JimReportConfig.resolveLevelOptions()) {
+                Map<String, Object> dyn = readLevelConfig(opt.key);
+                if (!isConfigured(dyn) && opt.legacyCode != null) {
+                    Map<String, Object> legacy = out.get(opt.legacyCode);
+                    if (isConfigured(legacy)) {
+                        out.put(opt.key, legacy);
+                        continue;
+                    }
+                }
+                out.put(opt.key, dyn);
+            }
+        } catch (Throwable ignore) {
+            // graceful: dynamic options unavailable → legacy entries still serve
+        }
+        return out;
+    }
+
+    @Override
+    public Map<String, Object> getReportLevelModel() {
+        LinkedHashMap<String, Object> model = new LinkedHashMap<String, Object>();
+        java.util.ArrayList<String> warnings = new java.util.ArrayList<String>();
+        String fieldId = this.getReportLevelFieldId();
+        model.put("fieldId", fieldId);
+        com.atlassian.jira.issue.fields.CustomField cf = null;
+        String fieldName = null;
+        String fieldType = null;
+        boolean isSelect = false;
+        try {
+            com.atlassian.jira.issue.CustomFieldManager cfm =
+                    com.atlassian.jira.component.ComponentAccessor.getCustomFieldManager();
+            cf = (cfm != null && fieldId != null && !fieldId.isEmpty()) ? cfm.getCustomFieldObject(fieldId) : null;
+            if (cf != null) {
+                fieldName = cf.getName();
+                if (cf.getCustomFieldType() != null) {
+                    fieldType = cf.getCustomFieldType().getKey();
+                    String lt = fieldType == null ? "" : fieldType.toLowerCase(Locale.ROOT);
+                    isSelect = lt.contains("select") || lt.contains("radiobuttons");
+                }
+            }
+        } catch (Throwable ignore) {
+        }
+        model.put("fieldName", fieldName);
+        model.put("fieldType", fieldType);
+        model.put("fieldConfigured", cf != null);
+        model.put("isSelect", isSelect);
+        if (cf == null) {
+            warnings.add("follow_up_level_field_missing");
+        } else if (!isSelect) {
+            warnings.add("follow_up_level_field_not_select");
+        }
+
+        java.util.List<com.corbitlogic.jira.internalmessenger.report.JimReportConfig.LevelOption> options =
+                java.util.Collections.emptyList();
+        try {
+            options = com.corbitlogic.jira.internalmessenger.report.JimReportConfig.resolveLevelOptions();
+        } catch (Throwable ignore) {
+        }
+        java.util.HashSet<Long> contexts = new java.util.HashSet<Long>();
+        java.util.HashMap<String, Integer> labelCounts = new java.util.HashMap<String, Integer>();
+        for (com.corbitlogic.jira.internalmessenger.report.JimReportConfig.LevelOption o : options) {
+            if (o.contextId != null) {
+                contexts.add(o.contextId);
+            }
+            String lv = o.value == null ? "" : o.value;
+            labelCounts.put(lv, (labelCounts.containsKey(lv) ? labelCounts.get(lv) : 0) + 1);
+        }
+        java.util.ArrayList<Map<String, Object>> optList = new java.util.ArrayList<Map<String, Object>>();
+        java.util.HashSet<String> currentKeys = new java.util.HashSet<String>();
+        for (com.corbitlogic.jira.internalmessenger.report.JimReportConfig.LevelOption o : options) {
+            currentKeys.add(o.key);
+            Map<String, Object> raw = readLevelConfig(o.key);
+            boolean directlyConfigured = isConfigured(raw);
+            boolean legacyFallbackUsed = false;
+            Map<String, Object> effective = raw;
+            if (!directlyConfigured && o.legacyCode != null) {
+                Map<String, Object> legacy = readLevelConfig(o.legacyCode);
+                if (isConfigured(legacy)) {
+                    effective = legacy;
+                    legacyFallbackUsed = true;
+                }
+            }
+            LinkedHashMap<String, Object> row = new LinkedHashMap<String, Object>();
+            row.put("key", o.key);
+            row.put("optionId", o.optionId);
+            row.put("value", o.value);
+            row.put("disabled", o.disabled);
+            row.put("contextId", o.contextId);
+            row.put("contextName", o.contextName);
+            row.put("legacyCode", o.legacyCode);
+            row.put("configured", directlyConfigured || legacyFallbackUsed);
+            row.put("directlyConfigured", directlyConfigured);
+            row.put("legacyFallbackUsed", legacyFallbackUsed);
+            row.put("duplicateLabel", labelCounts.containsKey(o.value) && labelCounts.get(o.value) > 1);
+            // Effective config (what the engine will apply) + the raw persisted dynamic config.
+            row.put("interval", effective.get("interval"));
+            row.put("unit", effective.get("unit"));
+            row.put("start", effective.get("start"));
+            row.put("end", effective.get("end"));
+            row.put("activeUntil", effective.get("activeUntil"));
+            row.put("countMode", effective.get("countMode"));
+            row.put("minCount", effective.get("minCount"));
+            optList.add(row);
+            if (labelCounts.containsKey(o.value) && labelCounts.get(o.value) > 1) {
+                warnings.add("duplicate_option_label:" + o.value);
+            }
+        }
+        model.put("contextsCount", contexts.size());
+        model.put("optionsCount", options.size());
+        model.put("options", optList);
+
+        // Orphaned configs: (a) dynamic o<id> keys previously configured but no longer
+        // present as options; (b) legacy codes configured but not mapped to any current option.
+        java.util.ArrayList<Map<String, Object>> orphans = new java.util.ArrayList<Map<String, Object>>();
+        for (String k : parseCsvKeys(this.stringValue(KEY_REPORT_DYNAMIC_KEYS))) {
+            if (k.startsWith("o") && !currentKeys.contains(k) && isConfigured(readLevelConfig(k))) {
+                Map<String, Object> orphan = new LinkedHashMap<String, Object>(readLevelConfig(k));
+                orphan.put("key", k);
+                orphan.put("reason", "option_no_longer_present");
+                orphans.add(orphan);
+            }
+        }
+        java.util.HashSet<String> mappedLegacy = new java.util.HashSet<String>();
+        for (com.corbitlogic.jira.internalmessenger.report.JimReportConfig.LevelOption o : options) {
+            if (o.legacyCode != null) {
+                mappedLegacy.add(o.legacyCode);
+            }
+        }
+        for (String code : REPORT_LEVEL_CODES) {
+            if (!mappedLegacy.contains(code) && isConfigured(readLevelConfig(code))) {
+                Map<String, Object> orphan = new LinkedHashMap<String, Object>(readLevelConfig(code));
+                orphan.put("key", code);
+                orphan.put("reason", "legacy_code_no_matching_option");
+                orphans.add(orphan);
+            }
+        }
+        model.put("orphans", orphans);
+        if (!orphans.isEmpty()) {
+            warnings.add("orphaned_configs:" + orphans.size());
+        }
+        model.put("warnings", warnings);
+        return model;
+    }
+
+    private static java.util.List<String> parseCsvKeys(String csv) {
+        java.util.ArrayList<String> out = new java.util.ArrayList<String>();
+        if (csv == null) {
+            return out;
+        }
+        for (String t : csv.split(",")) {
+            String s = t.trim();
+            if (!s.isEmpty() && !out.contains(s)) {
+                out.add(s);
+            }
         }
         return out;
     }
@@ -456,14 +632,65 @@ implements JimAdminSettingsService {
         }
         this.validateTimeOrder(normalizedChanges, before);
         ArrayList<String> descriptions = new ArrayList<String>();
+        boolean levelKeysTouched = false;
         for (Map.Entry<String, String> entry : normalizedChanges.entrySet()) {
             String key = entry.getKey();
             String normalized = entry.getValue();
             Object oldValue = before.get(key);
             this.settings().put(KEY_PREFIX + key, (Object)normalized);
             descriptions.add(key + ": " + String.valueOf(oldValue) + " -> " + normalized);
+            // Maintain the dynamic-level index so orphaned configs are discoverable
+            // (PluginSettings cannot enumerate keys by prefix).
+            if (key.startsWith("reportInterval_") && !key.startsWith("reportIntervalUnit_")) {
+                String lvlKey = key.substring("reportInterval_".length());
+                int iv;
+                try {
+                    iv = Integer.parseInt(normalized);
+                } catch (NumberFormatException ex) {
+                    iv = 0;
+                }
+                this.updateDynamicLevelIndex(lvlKey, iv > 0);
+            }
+            if (KEY_REPORT_LEVEL_FIELD.equals(key)) {
+                levelKeysTouched = true;
+            }
+        }
+        // The follow-up-level field changed → invalidate the option cache so the
+        // admin UI + engine re-resolve options immediately.
+        if (levelKeysTouched) {
+            try {
+                com.corbitlogic.jira.internalmessenger.report.JimReportConfig.invalidateOptionsCache();
+            } catch (Throwable ignore) {
+            }
         }
         return descriptions;
+    }
+
+    /** Add/remove a level key from the dynamic-configured-keys index (for orphan diagnostics). */
+    private void updateDynamicLevelIndex(String levelKey, boolean configured) {
+        if (levelKey == null || levelKey.isEmpty()) {
+            return;
+        }
+        java.util.List<String> keys = parseCsvKeys(this.stringValue(KEY_REPORT_DYNAMIC_KEYS));
+        boolean changed = false;
+        if (configured) {
+            if (!keys.contains(levelKey)) {
+                keys.add(levelKey);
+                changed = true;
+            }
+        } else if (keys.remove(levelKey)) {
+            changed = true;
+        }
+        if (changed) {
+            StringBuilder sb = new StringBuilder();
+            for (String k : keys) {
+                if (sb.length() > 0) {
+                    sb.append(',');
+                }
+                sb.append(k);
+            }
+            this.settings().put(KEY_PREFIX + KEY_REPORT_DYNAMIC_KEYS, (Object) sb.toString());
+        }
     }
 
     private String normalizeAndValidate(String key, Object rawValue) {
@@ -809,7 +1036,8 @@ implements JimAdminSettingsService {
         if (key.startsWith("reportIntervalUnit_")) {
             String lower = value.toLowerCase(Locale.ROOT);
             if (!INTERVAL_UNITS.contains(lower)) {
-                throw JimMessengerException.badRequest(key + " must be minutes or hours");
+                throw JimMessengerException.badRequest(key + " must be one of " + INTERVAL_UNITS
+                        + " (days = working days)");
             }
             return lower;
         }
@@ -849,6 +1077,20 @@ implements JimAdminSettingsService {
         requireStartBeforeEnd("reportWindowStart", "reportWindowEnd", changes, before, false);
         for (String code : REPORT_LEVEL_CODES) {
             requireStartBeforeEnd("reportStart_" + code, "reportEnd_" + code, changes, before, true);
+        }
+        // Dynamic level keys (Phase 8A): validate any reportStart_<key>/reportEnd_<key>
+        // pair present in the change set (covers o<optionId> and any suffix).
+        java.util.HashSet<String> seen = new java.util.HashSet<String>();
+        for (String k : changes.keySet()) {
+            String suffix = null;
+            if (k.startsWith("reportStart_")) {
+                suffix = k.substring("reportStart_".length());
+            } else if (k.startsWith("reportEnd_")) {
+                suffix = k.substring("reportEnd_".length());
+            }
+            if (suffix != null && !REPORT_LEVEL_CODES.contains(suffix) && seen.add(suffix)) {
+                requireStartBeforeEnd("reportStart_" + suffix, "reportEnd_" + suffix, changes, before, true);
+            }
         }
     }
 

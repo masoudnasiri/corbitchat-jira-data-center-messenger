@@ -14,7 +14,7 @@
     var MIN_SEARCH_LENGTH = 2;
     // Per-message length cap (matches server-side JimValidation). Longer
     // user input is split client-side into ordered chunks each <= this size.
-    var MAX_MESSAGE_LENGTH = 5000;
+    var MAX_MESSAGE_LENGTH = 15000;
     // Textarea hard cap (input attribute). Much larger than per-message
     // cap so the user can keep typing freely; we split on send.
     var MAX_TEXTAREA_LENGTH = 25000;
@@ -586,6 +586,12 @@
         els.composer = document.getElementById('jim-composer');
         els.composerError = document.getElementById('jim-composer-error');
         els.composerReadonly = document.getElementById('jim-composer-readonly');
+        if (els.composerReadonly && !els.composerReadonly.getAttribute('data-default-text')) {
+            // Phase 8C: remember the default read-only text so we can restore it after
+            // showing the group send-restricted message.
+            els.composerReadonly.setAttribute('data-default-text',
+                (els.composerReadonly.textContent || '').trim());
+        }
         els.composerInner = document.getElementById('jim-composer-inner');
         els.composerControls = document.getElementById('jim-composer-controls');
         els.composerReply = document.getElementById('jim-composer-reply');
@@ -2525,6 +2531,20 @@
                 '</div>';
         }
 
+        // --- Phase 8C: send policy (admins only) -----------------------------
+        var restricted = conversation.sendPolicy === 'ADMINS_AND_ALLOWED';
+        var sendPolicyHtml = '';
+        if (canManage) {
+            sendPolicyHtml = '<div class="jim-settings-section jim-settings-sendpolicy" dir="rtl" lang="fa">' +
+                '<label class="jim-settings-label">\u0627\u0645\u06a9\u0627\u0646 \u0627\u0631\u0633\u0627\u0644 \u067e\u06cc\u0627\u0645</label>' +
+                '<label class="jim-sendpolicy-option"><input type="radio" name="jim-sendpolicy" value="ALL_MEMBERS"' +
+                (restricted ? '' : ' checked') + ' /> \u0647\u0645\u0647 \u0627\u0639\u0636\u0627 \u0627\u0645\u06a9\u0627\u0646 \u0627\u0631\u0633\u0627\u0644 \u067e\u06cc\u0627\u0645 \u062f\u0627\u0631\u0646\u062f</label>' +
+                '<label class="jim-sendpolicy-option"><input type="radio" name="jim-sendpolicy" value="ADMINS_AND_ALLOWED"' +
+                (restricted ? ' checked' : '') + ' /> \u0645\u062d\u062f\u0648\u062f \u06a9\u0631\u062f\u0646 \u0627\u0631\u0633\u0627\u0644 \u067e\u06cc\u0627\u0645 \u0628\u0647 \u0645\u062f\u06cc\u0631\u0627\u0646 \u0648 \u0627\u0641\u0631\u0627\u062f \u0645\u062c\u0627\u0632</label>' +
+                '<div id="jim-sendpolicy-error" class="jim-inline-error" role="alert" hidden></div>' +
+                '</div>';
+        }
+
         // --- Members list with admin badges + promote/demote -----------------
         var rows = [];
         for (var i = 0; i < state.groupMembers.length; i++) {
@@ -2556,10 +2576,22 @@
                         escapeHtml(member.userKey) + '">' + t('Make admin') + '</button>';
                 }
             }
+            // Phase 8C: when restricted, admins can allow/revoke each non-admin member's sending.
+            var allowButton = '';
+            if (canManage && restricted && !isOwnerMember && !isAdminMember) {
+                var memberAllowed = member.allowedSender === true;
+                allowButton = '<button type="button" class="jim-member-allow-btn' +
+                    (memberAllowed ? ' is-allowed' : '') + '" data-allow-action="' +
+                    (memberAllowed ? 'revoke' : 'allow') + '" data-member-key="' + escapeHtml(member.userKey) + '">' +
+                    (memberAllowed
+                        ? '\u0645\u062c\u0627\u0632 \u0628\u0647 \u0627\u0631\u0633\u0627\u0644'
+                        : '\u0627\u062c\u0627\u0632\u0647 \u0627\u0631\u0633\u0627\u0644') + '</button>';
+            }
             rows.push('<div class="jim-member-row">' +
                 renderAvatar(member.avatarUrl, member.displayName, 'jim-avatar-sm') +
                 '<span class="jim-member-name">' + escapeHtml(member.displayName) + '</span>' +
                 badge +
+                allowButton +
                 roleButton +
                 removeButton +
                 '</div>');
@@ -2596,6 +2628,7 @@
             '<div class="jim-members-panel-header">' + (isProjectChat ? t('Project chat settings') : t('Group settings')) + '</div>' +
             avatarHtml +
             renameHtml +
+            sendPolicyHtml +
             '<div class="jim-settings-section-label">' + t('Members') + ' (' + state.groupMembers.length + ')</div>' +
             '<div class="jim-members-list">' + rows.join('') + '</div>' +
             addHtml +
@@ -2647,6 +2680,26 @@
             roleButtons[r].addEventListener('click', function (event) {
                 var target = event.currentTarget;
                 setMemberRole(target.getAttribute('data-member-key'), target.getAttribute('data-role-action'));
+            });
+        }
+
+        // Phase 8C: send-policy radios (owner/admin).
+        var policyRadios = els.membersPanel.querySelectorAll('input[name="jim-sendpolicy"]');
+        for (var p = 0; p < policyRadios.length; p++) {
+            policyRadios[p].addEventListener('change', function (event) {
+                if (event.currentTarget.checked) {
+                    submitGroupSendPolicy(event.currentTarget.value);
+                }
+            });
+        }
+
+        // Phase 8C: allow/revoke a member's sending (owner/admin).
+        var allowButtons = els.membersPanel.querySelectorAll('.jim-member-allow-btn');
+        for (var a = 0; a < allowButtons.length; a++) {
+            allowButtons[a].addEventListener('click', function (event) {
+                var target = event.currentTarget;
+                submitAllowedSender(target.getAttribute('data-member-key'),
+                    target.getAttribute('data-allow-action') === 'allow');
             });
         }
 
@@ -2801,6 +2854,67 @@
         }).catch(function (error) {
             logError('setMemberRole', error);
             showError(error && error.message ? error.message : t('Unable to update the member role.'));
+        });
+    }
+
+    // Phase 8C: change the group send policy (owner/admin).
+    function submitGroupSendPolicy(policy) {
+        var conversationId = state.selectedConversationId;
+        if (!conversationId || !policy) {
+            return;
+        }
+        var errorBox = document.getElementById('jim-sendpolicy-error');
+        if (errorBox) {
+            setHidden(errorBox, true);
+        }
+        JimApi.setGroupSendPolicy(conversationId, policy).then(function (conversation) {
+            if (state.selectedConversationId !== conversationId) {
+                return null;
+            }
+            if (conversation && state.selectedConversation) {
+                state.selectedConversation.sendPolicy = conversation.sendPolicy;
+                state.selectedConversation.canSendMessage = conversation.canSendMessage;
+                state.selectedConversation.canManageSendPolicy = conversation.canManageSendPolicy;
+                state.selectedConversation.memberSendRestricted = conversation.memberSendRestricted;
+            }
+            updateComposerState();
+            return loadConversations(false);
+        }).then(function () {
+            // Refresh members so per-member allow toggles appear/disappear with the policy.
+            return JimApi.listGroupMembers(conversationId);
+        }).then(function (response) {
+            if (response && state.selectedConversationId === conversationId) {
+                state.groupMembers = response.members || state.groupMembers;
+            }
+            renderMembersPanel();
+        }).catch(function (error) {
+            logError('setGroupSendPolicy', error);
+            if (errorBox) {
+                errorBox.textContent = error && error.message ? error.message : t('Unable to update the send policy.');
+                setHidden(errorBox, false);
+            }
+            renderMembersPanel();
+        });
+    }
+
+    // Phase 8C: allow/revoke a non-admin member's sending (owner/admin).
+    function submitAllowedSender(userKey, allowed) {
+        var conversationId = state.selectedConversationId;
+        if (!conversationId || !userKey) {
+            return;
+        }
+        JimApi.setGroupAllowedSender(conversationId, userKey, allowed).then(function (response) {
+            if (state.selectedConversationId !== conversationId) {
+                return null;
+            }
+            state.groupMembers = (response && response.members) || state.groupMembers;
+            renderMembersPanel();
+            return loadConversations(false);
+        }).then(function () {
+            updateComposerState();
+        }).catch(function (error) {
+            logError('setGroupAllowedSender', error);
+            showError(error && error.message ? error.message : t('Unable to update allowed senders.'));
         });
     }
 
@@ -5063,11 +5177,22 @@
             return;
         }
 
-        var readOnly = state.licenseBlocked ||
-            (state.selectedConversation && isSystemConversation(state.selectedConversation));
+        var isSystemConv = state.selectedConversation && isSystemConversation(state.selectedConversation);
+        // Phase 8C: group send policy — backend sets canSendMessage=false for a restricted
+        // non-admin/non-allowed member. Read-only composer with a clear Persian message.
+        var sendRestricted = !!(state.selectedConversation
+            && !isSystemConv
+            && state.selectedConversation.canSendMessage === false);
+        var readOnly = state.licenseBlocked || isSystemConv || sendRestricted;
         var busy = state.sending || state.uploading;
         var canSend = hasComposerPayload();
 
+        if (els.composerReadonly) {
+            els.composerReadonly.textContent = sendRestricted
+                ? '\u0627\u0631\u0633\u0627\u0644 \u067e\u06cc\u0627\u0645 \u062f\u0631 \u0627\u06cc\u0646 \u06af\u0631\u0648\u0647 \u062a\u0648\u0633\u0637 \u0645\u062f\u06cc\u0631\u0627\u0646 \u0645\u062d\u062f\u0648\u062f \u0634\u062f\u0647 \u0627\u0633\u062a'
+                : (els.composerReadonly.getAttribute('data-default-text')
+                    || els.composerReadonly.textContent);
+        }
         if (els.composer) {
             els.composer.classList.toggle('jim-composer-is-readonly', !!readOnly);
         }

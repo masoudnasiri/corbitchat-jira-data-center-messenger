@@ -191,6 +191,11 @@
         <interface>com.corbitlogic.jira.internalmessenger.service.JimMobileFeatureService</interface>
     </component>
 
+    <component key="jimMobileReportMetricsService"
+               class="com.corbitlogic.jira.internalmessenger.mobile.JimMobileReportMetricsService">
+        <description>Shared report-engine metrics for Dashboard and Reports (Phase 7I)</description>
+    </component>
+
     <component key="jimMobileDeviceService"
                class="com.corbitlogic.jira.internalmessenger.service.JimMobileDeviceServiceImpl">
         <description>Native mobile push device registration for CorbitHub Mobile</description>
@@ -511,6 +516,26 @@
         <description>Issue report-compliance tab (Report / گزارش)</description>
         <label key="jim.report.tab.label">Report</label>
         <order>60</order>
+        <supports-ajax-load>true</supports-ajax-load>
+    </issue-tabpanel>
+
+    <!-- Phase 8D — custom read-only Workflow Viewer tab (فرآیند / Workflow). Mirrors the
+         Report tab: JS must be present on the View Issue + Navigator contexts because the
+         AJAX tab fragment cannot requireResource. Client-rendered against
+         /rest/jim/1.0/issues/{key}/workflow-view. No native Workflow Designer / Raphael. -->
+    <web-resource key="jim-workflow-resources" name="CorbitChat Workflow Viewer Resources">
+        <dependency>com.atlassian.auiplugin:ajs</dependency>
+        <context>jira.view.issue</context>
+        <context>jira.navigator</context>
+        <resource type="download" name="jim-workflow.css" location="/css/jim-workflow.css"/>
+        <resource type="download" name="jim-workflow.js" location="/js/jim-workflow.js"/>
+    </web-resource>
+
+    <issue-tabpanel key="jim-workflow-tabpanel" name="CorbitChat Workflow Tab"
+                    class="com.corbitlogic.jira.internalmessenger.web.JimWorkflowTabPanel">
+        <description>Issue workflow viewer tab (فرآیند / Workflow)</description>
+        <label key="jim.workflow.tab.label">Workflow</label>
+        <order>62</order>
         <supports-ajax-load>true</supports-ajax-load>
     </issue-tabpanel>
 

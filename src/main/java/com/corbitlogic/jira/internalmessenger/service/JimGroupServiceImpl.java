@@ -54,6 +54,9 @@ implements JimGroupService {
     public static final String ROLE_OWNER = "OWNER";
     public static final String ROLE_ADMIN = "ADMIN";
     public static final String ROLE_MEMBER = "MEMBER";
+    // Phase 8C send policies.
+    public static final String SEND_POLICY_ALL_MEMBERS = "ALL_MEMBERS";
+    public static final String SEND_POLICY_ADMINS_AND_ALLOWED = "ADMINS_AND_ALLOWED";
     public static final int MAX_GROUP_NAME_LENGTH = 120;
     public static final int MAX_GROUP_MEMBERS = 100;
     private final ActiveObjects activeObjects;
@@ -265,6 +268,108 @@ implements JimGroupService {
         if (!this.canManageMembers(conversation, userKey)) {
             throw JimMessengerException.forbidden("Only the group owner or an administrator can perform this action");
         }
+    }
+
+    // ---- Phase 8C: group send policy ----
+
+    @Override
+    public String getSendPolicy(JimConversation conversation) {
+        if (conversation == null) {
+            return SEND_POLICY_ALL_MEMBERS;
+        }
+        String raw = conversation.getSendPolicy();
+        if (raw == null || raw.trim().isEmpty()) {
+            return SEND_POLICY_ALL_MEMBERS; // legacy/default → unchanged behavior
+        }
+        String normalized = raw.trim().toUpperCase(java.util.Locale.ROOT);
+        return SEND_POLICY_ADMINS_AND_ALLOWED.equals(normalized)
+                ? SEND_POLICY_ADMINS_AND_ALLOWED : SEND_POLICY_ALL_MEMBERS;
+    }
+
+    @Override
+    public boolean isAllowedSender(JimConversation conversation, String userKey) {
+        if (conversation == null || userKey == null) {
+            return false;
+        }
+        JimGroupMember member = this.findMember(conversation.getID(), userKey.trim());
+        return member != null && Boolean.TRUE.equals(member.getAllowedSender());
+    }
+
+    @Override
+    public boolean canSend(JimConversation conversation, String userKey) {
+        if (conversation == null || userKey == null) {
+            return true; // nothing to restrict → let existing checks decide
+        }
+        // Send policy is a GROUP/PROJECT concept only. DIRECT/SYSTEM keep existing rules.
+        boolean isGroupLike = JimConversationType.GROUP.name().equals(conversation.getConversationType())
+                || this.isProjectConversation(conversation);
+        if (!isGroupLike) {
+            return true;
+        }
+        if (!SEND_POLICY_ADMINS_AND_ALLOWED.equals(this.getSendPolicy(conversation))) {
+            return true; // ALL_MEMBERS (default) → any participant may send
+        }
+        // Restricted: OWNER/ADMIN always; allowed members; everyone else blocked.
+        if (this.canManageMembers(conversation, userKey)) {
+            return true;
+        }
+        return this.isAllowedSender(conversation, userKey);
+    }
+
+    @Override
+    public void requireCanSend(JimConversation conversation, String userKey) {
+        if (!this.canSend(conversation, userKey)) {
+            // Persian-friendly, mobile/web-safe message.
+            throw JimMessengerException.forbidden(
+                    "ارسال پیام در این گروه توسط مدیران محدود شده است / Sending is restricted by the group admins");
+        }
+    }
+
+    @Override
+    public JimConversation setSendPolicy(int conversationId, String actorUserKey, String policy) {
+        JimConversation conversation = this.requireGroupConversation(conversationId);
+        this.requireAuthenticatedSameUser(actorUserKey);
+        this.requireNotArchived(conversation);
+        this.requireCanManageMembers(conversation, actorUserKey);
+        String normalized = policy == null ? "" : policy.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!SEND_POLICY_ALL_MEMBERS.equals(normalized) && !SEND_POLICY_ADMINS_AND_ALLOWED.equals(normalized)) {
+            throw JimMessengerException.badRequest("Invalid send policy (ALL_MEMBERS | ADMINS_AND_ALLOWED)");
+        }
+        this.activeObjects.executeInTransaction(() -> {
+            conversation.setSendPolicy(normalized);
+            conversation.save();
+            return null;
+        });
+        this.auditService.record(actorUserKey,
+                this.isProjectConversation(conversation) ? "projectChat.sendPolicy.set" : "group.sendPolicy.set",
+                null, conversationId, null, "policy=" + normalized);
+        log.info("event=group stage=sendPolicy outcome=success conversationId={} actor={} policy={}",
+                new Object[]{conversationId, actorUserKey, normalized});
+        return conversation;
+    }
+
+    @Override
+    public void setAllowedSender(int conversationId, String actorUserKey, String targetUserKey, boolean allowed) {
+        JimConversation conversation = this.requireGroupConversation(conversationId);
+        this.requireAuthenticatedSameUser(actorUserKey);
+        this.requireNotArchived(conversation);
+        this.requireCanManageMembers(conversation, actorUserKey);
+        String normalizedTarget = JimValidation.requireNonBlank(targetUserKey, "userKey").trim();
+        JimGroupMember member = this.findMember(conversationId, normalizedTarget);
+        if (member == null) {
+            // Only participants can be on the allowlist; non-members cannot be added.
+            throw JimMessengerException.notFound("User is not a member of this group");
+        }
+        this.activeObjects.executeInTransaction(() -> {
+            member.setAllowedSender(allowed ? Boolean.TRUE : Boolean.FALSE);
+            member.save();
+            return null;
+        });
+        this.auditService.record(actorUserKey,
+                this.isProjectConversation(conversation) ? "projectChat.allowedSender.set" : "group.allowedSender.set",
+                null, conversationId, normalizedTarget, "allowed=" + allowed);
+        log.info("event=group stage=allowedSender outcome=success conversationId={} actor={} target={} allowed={}",
+                new Object[]{conversationId, actorUserKey, normalizedTarget, allowed});
     }
 
     private void requireNotArchived(JimConversation conversation) {

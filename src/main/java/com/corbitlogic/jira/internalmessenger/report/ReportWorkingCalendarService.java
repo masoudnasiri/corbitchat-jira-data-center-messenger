@@ -354,7 +354,7 @@ public final class ReportWorkingCalendarService {
             return new PluginWeek(explicit, "plugin_working_days");
         }
         return timeTrackingWeekdays();
-    }
+        }
 
     /** Time-tracking days-per-week → Iran-priority weekend fallback (legacy). */
     private static PluginWeek timeTrackingWeekdays() {

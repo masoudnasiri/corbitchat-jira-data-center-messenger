@@ -3,9 +3,16 @@ package com.corbitlogic.jira.internalmessenger.report;
 import com.atlassian.jira.component.ComponentAccessor;
 import com.atlassian.jira.issue.CustomFieldManager;
 import com.atlassian.jira.issue.Issue;
+import com.atlassian.jira.issue.customfields.manager.OptionsManager;
 import com.atlassian.jira.issue.customfields.option.Option;
+import com.atlassian.jira.issue.customfields.option.Options;
 import com.atlassian.jira.issue.fields.CustomField;
+import com.atlassian.jira.issue.fields.config.FieldConfig;
+import com.atlassian.jira.issue.fields.config.FieldConfigScheme;
 import com.corbitlogic.jira.internalmessenger.service.JimAdminSettingsService;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -307,11 +314,149 @@ public final class JimReportConfig {
 
     // --- Follow-up level ------------------------------------------------------
 
+    // --- Dynamic follow-up level options (Phase 8A) --------------------------
+
     /**
-     * Read the issue's follow-up level and map it to an internal level code
-     * ({@code normal|high|special|managerial}), or null when unset/unknown.
-     * Tolerates select options and plain text, and normalizes Arabic/Persian
-     * yeh/kaf so option text differences never break matching.
+     * A follow-up level option discovered from the configured Jira select field.
+     * {@link #key} is the STABLE persistence key ({@code o<optionId>}); config
+     * survives an option rename because it is keyed by the option id, not text.
+     */
+    public static final class LevelOption {
+        public final String key;         // o<optionId>
+        public final long optionId;
+        public final String value;       // display label
+        public final boolean disabled;
+        public final Long contextId;     // field-config-scheme id (disambiguation)
+        public final String contextName;
+        public final String legacyCode;  // matched legacy code (normal/high/special/managerial) or null
+
+        LevelOption(long optionId, String value, boolean disabled, Long contextId, String contextName,
+                    String legacyCode) {
+            this.key = "o" + optionId;
+            this.optionId = optionId;
+            this.value = value;
+            this.disabled = disabled;
+            this.contextId = contextId;
+            this.contextName = contextName;
+            this.legacyCode = legacyCode;
+        }
+    }
+
+    /** Stable key for an option id. */
+    public static String keyForOptionId(long optionId) {
+        return "o" + optionId;
+    }
+
+    // Short cache for the resolved option list (enumeration hits Jira managers).
+    private static volatile long optionsCacheAt = 0L;
+    private static volatile List<LevelOption> optionsCache = null;
+    private static final long OPTIONS_CACHE_TTL_MS = 30000L;
+
+    /** Invalidate the option cache (call after admin settings/field changes). */
+    public static void invalidateOptionsCache() {
+        optionsCache = null;
+        optionsCacheAt = 0L;
+    }
+
+    /**
+     * Resolve all active follow-up level options from the configured select field,
+     * across every field context. Empty when the field is missing or not a
+     * select/radio list (graceful degrade — caller shows a warning). De-duplicated
+     * by option id; cached briefly.
+     */
+    public static List<LevelOption> resolveLevelOptions() {
+        long now = System.currentTimeMillis();
+        List<LevelOption> cached = optionsCache;
+        if (cached != null && (now - optionsCacheAt) < OPTIONS_CACHE_TTL_MS) {
+            return cached;
+        }
+        List<LevelOption> out = new ArrayList<LevelOption>();
+        try {
+            CustomField cf = resolveLevelField();
+            if (cf == null) {
+                optionsCache = out;
+                optionsCacheAt = now;
+                return out;
+            }
+            // Only select/radio fields have options; text fields have none (legacy fallback path).
+            String tk = cf.getCustomFieldType() != null && cf.getCustomFieldType().getKey() != null
+                    ? cf.getCustomFieldType().getKey().toLowerCase() : "";
+            if (!(tk.contains("select") || tk.contains("radiobuttons"))) {
+                optionsCache = out;
+                optionsCacheAt = now;
+                return out;
+            }
+            OptionsManager om = ComponentAccessor.getComponent(OptionsManager.class);
+            LinkedHashMap<Long, LevelOption> byId = new LinkedHashMap<Long, LevelOption>();
+            List<FieldConfigScheme> schemes = cf.getConfigurationSchemes();
+            if (schemes != null && om != null) {
+                for (FieldConfigScheme scheme : schemes) {
+                    if (scheme == null) {
+                        continue;
+                    }
+                    Long ctxId = scheme.getId();
+                    String ctxName = scheme.getName();
+                    Map<String, FieldConfig> configs = scheme.getConfigs();
+                    if (configs == null) {
+                        continue;
+                    }
+                    for (FieldConfig fcfg : configs.values()) {
+                        Options opts;
+                        try {
+                            opts = om.getOptions(fcfg);
+                        } catch (Throwable t) {
+                            continue;
+                        }
+                        if (opts == null) {
+                            continue;
+                        }
+                        for (Object oo : opts) {
+                            if (!(oo instanceof Option)) {
+                                continue;
+                            }
+                            Option o = (Option) oo;
+                            Long oid = o.getOptionId();
+                            if (oid == null || byId.containsKey(oid)) {
+                                continue;
+                            }
+                            boolean disabled = Boolean.TRUE.equals(o.getDisabled());
+                            String val = o.getValue();
+                            byId.put(oid, new LevelOption(oid.longValue(), val, disabled, ctxId, ctxName,
+                                    codeForLevelText(val)));
+                        }
+                    }
+                }
+            }
+            out.addAll(byId.values());
+        } catch (Throwable ignored) {
+            // graceful: return whatever was collected (possibly empty)
+        }
+        optionsCache = out;
+        optionsCacheAt = now;
+        return out;
+    }
+
+    /** The LevelOption for a stable key ({@code o<id>}), or null. */
+    public static LevelOption optionForKey(String key) {
+        if (key == null) {
+            return null;
+        }
+        for (LevelOption o : resolveLevelOptions()) {
+            if (o.key.equals(key)) {
+                return o;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Read the issue's follow-up level and map it to the STABLE level key.
+     *
+     * <p>For a select option this is {@code o<optionId>} (Phase 8A dynamic key),
+     * so config survives an option rename. For a plain-text field (no option id)
+     * it falls back to the legacy code ({@code normal|high|special|managerial}).
+     * Null when unset/unknown. The report engine looks up the per-level config by
+     * this exact key (the settings service merges legacy config as a fallback).</p>
      */
     public static String levelCodeOf(Issue issue) {
         CustomField cf = resolveLevelField();
@@ -324,13 +469,17 @@ public final class JimReportConfig {
         } catch (Throwable t) {
             return null;
         }
-        String text = null;
         if (raw instanceof Option) {
-            text = ((Option) raw).getValue();
-        } else if (raw != null) {
-            text = String.valueOf(raw);
+            Long oid = ((Option) raw).getOptionId();
+            if (oid != null) {
+                return keyForOptionId(oid.longValue());
+            }
+            return codeForLevelText(((Option) raw).getValue()); // option without id → legacy text map
         }
-        return codeForLevelText(text);
+        if (raw != null) {
+            return codeForLevelText(String.valueOf(raw)); // text field → legacy text map
+        }
+        return null;
     }
 
     /** Map a Persian follow-up-level label to an internal code (null if unknown). */
@@ -353,10 +502,20 @@ public final class JimReportConfig {
         }
     }
 
-    /** Persian display label for a level code (for UI), or the code itself if unknown. */
+    /**
+     * Display label for a level key. For a dynamic option key ({@code o<id>}) this
+     * is the Jira option's display value; for a legacy code it is the Persian label;
+     * otherwise the key itself.
+     */
     public static String levelLabelFa(String code) {
         if (code == null) {
             return "";
+        }
+        if (code.startsWith("o") && code.length() > 1 && code.substring(1).matches("\\d+")) {
+            LevelOption opt = optionForKey(code);
+            if (opt != null && opt.value != null) {
+                return opt.value;
+            }
         }
         switch (code) {
             case "normal":     return "\u0639\u0627\u062f\u06cc";               // عادی
@@ -435,11 +594,18 @@ public final class JimReportConfig {
         public final int intervalMinutes;
         public final int windowStartMinute;
         public final int windowEndMinute;
+        /** Phase 8B: when {@code > 0}, one report per this many WORKING days (unit=days); intervalMinutes is 0. */
+        public final int workingDayInterval;
 
         ReportSchedule(int intervalMinutes, int windowStartMinute, int windowEndMinute) {
+            this(intervalMinutes, windowStartMinute, windowEndMinute, 0);
+        }
+
+        ReportSchedule(int intervalMinutes, int windowStartMinute, int windowEndMinute, int workingDayInterval) {
             this.intervalMinutes = intervalMinutes;
             this.windowStartMinute = windowStartMinute;
             this.windowEndMinute = windowEndMinute;
+            this.workingDayInterval = workingDayInterval;
         }
     }
 
@@ -475,10 +641,14 @@ public final class JimReportConfig {
             return null;
         }
         String unit = String.valueOf(level.get("unit"));
-        int intervalMinutes = "hours".equals(unit) ? intervalValue * 60 : intervalValue;
         int start = parseHHmm(String.valueOf(level.get("start")), globalWindowStartMinute());
         int end = parseHHmm(String.valueOf(level.get("end")), globalWindowEndMinute());
-        return new ReportSchedule(intervalMinutes, start, end);
+        if ("days".equals(unit)) {
+            // Phase 8B: N WORKING days per required report (not minutes/hours).
+            return new ReportSchedule(0, start, end, intervalValue);
+        }
+        int intervalMinutes = "hours".equals(unit) ? intervalValue * 60 : intervalValue;
+        return new ReportSchedule(intervalMinutes, start, end, 0);
     }
 
     /**

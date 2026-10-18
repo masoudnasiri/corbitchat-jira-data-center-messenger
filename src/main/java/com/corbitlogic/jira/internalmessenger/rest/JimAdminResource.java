@@ -585,6 +585,17 @@ public class JimAdminResource {
     // ===== Reporting dashboard / diagnostics / export / backfill (Phase 6/7) =====
 
     @GET
+    @Path(value="/reporting/levels")
+    public Response getReportingLevels() {
+        try {
+            this.requireSysAdmin();
+            return JimRestResponses.okJson(this.adminSettingsService.getReportLevelModel());
+        } catch (Exception ex) {
+            return this.internalError("GET /admin/reporting/levels", ex);
+        }
+    }
+
+    @GET
     @Path(value="/reporting/diagnostics")
     public Response getReportingDiagnostics() {
         try {
@@ -598,6 +609,8 @@ public class JimAdminResource {
             // Working-day source + report-receiver pause diagnostics (Report Replies & Working-Days).
             body.put("workingDays",
                     com.corbitlogic.jira.internalmessenger.report.ReportWorkingCalendarService.diagnostics());
+            // Dynamic follow-up level model (Phase 8A): field/options/config/orphans/warnings.
+            body.put("followUpLevels", this.adminSettingsService.getReportLevelModel());
             LinkedHashMap<String, Object> receiver = new LinkedHashMap<String, Object>();
             receiver.put("pauseEnabled",
                     com.corbitlogic.jira.internalmessenger.report.ReportResponsibilityService.isPauseEnabled());
